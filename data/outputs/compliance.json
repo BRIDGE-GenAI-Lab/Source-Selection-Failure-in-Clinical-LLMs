@@ -1,0 +1,15 @@
+{
+  "n_failures": 4265,
+  "shares_pct": {
+    "positional": 7.9,
+    "equivalence": 65.8,
+    "content": 3.0,
+    "other": 23.3
+  },
+  "counts": {
+    "positional": 339,
+    "equivalence": 2805,
+    "content": 126,
+    "other": 995
+  }
+}

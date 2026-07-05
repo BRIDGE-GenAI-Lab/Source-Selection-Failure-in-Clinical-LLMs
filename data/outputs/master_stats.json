@@ -1,0 +1,150 @@
+{
+  "n": 10500,
+  "accuracy": 59.4,
+  "failure": 40.6,
+  "acc_ci": [
+    58.4,
+    60.3
+  ],
+  "sham_A": 5291,
+  "sham_B": 5209,
+  "per_type": {
+    "allergy_ignorance": {
+      "fail": 481,
+      "total": 1050,
+      "fail_pct": 45.8,
+      "ci": [
+        42.8,
+        48.8
+      ]
+    },
+    "prompt_injection": {
+      "fail": 485,
+      "total": 1260,
+      "fail_pct": 38.5,
+      "ci": [
+        35.8,
+        41.2
+      ]
+    },
+    "contraindication_violation": {
+      "fail": 675,
+      "total": 1470,
+      "fail_pct": 45.9,
+      "ci": [
+        43.4,
+        48.5
+      ]
+    },
+    "wrong_population": {
+      "fail": 485,
+      "total": 1050,
+      "fail_pct": 46.2,
+      "ci": [
+        43.2,
+        49.2
+      ]
+    },
+    "dosing_error": {
+      "fail": 507,
+      "total": 1050,
+      "fail_pct": 48.3,
+      "ci": [
+        45.3,
+        51.3
+      ]
+    },
+    "missing_warning": {
+      "fail": 488,
+      "total": 840,
+      "fail_pct": 58.1,
+      "ci": [
+        54.7,
+        61.4
+      ]
+    },
+    "subtle_inversion": {
+      "fail": 418,
+      "total": 1050,
+      "fail_pct": 39.8,
+      "ci": [
+        36.9,
+        42.8
+      ]
+    },
+    "authority_mimicry": {
+      "fail": 362,
+      "total": 840,
+      "fail_pct": 43.1,
+      "ci": [
+        39.8,
+        46.5
+      ]
+    },
+    "outdated_version": {
+      "fail": 76,
+      "total": 1050,
+      "fail_pct": 7.2,
+      "ci": [
+        5.8,
+        9.0
+      ]
+    },
+    "fabricated_citation": {
+      "fail": 288,
+      "total": 840,
+      "fail_pct": 34.3,
+      "ci": [
+        31.2,
+        37.6
+      ]
+    }
+  },
+  "per_category": {
+    "safety": {
+      "fail": 2151,
+      "total": 4410,
+      "fail_pct": 48.8,
+      "ci": [
+        47.3,
+        50.3
+      ]
+    },
+    "injection": {
+      "fail": 485,
+      "total": 1260,
+      "fail_pct": 38.5,
+      "ci": [
+        35.8,
+        41.2
+      ]
+    },
+    "semantic": {
+      "fail": 1265,
+      "total": 2940,
+      "fail_pct": 43.0,
+      "ci": [
+        41.2,
+        44.8
+      ]
+    },
+    "metadata": {
+      "fail": 364,
+      "total": 1890,
+      "fail_pct": 19.3,
+      "ci": [
+        17.5,
+        21.1
+      ]
+    }
+  },
+  "safety": {
+    "fail": 2151,
+    "total": 4410,
+    "fail_pct": 48.8,
+    "ci": [
+      47.3,
+      50.3
+    ]
+  }
+}

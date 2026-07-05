@@ -1,0 +1,214 @@
+{
+  "models": [
+    {
+      "model": "DeepSeek Reasoner",
+      "correct": 391,
+      "total": 500,
+      "accuracy": 78.2,
+      "type": "Open",
+      "params": "671B",
+      "reasoning": true,
+      "architecture": "MoE"
+    },
+    {
+      "model": "Qwen/Qwen3-VL-8B-Instruct",
+      "correct": 364,
+      "total": 500,
+      "accuracy": 73.0,
+      "type": "Open",
+      "params": "8B",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "ServiceNow-AI/Apriel-1.6-15b-Thinker",
+      "correct": 357,
+      "total": 500,
+      "accuracy": 71.39999999999999,
+      "type": "Open",
+      "params": "15B",
+      "reasoning": true,
+      "architecture": "Dense"
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "correct": 355,
+      "total": 500,
+      "accuracy": 71.0,
+      "type": "Open",
+      "params": "120B",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
+      "correct": 349,
+      "total": 500,
+      "accuracy": 69.8,
+      "type": "Open",
+      "params": "235B",
+      "reasoning": false,
+      "architecture": "MoE"
+    },
+    {
+      "model": "openai/gpt-oss-20b",
+      "correct": 346,
+      "total": 500,
+      "accuracy": 69.19999999999999,
+      "type": "Open",
+      "params": "20B",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "mistralai/Mistral-Small-24B-Instruct-2501",
+      "correct": 321,
+      "total": 500,
+      "accuracy": 64.2,
+      "type": "Open",
+      "params": "24B",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "Qwen/Qwen3-Next-80B-A3B-Thinking",
+      "correct": 320,
+      "total": 500,
+      "accuracy": 64.0,
+      "type": "Open",
+      "params": "80B",
+      "reasoning": true,
+      "architecture": "MoE"
+    },
+    {
+      "model": "GPT-4.1",
+      "correct": 319,
+      "total": 500,
+      "accuracy": 63.800000000000004,
+      "type": "Closed",
+      "params": "Unknown",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "DeepSeek-V3.2",
+      "correct": 303,
+      "total": 500,
+      "accuracy": 60.6,
+      "type": "Open",
+      "params": "671B",
+      "reasoning": false,
+      "architecture": "MoE"
+    },
+    {
+      "model": "GPT-5-Nano",
+      "correct": 282,
+      "total": 500,
+      "accuracy": 56.39999999999999,
+      "type": "Closed",
+      "params": "Unknown",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+      "correct": 271,
+      "total": 500,
+      "accuracy": 54.2,
+      "type": "Open",
+      "params": "17B",
+      "reasoning": false,
+      "architecture": "MoE"
+    },
+    {
+      "model": "google/gemma-3n-E4B-it",
+      "correct": 268,
+      "total": 500,
+      "accuracy": 53.6,
+      "type": "Open",
+      "params": "4B",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "GPT-4o-Mini",
+      "correct": 264,
+      "total": 500,
+      "accuracy": 52.800000000000004,
+      "type": "Closed",
+      "params": "Unknown",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+      "correct": 263,
+      "total": 500,
+      "accuracy": 52.6,
+      "type": "Open",
+      "params": "17B",
+      "reasoning": false,
+      "architecture": "MoE"
+    },
+    {
+      "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+      "correct": 254,
+      "total": 500,
+      "accuracy": 50.8,
+      "type": "Open",
+      "params": "70B",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "Gemini-2.5-Flash-Lite",
+      "correct": 253,
+      "total": 500,
+      "accuracy": 50.6,
+      "type": "Closed",
+      "params": "Unknown",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "GPT-4.1-Nano",
+      "correct": 252,
+      "total": 500,
+      "accuracy": 50.4,
+      "type": "Closed",
+      "params": "Unknown",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "meta-llama/Llama-3.2-3B-Instruct-Turbo",
+      "correct": 247,
+      "total": 500,
+      "accuracy": 49.4,
+      "type": "Open",
+      "params": "3B",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
+      "correct": 235,
+      "total": 500,
+      "accuracy": 47.0,
+      "type": "Open",
+      "params": "9B",
+      "reasoning": false,
+      "architecture": "Dense"
+    },
+    {
+      "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      "correct": 220,
+      "total": 500,
+      "accuracy": 44.0,
+      "type": "Open",
+      "params": "47B",
+      "reasoning": false,
+      "architecture": "MoE"
+    }
+  ]
+}
