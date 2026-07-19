@@ -1,0 +1,75 @@
+{
+  "_description": "Supplementary Table S11 \u2014 full cluster-aware primary regression. Outcome: correct source selection. Predictors: sham_first (sham in position A), attack category (reference=metadata), and model fixed effects. Odds ratios with 95% CI under three specifications: naive logistic, cluster-robust SE by vignette, and GEE exchangeable by vignette.",
+  "n_evaluations": 10500,
+  "n_vignettes": 500,
+  "n_models": 21,
+  "reference_category": "metadata",
+  "odds_ratios": {
+    "naive": {
+      "sham_first": [
+        0.08668113874869761,
+        0.078233231764007,
+        0.09604128124779551
+      ],
+      "clinical_safety": [
+        0.1384522930164156,
+        0.11918459827786444,
+        0.16083485381905732
+      ],
+      "semantic": [
+        0.18511394482894558,
+        0.15822007134955293,
+        0.21657917530847284
+      ],
+      "injection": [
+        0.25251954324677645,
+        0.2096257696248177,
+        0.3041902712423545
+      ]
+    },
+    "cluster_robust": {
+      "sham_first": [
+        0.08668113874869761,
+        0.07072295266234652,
+        0.1062401883960266
+      ],
+      "clinical_safety": [
+        0.1384522930164156,
+        0.10045019376248027,
+        0.19083126396778877
+      ],
+      "semantic": [
+        0.18511394482894558,
+        0.13309482161799516,
+        0.2574643562653891
+      ],
+      "injection": [
+        0.25251954324677645,
+        0.17126690607793424,
+        0.3723201474343451
+      ]
+    },
+    "gee_exchangeable": {
+      "sham_first": [
+        0.08748981122583582,
+        0.07111818610167224,
+        0.10763023479520947
+      ],
+      "clinical_safety": [
+        0.1656799671289482,
+        0.11780739725221996,
+        0.23300617913729596
+      ],
+      "semantic": [
+        0.2288486415371576,
+        0.16145026334843116,
+        0.3243828758605203
+      ],
+      "injection": [
+        0.2589585571721536,
+        0.16482906573352077,
+        0.40684289530038786
+      ]
+    }
+  }
+}
