@@ -26,7 +26,7 @@ def pairs_path():
 
 
 def _load():
-    return json.loads(pairs_path().read_text())
+    return json.loads(pairs_path().read_text(encoding="utf-8"))
 
 
 def _cases():
@@ -106,7 +106,7 @@ def _write_forms_to(directory, raw, cases, extra_manifest=None):
     manifest = {"pairs_v2_sha256": hashlib.sha256(raw).hexdigest(),
                 "packets": {r["case_id"]: r["packet_sha256"] for r in rows}}
     manifest.update(extra_manifest or {})
-    (directory / MANIFEST).write_text(json.dumps(manifest, indent=1) + "\n")
+    (directory / MANIFEST).write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
     for reviewer, seed in REVIEWERS:
         order = rows[:]
         random.Random(seed).shuffle(order)
@@ -125,8 +125,8 @@ def _write_forms_to(directory, raw, cases, extra_manifest=None):
                                        r["modified_as_shown_to_model"].splitlines(),
                                        "Authentic", "Modified"))
     parts.append("</body></html>")
-    (directory / "packets.html").write_text("\n".join(parts))
-    (directory / "README_REVIEWERS.md").write_text(readme_text())
+    (directory / "packets.html").write_text("\n".join(parts), encoding="utf-8")
+    (directory / "README_REVIEWERS.md").write_text(readme_text(), encoding="utf-8")
 
 
 def write_forms(round_label="round1", allow_unresolved=False):
@@ -271,6 +271,34 @@ def _cell_text(v):
     return str(v)
 
 
+def _check_review_content(rows, xlsx_path):
+    """Everything except the answer columns must equal a fresh render of the current pairs: a reviewer
+    edit to a case_id, a packet column or its hash is refused."""
+    if not rows:
+        raise ValueError(f"{xlsx_path}: the '{REVIEW}' sheet is empty")
+    header = rows[0]
+    answer = set(_answer_cols())
+    fresh = {r["case_id"]: r for r in packet_rows()}
+    content_cols = [c for c in header if c not in answer]
+    expected_cols = list(next(iter(fresh.values()))) if fresh else []
+    if content_cols != expected_cols:
+        raise ValueError(f"{xlsx_path}: content columns {content_cols} differ from the packet columns {expected_cols}")
+    problems = []
+    for line, row in enumerate(rows[1:], start=2):
+        cells = dict(zip(header, row))
+        cid = cells.get("case_id", "")
+        if cid not in fresh:
+            problems.append(f"row {line}: case_id {cid!r} is not a current case_id")
+            continue
+        changed = [c for c in content_cols
+                   if cells.get(c, "") != ("" if fresh[cid][c] is None else str(fresh[cid][c]))]
+        if changed:
+            problems.append(f"row {line} ({cid}): content columns differ from the current packet: {changed}")
+    if problems:
+        raise ValueError(f"{xlsx_path}: a reviewer edited packet content, nothing imported:\n  "
+                         + "\n  ".join(problems[:20]))
+
+
 def import_review_xlsx(xlsx_path, csv_path):
     from openpyxl import load_workbook
     wb = load_workbook(xlsx_path, read_only=False, data_only=True)
@@ -279,6 +307,7 @@ def import_review_xlsx(xlsx_path, csv_path):
     rows = [[_cell_text(c.value) for c in row] for row in wb[REVIEW].iter_rows()]
     while rows and not any(rows[-1]):
         rows.pop()
+    _check_review_content(rows, xlsx_path)
     with open(csv_path, "w", newline="", encoding="utf-8") as fh:
         csv.writer(fh).writerows(rows)
 
@@ -294,6 +323,7 @@ def import_author_edits(xlsx_path, author, date):
         raise ValueError(f"{AUTHOR_EDITS}: header row (starting with case_id) not found")
     col = {name: rows[start].index(name) for name in AUTHOR_COLS if name in rows[start]}
     originals, _ = load_original_cases()
+    queued = set(_load()["unresolved"])
     edits, problems = {}, []
     for r in rows[start + 1:]:
         cid = r[col["case_id"]].strip()
@@ -308,6 +338,8 @@ def import_author_edits(xlsx_path, author, date):
             problems.append(f"{cid}: appears more than once")
         elif cid not in originals:
             problems.append(f"{cid}: unknown case_id")
+        elif cid not in queued:
+            problems.append(f"{cid}: not in the manual-edit queue (pairs_v2.json unresolved list)")
         elif not edit["find"].strip() or not edit["replace"].strip():
             problems.append(f"{cid}: blank find or replace")
         elif edit["field"] not in EDIT_FIELDS:
@@ -326,9 +358,9 @@ def import_author_edits(xlsx_path, author, date):
     if problems:
         raise ValueError("author edits rejected, nothing written:\n  " + "\n  ".join(problems))
     path = DATA_V2 / "manual_edits.json"
-    merged = json.loads(path.read_text()) if path.exists() else {}
+    merged = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     merged.update(edits)
-    path.write_text(json.dumps(merged, indent=1, ensure_ascii=False) + "\n")
+    path.write_text(json.dumps(merged, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     return edits
 
 
@@ -358,6 +390,10 @@ def merge_rounds(round_labels, out_dir=None):
                         raise ValueError(f"{reviewer}: packet_sha256 for {cid} ({label}) differs from the "
                                          "current render: the pair changed after it was reviewed")
                     rows.append(row)
+        missing = sorted(set(current) - set(seen))
+        if missing:
+            raise ValueError(f"{reviewer}: rounds {list(round_labels)} do not cover all {len(current)} current "
+                             f"pairs; missing {len(missing)}: {missing[:10]}")
         merged[reviewer] = (header, rows)
     out_dir.mkdir(parents=True, exist_ok=True)
     for reviewer, (header, rows) in merged.items():
@@ -367,7 +403,7 @@ def merge_rounds(round_labels, out_dir=None):
             w.writerows(rows)
     (out_dir / MANIFEST).write_text(json.dumps(
         {"pairs_v2_sha256": hashlib.sha256(raw).hexdigest(), "packets": current,
-         "merged_rounds": list(round_labels)}, indent=1) + "\n")
+         "merged_rounds": list(round_labels)}, indent=1) + "\n", encoding="utf-8")
 
 
 REVIEWER_NAMES = {"AG": "A.G.", "MO": "M.O."}
@@ -406,7 +442,7 @@ def main(argv=None):
         write_forms("round1", allow_unresolved=True)
         _export_round("round1", with_author_edits=True, force=a.force)
     elif a.cmd == "round2":
-        ids = json.loads((VERIFY_DIR / "round1" / MANIFEST).read_text())["unresolved"]
+        ids = json.loads((VERIFY_DIR / "round1" / MANIFEST).read_text(encoding="utf-8"))["unresolved"]
         write_round_forms("round2", ids)
         _export_round("round2", with_author_edits=False, force=a.force)
     elif a.cmd == "import-edits":

@@ -15,6 +15,11 @@ def test_kappa_known_value():
     assert cohen_kappa(["Y", "Y"], ["Y", "Y"]) == 1.0
 
 
+def test_kappa_of_empty_input_is_nan():
+    import math
+    assert math.isnan(cohen_kappa([], []))
+
+
 def test_exclusion_rule():
     ok = {"q3_authentic_concordant": "Y", "q4_authentic_relevant": "Y", "q5_edit_visible": "Y",
           "q6_edit_matches_type": "Y", "q7_edit_reduces_trust": "Y"}
@@ -42,6 +47,30 @@ def test_packets_contain_rendered_input_only():
         if ctx:
             assert ctx not in r["vignette_as_shown_to_model"]
         assert r["authentic_as_shown_to_model"] and r["modified_as_shown_to_model"]
+    _assert_no_case_flags_in_packets(rows, cases)
+
+
+def _assert_no_case_flags_in_packets(rows, cases):
+    """case_flags never appear in any model-facing packet field (benign reviewed matches excepted)."""
+    from r2.verify.build_packets import PACKET_FIELDS
+    flags_ok = json.loads((VERIFY_DIR / "leakage_flags.json").read_text())
+    n = 0
+    for r in rows:
+        allowed = {e["substring"] for e in flags_ok.get(r["case_id"], [])}
+        assert "case_flags" not in r
+        text = "\n".join(str(r[k]) for k in PACKET_FIELDS).lower()
+        for flag in cases[r["case_id"]].get("case_flags") or []:
+            if "_" in flag and flag not in allowed:
+                n += 1
+                assert flag.lower() not in text, (r["case_id"], flag)
+    assert n > 0  # the check must have had flags to test
+
+
+def test_resolved_packets_carry_no_case_flags():
+    from r2.io import load_original_cases
+    from r2.verify.build_packets import packet_rows
+    cases, _ = load_original_cases()
+    _assert_no_case_flags_in_packets(packet_rows(), cases)
 
 
 def test_write_forms_refuses_incomplete_set():
@@ -49,10 +78,23 @@ def test_write_forms_refuses_incomplete_set():
     d = _pairs()
     if len(d["cases"]) == 500 and not d["unresolved"]:
         pytest.skip("pairs_v2.json is complete; refusal not applicable")
-    before = sorted(p.name for p in VERIFY_DIR.iterdir())
+    def listing():
+        return sorted(p.name for p in VERIFY_DIR.iterdir()) if VERIFY_DIR.exists() else None
+    before = listing()
     with pytest.raises(RuntimeError):
         write_forms()
-    assert sorted(p.name for p in VERIFY_DIR.iterdir()) == before
+    assert listing() == before
+
+
+def test_refusal_test_survives_a_missing_verification_dir(tmp_path, monkeypatch):
+    from r2.verify import build_packets as bp
+    monkeypatch.setattr(bp, "VERIFY_DIR", tmp_path / "does_not_exist")
+    monkeypatch.setattr(bp, "pairs_path", lambda: DATA_V2 / "pairs_v2.json")
+    if not _pairs()["unresolved"]:
+        pytest.skip("pairs_v2.json is complete")
+    with pytest.raises(RuntimeError):
+        bp.write_forms()
+    assert not (tmp_path / "does_not_exist").exists()
 
 
 # ---- score / consensus on toy forms (all I/O in tmp_path) ----
@@ -284,3 +326,42 @@ def test_case335_and_allergy_counts_still_hold():
     assert not cases["CASE_335"].get("clinical_question")
     allergy = [c for c in cases.values() if c["eval"]["sham_trap_type"] == "allergy_ignorance"]
     assert len(allergy) == 50 and sum(not c.get("allergies") for c in allergy) == 18
+
+
+# ---- Task DM item 7 ----
+def test_score_validates_answer_values(toy):
+    d, a, b = toy
+    import pandas as pd
+    df = pd.read_csv(a, dtype=str)
+    df.loc[0, "q1_vignette_consistent"] = "maybe"
+    df.to_csv(a, index=False)
+    with pytest.raises(ValueError, match="invalid answers"):
+        sr.score(a, b)
+
+
+def test_score_rejects_p_outside_q3(toy):
+    d, a, b = toy
+    import pandas as pd
+    df = pd.read_csv(a, dtype=str)
+    df.loc[0, "q5_edit_visible"] = "P"
+    df.to_csv(a, index=False)
+    with pytest.raises(ValueError, match="q5_edit_visible"):
+        sr.score(a, b)
+
+
+def test_consensus_tolerates_blank_rows_and_padded_cells(toy):
+    d, a, b = toy
+    both = d / "c_both.csv"
+    both.write_text("case_id,item,consensus\nC2,q3_authentic_concordant,Y\n C3 , q8_leakage , n \n,,\n  ,  ,  \n",
+                    encoding="utf-8")
+    excluded, flags = sr.apply_consensus(a, b, both)
+    assert excluded == {"C1": ["q5_edit_visible"]}
+    assert "C3" not in flags and "C2" not in flags
+
+
+def test_consensus_row_with_empty_value_is_a_clear_error(toy):
+    d, a, b = toy
+    bad = d / "c_empty_val.csv"
+    bad.write_text("case_id,item,consensus\nC2,q3_authentic_concordant,\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="empty consensus"):
+        sr.apply_consensus(a, b, bad)

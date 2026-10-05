@@ -26,6 +26,8 @@ EXCLUSION_RULE = ("Excluded from the primary analysis if physician consensus ans
 
 def cohen_kappa(a, b):
     n = len(a)
+    if n == 0:
+        return float("nan")
     labels = sorted(set(a) | set(b))
     po = sum(x == y for x, y in zip(a, b)) / n
     pe = sum((a.count(l) / n) * (b.count(l) / n) for l in labels)
@@ -101,7 +103,7 @@ def _check_packets(forms):
     manifest_path = VERIFY_DIR / build_packets.MANIFEST
     if not manifest_path.exists():
         raise ValueError(f"{manifest_path} is missing; the forms cannot be bound to pairs_v2.json")
-    recorded = json.loads(manifest_path.read_text()).get("pairs_v2_sha256")
+    recorded = json.loads(manifest_path.read_text(encoding="utf-8")).get("pairs_v2_sha256")
     if recorded != current:
         raise ValueError(f"pairs_v2_sha256 in {manifest_path.name} ({recorded}) differs from the current "
                          f"data/v2/pairs_v2.json ({current}); the reviewed packets are not the current stimuli")
@@ -131,8 +133,13 @@ def apply_consensus(path_a, path_b, consensus_path):
     if any(blanks.values()):
         raise ValueError(f"blank answers in the forms: { {q: n for q, n in blanks.items() if n} }")
     cons = pd.read_csv(consensus_path, dtype=str).fillna("")
+    for col in ("case_id", "item", "consensus"):
+        cons[col] = cons[col].str.strip()
+    cons = cons[(cons[["case_id", "item", "consensus"]] != "").any(axis=1)].reset_index(drop=True)  # drop all-blank rows
     for _, r in cons.iterrows():
         cid, item, val = r["case_id"], r["item"], str(r["consensus"]).strip().upper()
+        if not val:
+            raise ValueError(f"empty consensus value for {cid} {item}")
         if cid not in a.index:
             raise ValueError(f"consensus row for unknown case_id {cid}")
         if item not in qkeys:
@@ -156,8 +163,8 @@ def apply_consensus(path_a, path_b, consensus_path):
     flags = {cid: flag_reasons(row) for cid, row in final.iterrows() if flag_reasons(row)}
     (VERIFY_DIR / "excluded_pairs.json").write_text(json.dumps(
         {"rule": EXCLUSION_RULE, "excluded": sorted(excluded), "reasons": excluded,
-         "pairs_v2_sha256": pairs_sha}, indent=2))
-    (VERIFY_DIR / "flags.json").write_text(json.dumps(flags, indent=2))
+         "pairs_v2_sha256": pairs_sha}, indent=2), encoding="utf-8")
+    (VERIFY_DIR / "flags.json").write_text(json.dumps(flags, indent=2), encoding="utf-8")
     final.reset_index().to_csv(VERIFY_DIR / "final_review.csv", index=False)
     return excluded, flags
 

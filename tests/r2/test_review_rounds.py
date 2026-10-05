@@ -229,3 +229,73 @@ def test_merge_refuses_stale_packet(env, make_pairs):
     with pytest.raises(ValueError, match="packet_sha256"):
         bp.merge_rounds(["round1", "round2"])
     assert not (verify / "review_AG.csv").exists()
+
+
+# ---- Task DM 7b minors ----
+def test_import_author_edits_accepts_only_queued_case_ids(env, tmp_path, monkeypatch):
+    from openpyxl import Workbook
+    data, _ = env  # pairs_v2.json queues U1 and U2
+    orig = {cid: {"eval": {"sham_trap_type": "subtle_inversion"},
+                  "tools": {"S": {"metadata": {"organization": "Org"}, "excerpt_text": "Use drug A."}}}
+            for cid in ("U1", "C1")}
+    monkeypatch.setattr(bp, "load_original_cases", lambda: (orig, {}))
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Author_edits"
+    ws.append(["case_id", "sham_type", "clinical_question", "authentic_organization",
+               "authentic_excerpt_text", "field", "find", "replace", "rationale"])
+    for cid in ("U1", "C1"):
+        ws.append([cid, "", "", "", "", "excerpt_text", "Use drug A", "Do not use drug A", ""])
+    p = tmp_path / "ae.xlsx"
+    wb.save(p)
+    with pytest.raises(ValueError, match="C1.*not in the manual-edit queue"):
+        bp.import_author_edits(p, "A.G.", "2026-10-06")
+    assert not (data / "manual_edits.json").exists()
+
+
+def test_merge_requires_full_coverage_early(env, make_pairs):
+    data, verify = env
+    (data / "pairs_v2.json").write_text(json.dumps(make_pairs(["C1", "C2"], unresolved=["C3"])))
+    bp.write_forms("round1", allow_unresolved=True)
+    (data / "pairs_v2.json").write_text(json.dumps(make_pairs(["C1", "C2", "C3"])))
+    for r in ("AG", "MO"):
+        _answer(verify / "round1" / f"review_{r}.csv")
+    with pytest.raises(ValueError, match="do not cover.*C3"):
+        bp.merge_rounds(["round1"])
+    assert not (verify / "review_AG.csv").exists() and not (verify / "packets_manifest.json").exists()
+
+
+def _round1_xlsx(env, tmp_path):
+    data, verify = env
+    bp.write_forms("round1", allow_unresolved=True)
+    x = tmp_path / "ag.xlsx"
+    bp.export_xlsx(verify / "round1" / "review_AG.csv", x, "A.G.", "round1")
+    return x
+
+
+def _edit_cell(x, column, row_idx, value):
+    wb = load_workbook(x)
+    ws = wb["Review"]
+    col = [c.value for c in ws[1]].index(column) + 1
+    ws.cell(row_idx, col).value = value
+    wb.save(x)
+
+
+@pytest.mark.parametrize("column", ["vignette_as_shown_to_model", "modified_as_shown_to_model",
+                                    "packet_sha256", "case_id", "clinical_question"])
+def test_import_review_refuses_edited_content(env, tmp_path, column):
+    x = _round1_xlsx(env, tmp_path)
+    _edit_cell(x, column, 2, "tampered")
+    out = tmp_path / "back.csv"
+    with pytest.raises(ValueError, match="content|case_id"):
+        bp.import_review_xlsx(x, out)
+    assert not out.exists()
+
+
+def test_import_review_accepts_answers_and_notes(env, tmp_path):
+    x = _round1_xlsx(env, tmp_path)
+    _edit_cell(x, "q1_vignette_consistent", 2, "Y")
+    _edit_cell(x, "notes", 2, "looks fine")
+    out = tmp_path / "back.csv"
+    bp.import_review_xlsx(x, out)
+    assert "looks fine" in out.read_text(encoding="utf-8")
