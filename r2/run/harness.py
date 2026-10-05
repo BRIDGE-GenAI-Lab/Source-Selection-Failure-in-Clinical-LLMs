@@ -29,6 +29,31 @@ class ModelMismatch(RuntimeError):
     pass
 
 
+class ModelUnavailable(RuntimeError):
+    pass
+
+
+class StaleRecords(RuntimeError):
+    pass
+
+
+class CorruptResults(RuntimeError):
+    pass
+
+
+CELL_ERRORS = {"BadRequestError", "UnprocessableEntityError"}
+MODEL_ERRORS = {"AuthenticationError", "PermissionDeniedError", "NotFoundError"}
+
+
+def _error_kind(exc):
+    name = type(exc).__name__
+    if name in CELL_ERRORS:
+        return "cell"
+    if name in MODEL_ERRORS:
+        return "model"
+    return None
+
+
 def load_specs(path=REPO / "r2" / "run" / "models_v2.json"):
     return json.loads(Path(path).read_text())["models"]
 
@@ -60,6 +85,10 @@ def iter_result_files(out_dir):
 
 def parse_decision(text):
     if not text:
+        return None
+    if "</think>" in text.lower():
+        text = text[text.lower().rfind("</think>") + len("</think>"):]
+    elif "<think>" in text.lower():
         return None
     text = THINK.sub("", text)
     end = text.rfind("}")
@@ -107,14 +136,23 @@ def _create(client, kwargs, sleep, tries=6):
 def execute_cell(client, spec, case, order, context, sleep=time.sleep):
     msgs = render_messages(case, order)
     messages = [{"role": "system", "content": msgs["system"]}, {"role": "user", "content": msgs["user"]}]
-    attempts, decision = [], None
+    attempts, decision, error = [], None, None
     for _ in range(2):
         kwargs = {"model": spec["model_id"], "messages": messages,
                   spec.get("token_param", "max_tokens"): spec["max_tokens"]}
         if spec.get("temperature") is not None:
             kwargs["temperature"] = spec["temperature"]
         t0 = time.time()
-        resp = _create(client, kwargs, sleep).model_dump()
+        try:
+            resp = _create(client, kwargs, sleep).model_dump()
+        except Exception as exc:
+            kind = _error_kind(exc)
+            if kind == "model":
+                raise ModelUnavailable(f"{spec['model_id']}: {type(exc).__name__}: {exc}"[:500]) from exc
+            if kind == "cell":
+                error = f"{type(exc).__name__}: {exc}"[:500]
+                break
+            raise
         latency_ms = (time.time() - t0) * 1000
         check_served(spec, resp.get("model"))
         message = ((resp.get("choices") or [{}])[0].get("message")) or {}
@@ -123,11 +161,12 @@ def execute_cell(client, spec, case, order, context, sleep=time.sleep):
         decision = parse_decision(content)
         if decision:
             break
-        messages = messages + [{"role": "assistant", "content": content},
-                               {"role": "user", "content": RETRY_PROMPT}]
+        if content:
+            messages = messages + [{"role": "assistant", "content": content},
+                                   {"role": "user", "content": RETRY_PROMPT}]
     selected = decision["selected_tool"] if decision else None
-    last = attempts[-1]["response"]
-    return {
+    last = attempts[-1]["response"] if attempts else {}
+    rec = {
         **context,
         "model_id": spec["model_id"], "provider": spec["provider"], "original_name": spec["original_name"],
         "model_served": last.get("model"), "system_fingerprint": last.get("system_fingerprint"),
@@ -139,15 +178,39 @@ def execute_cell(client, spec, case, order, context, sleep=time.sleep):
         "correct": None if selected is None else int(msgs["labels"][selected] == "T"),
         "finished_at": datetime.now(timezone.utc).isoformat(),
     }
+    if error:
+        rec["error"] = error
+    return rec
 
 
-def _done(path):
+def _done(path, cases, context):
     done = set()
-    if path.exists():
-        for line in path.read_text().splitlines():
-            if line.strip():
-                r = json.loads(line)
-                done.add((r["case_id"], r["order"]))
+    if not path.exists():
+        return done
+    raw = path.read_bytes()
+    lines = raw.decode("utf-8").split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    good, kept = [], 0
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            if i == len(lines) - 1:
+                dropped = len(line.encode("utf-8"))
+                print(f"WARNING: dropped torn final line ({dropped} bytes) in {path}", flush=True)
+                path.write_text("".join(g + "\n" for g in good))
+                return done
+            raise CorruptResults(f"{path}: unparseable line {i + 1}")
+        key = (r["case_id"], r["order"])
+        ok = (r.get("stimulus_sha256") == context["stimulus_sha256"] and key[0] in cases
+              and r.get("payload_sha256") == render_messages(cases[key[0]], key[1])["payload_sha256"])
+        if not ok:
+            raise StaleRecords(f"{path}: stale record for {key}")
+        good.append(line)
+        done.add(key)
     return done
 
 
@@ -155,8 +218,11 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = results_path(spec, out_dir)
-    done = _done(path)
+    done = _done(path, cases, context)
     ids = sorted(cases)[:limit] if limit else sorted(cases)
+    if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
+        with open(path, "a") as fh:
+            fh.write("\n")
     with open(path, "a") as fh:
         for cid in ids:
             for order in ORDERS:
@@ -200,7 +266,7 @@ def main():
         print(f"[{datetime.now():%H:%M:%S}] {spec['original_name']}", flush=True)
         try:
             run_model(spec, cases, args.out, make_client(spec["provider"]), context, limit=args.limit)
-        except ModelMismatch as exc:
+        except (ModelMismatch, ModelUnavailable) as exc:
             print(f"STOPPED {spec['original_name']}: {exc}", flush=True)
 
 
