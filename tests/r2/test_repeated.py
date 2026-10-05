@@ -62,7 +62,7 @@ def test_repeated_frame_tolerates_error_cells(tmp_path, monkeypatch):
     (verify / "excluded_pairs.json").write_text(json.dumps({"rule": "x", "excluded": [], "reasons": {}}))
     (verify / "flags.json").write_text("{}")
     monkeypatch.setattr(repeated, "VERIFY_DIR", verify)
-    monkeypatch.setattr(repeated, "load_specs", lambda *a, **k: [{"original_name": model, "model_id": "m"}])
+    monkeypatch.setattr(repeated, "load_specs", lambda *a, **k: [{"original_name": model, "model_id": model}])
     df = repeated_frame(results)
     assert len(df) == 2
     row = df[df.case_id == c2].iloc[0]
@@ -123,3 +123,23 @@ def test_repeated_frame_uses_last_record_per_cell(tmp_path, monkeypatch):
     monkeypatch.setattr(repeated, "load_specs", lambda *a, **k: [{"original_name": "model_x", "model_id": "model_x"}])
     df = repeated_frame(results)
     assert len(df) == 1 and df.iloc[0].status == "ok" and df.iloc[0].correct == 1
+
+
+def test_repeated_frame_reads_only_current_spec_files(tmp_path, monkeypatch):
+    from r2.paths import DATA_V2
+    c1 = json.loads((DATA_V2 / "pairs_v2.json").read_text())["cases"][0]["case_id"]
+    results = tmp_path / "results"
+    results.mkdir()
+    ok = {"original_name": "model_x", "case_id": c1, "order": "TS", "labels": {"A": "T", "B": "S"},
+          "status": "ok", "selected_tool": "A", "correct": 1, "attempts": [{}],
+          "decision": {"confidence": 0.9, "differences_found": []}, "model_served": "m"}
+    (results / "model_x.jsonl").write_text(json.dumps(ok) + "\n")
+    (results / "dropped.jsonl").write_text(json.dumps({**ok, "original_name": "model_x"}) + "\n")
+    verify = tmp_path / "verify"
+    verify.mkdir()
+    (verify / "excluded_pairs.json").write_text(json.dumps({"rule": "x", "excluded": [], "reasons": {}}))
+    (verify / "flags.json").write_text("{}")
+    monkeypatch.setattr(repeated, "VERIFY_DIR", verify)
+    monkeypatch.setattr(repeated, "load_specs", lambda *a, **k: [{"original_name": "model_x", "model_id": "model_x"},
+                                                                 {"original_name": "y", "model_id": "missing"}])
+    assert len(repeated_frame(results)) == 1

@@ -9,7 +9,7 @@ from scipy.stats import spearmanr
 from r2.analysis.stats import (CATEGORY, calibration, cluster_bootstrap_paa, fdr, gee_logit,
                                position_summary, wilson)
 from r2.paths import DATA_V2, REPO, RUNS_V2, VERIFY_DIR
-from r2.run.harness import final_records, iter_result_files, load_specs
+from r2.run.harness import final_records, load_specs, results_path
 
 OUT = REPO / "analysis_repeated"
 
@@ -55,9 +55,13 @@ def repeated_frame(out_dir=RUNS_V2 / "main"):
     pairs = {c["case_id"]: c for c in json.loads((DATA_V2 / "pairs_v2.json").read_text())["cases"]}
     excluded = set(json.loads((VERIFY_DIR / "excluded_pairs.json").read_text())["excluded"])
     flagged = set(json.loads((VERIFY_DIR / "flags.json").read_text()))
-    substituted = {s["original_name"] for s in load_specs() if s.get("substituted_for")}
+    specs = load_specs()
+    substituted = {s["original_name"] for s in specs if s.get("substituted_for")}
     rows = []
-    for path in iter_result_files(out_dir):
+    for spec in specs:
+        path = results_path(spec, out_dir)
+        if not path.exists():
+            continue
         for r in final_records(path):
             d = r.get("decision") or {}
             sel = r.get("selected_tool")

@@ -58,6 +58,7 @@ def test_export_flat_tolerates_error_cells(tmp_path, monkeypatch):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     monkeypatch.setattr(check_complete, "DATA_V2", data_dir)
+    monkeypatch.setattr(check_complete, "load_specs", lambda *a, **k: [{"original_name": "m", "model_id": "m-1"}])
 
     # Create the results directory
     results_dir = tmp_path / "results"
@@ -140,3 +141,80 @@ def test_export_flat_uses_last_record_per_cell(tmp_path, monkeypatch):
     rows = list(csv.DictReader(open(export_flat(results))))
     assert [(r["case_id"], r["order"], r["status"], r["error"]) for r in rows] == [
         ("C1", "TS", "ok", ""), ("C1", "ST", "ok", "")]
+
+
+# ---- I6: orphan files, per-record content checks, provenance, readers follow the specs ----
+import pytest  # noqa: E402
+
+from r2.run.check_complete import OrphanResults  # noqa: E402
+
+
+def test_orphan_result_file_fails_check(tmp_path):
+    _write(tmp_path / "m-1.jsonl", [("C1", "TS", "ok"), ("C1", "ST", "ok")])
+    (tmp_path / "incidents.jsonl").write_text("{}\n")
+    (tmp_path / "._m-1.jsonl").write_bytes(b"\x00\x05")
+    (tmp_path / "m-1.lock").write_text("")
+    (row,) = check(tmp_path, [SPEC], ["C1"])
+    assert row["invalid_records"] == 0
+    _write(tmp_path / "dropped-model.jsonl", [("C1", "TS", "ok")])
+    with pytest.raises(OrphanResults, match="dropped-model.jsonl"):
+        check(tmp_path, [SPEC], ["C1"])
+
+
+def test_invalid_records_counted(tmp_path):
+    recs = [_rec("C1", "TS", "ok"), _rec("C1", "ST", "ok"), _rec("C2", "TS", "ok"), _rec("C2", "ST", "ok"),
+            _rec("C3", "TS", "ok"), _rec("C3", "ST", "non_response")]
+    recs[1]["labels"] = {"A": "T", "B": "S"}          # ST must put the sham in A
+    recs[2]["correct"] = 0                             # TS, selected A (= T) is correct
+    recs[3]["stimulus_sha256"] = "s2"                  # stimulus differs within the file
+    recs[5]["labels"] = {"A": "T", "B": "S"}           # non-ok records are not content-checked
+    (tmp_path / "m-1.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
+    (row,) = check(tmp_path, [SPEC], ["C1", "C2", "C3"])
+    assert row["invalid_records"] == 3
+
+
+def test_provenance_columns(tmp_path):
+    recs = [_rec("C1", "TS", "ok"), _rec("C1", "ST", "ok")]
+    recs[1].update(harness_commit="h2", system_fingerprint="fp_1", model_served="m-1-0905")
+    (tmp_path / "m-1.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
+    (row,) = check(tmp_path, [SPEC], ["C1"])
+    assert row["harness_commit"] == "h1;h2" and row["system_fingerprint"] == "fp_1"
+    assert row["model_served"] == "m-1;m-1-0905"
+
+
+def test_gate_fails_on_invalid_records(tmp_path, monkeypatch):
+    import csv
+    import sys
+
+    from r2.run import check_complete
+    recs = [_rec("C1", "TS", "ok"), _rec("C1", "ST", "ok")]
+    recs[0]["correct"] = 0
+    out = tmp_path / "runs"
+    out.mkdir()
+    (out / "m-1.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
+    monkeypatch.setattr(check_complete, "load_v2_cases", lambda *a, **k: ({"C1": {}}, "s1"))
+    monkeypatch.setattr(check_complete, "load_specs", lambda *a, **k: [SPEC])
+    monkeypatch.setattr(check_complete, "REPO", tmp_path)
+    monkeypatch.setattr(check_complete, "DATA_V2", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["check_complete", str(out)])
+    with pytest.raises(SystemExit, match="invalid records"):
+        check_complete.main()
+    assert not (tmp_path / "results_repeated.csv").exists()
+    report = list(csv.DictReader(open(tmp_path / "analysis_repeated" / "completeness.csv")))
+    assert report[0]["invalid_records"] == "1"
+
+
+def test_export_flat_reads_only_current_spec_files(tmp_path, monkeypatch):
+    import csv
+
+    from r2.run import check_complete
+    monkeypatch.setattr(check_complete, "DATA_V2", tmp_path)
+    monkeypatch.setattr(check_complete, "load_specs", lambda *a, **k: [{"original_name": "m", "model_id": "m-1"},
+                                                                        {"original_name": "n", "model_id": "n-1"}])
+    results = tmp_path / "results"
+    results.mkdir()
+    base = {"model_id": "m-1", "finished_at": "t", "decision": None}
+    (results / "m-1.jsonl").write_text(json.dumps({**base, **_rec("C1", "TS", "ok"), "original_name": "m"}) + "\n")
+    (results / "old-model.jsonl").write_text(json.dumps({**base, **_rec("C1", "TS", "ok"), "original_name": "m"}) + "\n")
+    rows = list(csv.DictReader(open(export_flat(results))))
+    assert len(rows) == 1
