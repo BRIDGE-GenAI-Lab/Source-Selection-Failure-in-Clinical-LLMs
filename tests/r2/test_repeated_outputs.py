@@ -277,3 +277,60 @@ def test_expected_outputs_name_the_markers_sourced_elsewhere():
     sens = EXPECTED["outputs"]["analysis_repeated/sensitivity.json"]["keys"]
     for k in ("primacy", "acc_sham_first", "acc_sham_second"):
         assert f"<S>.{k}_lo" in sens and f"<S>.{k}_hi" in sens, k
+
+
+# ---- fix round 2: the guard is case-insensitive (the Lexar volume is) and guards the CLI ----
+def _variants(path):
+    s = str(path)
+    return {"upper": s.upper(), "lower": s.lower(), "swapcase": s.swapcase(),
+            "mixed": "".join(c.upper() if i % 2 else c.lower() for i, c in enumerate(s))}
+
+
+def _protected_real():
+    from r2 import paths
+    t = {"runs_v2": paths.RUNS_V2, "runs_v2_main": paths.RUNS_V2 / "main", "legacy": paths.LEGACY_ROOT,
+         "legacy_child": paths.LEGACY_ROOT / "npj_R2_WORKING" / "05_Figures", "repo": paths.REPO}
+    for sub in ("data", "verification", "analysis_repeated", "audit", "analysis_original"):
+        t[sub] = paths.REPO / sub
+    return t
+
+
+@pytest.mark.parametrize("where", sorted(_protected_real()))
+@pytest.mark.parametrize("case", ["upper", "lower", "swapcase", "mixed"])
+def test_sandbox_guard_rejects_case_variants_of_real_locations(where, case):
+    target = _variants(_protected_real()[where])[case]
+    with pytest.raises(ValueError, match="sandbox"):
+        synthetic.assert_sandbox(target)  # pure check: writes nothing
+    with pytest.raises(ValueError, match="sandbox"):
+        synthetic.assert_sandbox(target + "/synthetic_world")
+
+
+@pytest.mark.parametrize("case", ["upper", "lower", "swapcase", "mixed"])
+def test_build_world_refuses_case_variants_of_a_protected_root(fake_real, case):
+    # fake roots in tmp; the tmp volume is case-insensitive, so a variant names the same directory
+    before = _tree(fake_real["prot"])
+    for target in (fake_real["legacy"] / "r2_runs", fake_real["legacy"] / "w"):
+        with pytest.raises(ValueError, match="sandbox"):
+            synthetic.build_world(_variants(target)[case])
+    assert _tree(fake_real["prot"]) == before
+
+
+def test_sandbox_guard_uses_samefile_for_another_spelling(fake_real, tmp_path):
+    link = tmp_path / "alias_of_legacy"
+    link.symlink_to(fake_real["legacy"], target_is_directory=True)
+    with pytest.raises(ValueError, match="sandbox"):
+        synthetic.assert_sandbox(link / "w")
+
+
+def test_cli_refuses_a_protected_root_and_creates_nothing(fake_real):
+    before = _tree(fake_real["prot"])
+    for target in (fake_real["legacy"] / "w", _variants(fake_real["legacy"] / "r2_runs")["upper"]):
+        with pytest.raises(SystemExit, match="sandbox"):
+            synthetic.main([str(target)])
+    assert _tree(fake_real["prot"]) == before
+
+
+def test_cli_runs_in_a_sandbox(tmp_path, capsys):
+    synthetic.main([str(tmp_path / "world")])
+    assert (tmp_path / "world" / "analysis_repeated" / "headline.json").exists()
+    assert "figures" in capsys.readouterr().out

@@ -20,6 +20,7 @@ import copy
 import csv
 import hashlib
 import json
+import os
 import random
 import sys
 from datetime import datetime, timedelta, timezone
@@ -57,14 +58,35 @@ def _protected_roots():
     return [Path(paths.REPO), Path(paths.LEGACY_ROOT), Path(paths.RUNS_V2)]
 
 
+def _key(path):
+    """Path components, casefolded: the Lexar volume (exFAT) and the default macOS volume are case-insensitive,
+    so /VOLUMES/LEXAR/... names the same directory as /Volumes/Lexar/..."""
+    return tuple(part.casefold() for part in Path(path).parts)
+
+
+def _within(inner, outer):
+    """`inner` is `outer` or lies under it (component-wise prefix, case-insensitive)."""
+    ki, ko = _key(inner), _key(outer)
+    return ki[:len(ko)] == ko
+
+
+def _same(a, b):
+    try:
+        return os.path.samefile(a, b)
+    except OSError:  # one of them does not exist
+        return False
+
+
 def assert_sandbox(path):
     """Resolve `path` and refuse it (ValueError) unless it is a sandbox: not inside a repository checkout (an
     ancestor holding r2/paths.py), not the legacy root or RUNS_V2 or anything inside them, and not an ancestor
-    of any of them. Writes nothing."""
+    of any of them. Paths are compared component-wise and casefolded, and, where both exist, by
+    os.path.samefile (another spelling, symlink or case of the same directory). Writes nothing."""
     p = Path(path).expanduser().resolve()
     for root in _protected_roots():
-        r = root.expanduser().resolve()
-        if p == r or r in p.parents or p in r.parents:
+        r = Path(root).expanduser().resolve()
+        if _within(p, r) or _within(r, p) \
+                or any(_same(a, r) for a in (p, *p.parents)) or any(_same(p, b) for b in (r, *r.parents)):
             raise ValueError(f"{p} is not a sandbox: it is, contains or sits inside the protected {r}")
     for a in (p, *p.parents):
         if (a / "r2" / "paths.py").exists():
@@ -265,10 +287,15 @@ def run_pipeline(world, figures_dir=None, tables_dir=None):
     return {"analysis_repeated": world["analysis_dir"], "figures": figures_dir, "tables": tables_dir}
 
 
-def main():
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: python -m r2.analysis.synthetic <empty output root>")
-    dirs = run_pipeline(build_world(sys.argv[1]))
+def main(argv=None):
+    args = sys.argv[1:] if argv is None else list(argv)
+    if len(args) != 1:
+        raise SystemExit("usage: python -m r2.analysis.synthetic <empty sandbox directory>")
+    try:
+        root = assert_sandbox(args[0])  # refuse before anything is created
+    except ValueError as exc:
+        raise SystemExit(f"refused: {exc}")
+    dirs = run_pipeline(build_world(root))
     for name, d in dirs.items():
         print(f"{name}: {d}")
 
