@@ -41,6 +41,7 @@ def test_superseded_error_records_are_not_duplicates(tmp_path):
     assert row["duplicates"] == 0 and row["missing"] == 0
     assert row["superseded_errors"] == 2
     assert row["errors"] == 1  # C2/TS still ends in an error record
+    assert row["unresolved_errors"] == 1 and row["unresolved_cells"] == "C2/TS"  # not yet re-attempted to finality
     assert row["ok"] == 3 and row["non_response"] == 1
 
 
@@ -112,7 +113,7 @@ def test_export_flat_tolerates_error_cells(tmp_path, monkeypatch):
     with open(dest, newline="") as fh:
         header, *rows = list(csv.reader(fh))
     assert len(rows) == 2, f"Expected 2 data rows, got {len(rows)}"
-    assert header[-1] == "error", f"error is not the last column: {header}"
+    assert header[-2:] == ["error", "persistent_error"], f"unexpected trailing columns: {header}"
     by_col = [dict(zip(header, r)) for r in rows]
     assert by_col[0]["error"] == "" and by_col[0]["model_served"] == "m-1"
     assert by_col[1]["error"] == "BadRequestError: x"
@@ -282,5 +283,49 @@ def test_loaders_tolerate_missing_model_served_on_error_cells(tmp_path, monkeypa
     (row,) = check(results, [SPEC], ["C1", "C2"])
     assert row["model_served"] == "m-1" and row["system_fingerprint"] == ""
     assert (row["missing"], row["duplicates"], row["errors"], row["superseded_errors"]) == (0, 0, 2, 1)
+    assert (row["unresolved_errors"], row["unresolved_cells"], row["persistent_errors"]) == (1, "C1/ST", 1)
     rows = _flat_rows(export_flat(results, [SPEC]))
     assert [r["model_served"] for r in rows] == ["m-1", "", "", "m-1"]
+
+
+# ---- Task 10b fix round 1, I2: an unresolved error (error-only, not persistent) fails the gate ----
+def _gate(tmp_path, monkeypatch, recs, case_ids=("C1",)):
+    import sys
+
+    from r2.run import check_complete
+    out = tmp_path / "runs"
+    out.mkdir()
+    (out / "m-1.jsonl").write_text("".join(json.dumps(_full(r)) + "\n" for r in recs))
+    monkeypatch.setattr(check_complete, "load_v2_cases", lambda *a, **k: ({c: {} for c in case_ids}, "s1"))
+    monkeypatch.setattr(check_complete, "load_specs", lambda *a, **k: [SPEC])
+    monkeypatch.setattr(check_complete, "REPO", tmp_path)
+    monkeypatch.setattr(check_complete, "DATA_V2", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["check_complete", str(out)])
+    return check_complete, out
+
+
+def test_unresolved_errors_are_counted_listed_and_fail_the_gate(tmp_path, monkeypatch, capsys):
+    import csv
+    pers = _rec("C2", "TS", "non_response", "BadRequestError: y")
+    pers["persistent_error"] = True
+    recs = [_rec("C1", "TS", "ok"), _rec("C1", "ST", "non_response", "BadRequestError: x"),
+            _rec("C2", "TS", "non_response", "BadRequestError: y"), pers, _rec("C2", "ST", "ok")]
+    mod, out = _gate(tmp_path, monkeypatch, recs, ("C1", "C2"))
+    (row,) = mod.check(out, [SPEC], ["C1", "C2"])
+    assert (row["unresolved_errors"], row["unresolved_cells"], row["persistent_errors"]) == (1, "C1/ST", 1)
+    assert (row["missing"], row["duplicates"], row["errors"]) == (0, 0, 2)
+    with pytest.raises(SystemExit, match="unresolved errors"):
+        mod.main()
+    report = list(csv.DictReader(open(tmp_path / "analysis_repeated" / "completeness.csv")))
+    assert report[0]["unresolved_errors"] == "1" and report[0]["unresolved_cells"] == "C1/ST"
+    assert not (tmp_path / "results_repeated.csv").exists()
+
+
+def test_persistent_errors_pass_the_gate_and_are_exported(tmp_path, monkeypatch):
+    pers = _rec("C1", "ST", "non_response", "BadRequestError: x")
+    pers["persistent_error"] = True
+    recs = [_rec("C1", "TS", "ok"), _rec("C1", "ST", "non_response", "BadRequestError: x"), pers]
+    mod, out = _gate(tmp_path, monkeypatch, recs)
+    mod.main()
+    rows = _flat_rows(tmp_path / "results_repeated.csv")
+    assert [(r["order"], r["persistent_error"]) for r in rows] == [("TS", "0"), ("ST", "1")]

@@ -837,9 +837,9 @@ def _incidents(spec, out):
 def _main_continues_after_stop(two_models, capsys, a_client):
     a, b, clients, out = two_models
     clients["openai"], clients["together"] = a_client, FakeClient([GOOD] * 4)
-    stopped = harness.main(["--pilot", "--out", str(out)])
+    summary = harness.main(["--pilot", "--out", str(out)])
     captured = capsys.readouterr()
-    assert stopped == ["a"]
+    assert summary["stopped"] == ["a"]
     assert len(_recs(results_path(b, out))) == 4  # the next model ran to completion
     assert "FINISHED 2 model(s); stopped 1: ['a']" in captured.out
     return captured, out, a
@@ -1259,3 +1259,32 @@ def test_last_record_decides_a_cells_state(tmp_path):
     client = FakeClient([GOOD] * 3)
     run_model(SPEC, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
     assert len(client.calls) == 3  # CASE_002 TS/ST fresh, then CASE_001/TS re-attempted
+
+
+# ---- fix round 1, I2: cells ending in an unresolved error are reported, and the job exits non-zero ----
+def test_finished_line_counts_cells_that_need_a_resume(two_models, capsys):
+    a, b, clients, out = two_models
+    clients["openai"], clients["together"] = ScriptedClient([_bad("one-off"), GOOD, GOOD, GOOD]), FakeClient([GOOD] * 4)
+    assert harness.cli(["--pilot", "--out", str(out)]) == 1
+    text = capsys.readouterr().out
+    assert "PENDING a: 1 cells end in an error and need a resume to be re-attempted: [('CASE_001', 'TS')]" in text
+    assert "FINISHED 2 model(s); stopped 0: []; 1 cells need a resume" in text
+    clients["openai"] = FakeClient([GOOD])  # the resume re-attempts the cell, which now succeeds
+    assert harness.cli(["--pilot", "--out", str(out)]) == 0
+    text = capsys.readouterr().out
+    assert "PENDING" not in text and "FINISHED 2 model(s); stopped 0: []; 0 cells need a resume" in text
+
+
+def test_persistent_cells_do_not_need_a_resume(two_models, capsys):
+    a, b, clients, out = two_models
+    clients["openai"], clients["together"] = ScriptedClient([_bad("x"), GOOD, GOOD, GOOD]), FakeClient([GOOD] * 4)
+    assert harness.cli(["--pilot", "--out", str(out)]) == 1
+    clients["openai"] = ScriptedClient([_bad("x")])  # same text: final
+    assert harness.cli(["--pilot", "--out", str(out)]) == 0
+    assert "; 0 cells need a resume" in capsys.readouterr().out
+
+
+def test_cli_exit_status_when_a_model_stopped(two_models):
+    a, b, clients, out = two_models
+    clients["openai"], clients["together"] = RaisingClient(_fake_exc("NotFoundError")), FakeClient([GOOD] * 4)
+    assert harness.cli(["--pilot", "--out", str(out)]) == 1

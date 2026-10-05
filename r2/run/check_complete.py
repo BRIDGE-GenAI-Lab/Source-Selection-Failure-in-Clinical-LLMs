@@ -5,7 +5,7 @@ from collections import Counter
 from pathlib import Path
 
 from r2.paths import DATA_V2, REPO, RUNS_V2
-from r2.run.harness import (ORDERS, final_records, is_error_only, iter_result_files, load_specs,
+from r2.run.harness import (ORDERS, final_records, is_error_only, is_unresolved, iter_result_files, load_specs,
                             load_v2_cases, read_records, results_path)
 
 
@@ -73,6 +73,7 @@ def check(out_dir, specs, case_ids):
         cells, superseded = _cell_counts(records)
         final = list({(r["case_id"], r["order"]): r for r in records}.values())
         statuses = Counter(r["status"] for r in final)
+        unresolved = sorted((r["case_id"], r["order"]) for r in final if is_unresolved(r))
         report.append({"model": spec["original_name"], "cells": len(cells),
                        "missing": len(expected - set(cells)),
                        "duplicates": sum(1 for v in cells.values() if v > 1),
@@ -80,6 +81,9 @@ def check(out_dir, specs, case_ids):
                        "ok": statuses["ok"], "non_response": statuses["non_response"],
                        "errors": sum(1 for r in final if "error" in r),
                        "superseded_errors": superseded,
+                       "persistent_errors": sum(1 for r in final if r.get("persistent_error") is True),
+                       "unresolved_errors": len(unresolved),
+                       "unresolved_cells": ";".join(f"{c}/{o}" for c, o in unresolved),
                        "invalid_records": _invalid_ok_records(final),
                        "harness_commit": _distinct(final, "harness_commit"),
                        "model_served": _distinct(final, "model_served"),
@@ -91,7 +95,7 @@ def export_flat(out_dir, specs=None):
     dest = DATA_V2 / "results_repeated.csv"
     cols = ["original_name", "model_id", "model_served", "case_id", "order", "label_A", "label_B",
             "status", "selected_tool", "correct", "confidence", "trust_rationale", "differences_found",
-            "harness_commit", "stimulus_sha256", "finished_at", "error"]
+            "harness_commit", "stimulus_sha256", "finished_at", "error", "persistent_error"]
     with open(dest, "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(cols)
@@ -105,7 +109,8 @@ def export_flat(out_dir, specs=None):
                             r["labels"]["A"], r["labels"]["B"], r["status"], r.get("selected_tool"), r.get("correct"),
                             d.get("confidence"), d.get("trust_rationale"),
                             json.dumps(d.get("differences_found") or [], ensure_ascii=False),
-                            r["harness_commit"], r["stimulus_sha256"], r["finished_at"], r.get("error", "")])
+                            r["harness_commit"], r["stimulus_sha256"], r["finished_at"], r.get("error", ""),
+                            int(r.get("persistent_error") is True)])
     return dest
 
 
@@ -123,11 +128,16 @@ def main():
         w = csv.DictWriter(fh, fieldnames=list(report[0]))
         w.writeheader()
         w.writerows(report)
-    bad = [r for r in report if r["missing"] or r["duplicates"] or r["unexpected"] or r["invalid_records"]]
+    bad = [r for r in report
+           if r["missing"] or r["duplicates"] or r["unexpected"] or r["invalid_records"] or r["unresolved_errors"]]
     for r in report:
         print(r)
+    for r in report:
+        if r["unresolved_errors"]:
+            print(f"UNRESOLVED {r['model']}: {r['unresolved_errors']} cells end in an error not yet re-attempted "
+                  f"(resume the model): {r['unresolved_cells']}")
     if bad:
-        raise SystemExit(f"{len(bad)} models incomplete, duplicated or with invalid records")
+        raise SystemExit(f"{len(bad)} models incomplete, duplicated, with invalid records or with unresolved errors")
     print("exported", export_flat(out_dir, specs))
 
 

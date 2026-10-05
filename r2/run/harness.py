@@ -157,6 +157,16 @@ def is_done(r):
     return not is_error_only(r) or r.get("persistent_error") is True
 
 
+def is_unresolved(r):
+    """A cell's last record that is an error-only record not yet re-attempted to finality: the cell needs a
+    resume (one re-attempt) before it is complete."""
+    return is_error_only(r) and r.get("persistent_error") is not True
+
+
+def unresolved_cells(path):
+    return sorted((r["case_id"], r["order"]) for r in final_records(path) if is_unresolved(r))
+
+
 def _error_text(r):
     return r["error"][:ERROR_TEXT_CHARS]
 
@@ -633,22 +643,43 @@ def main(argv=None):
     context = {"harness_commit": _clean_commit(), "stimulus_sha256": stim_sha}
     from dotenv import load_dotenv
     load_dotenv(REPO / ".env")
-    specs, stopped = _select(load_specs(), args.models), []
+    specs, stopped, need_resume = _select(load_specs(), args.models), [], 0
     for spec in specs:
-        print(f"[{datetime.now():%H:%M:%S}] {spec['original_name']}", flush=True)
+        name = spec["original_name"]
+        print(f"[{datetime.now():%H:%M:%S}] {name}", flush=True)
+        locked = False
         try:
             run_model(spec, cases, args.out, make_client(spec["provider"]), context, limit=args.limit,
                       accept_spec_change=args.accept_spec_change, retry_persistent=args.retry_persistent)
         except (ModelMismatch, ModelUnavailable, RunLocked, StaleRecords, CorruptResults) as exc:
-            stopped.append(spec["original_name"])
-            print(f"STOPPED {spec['original_name']}: {type(exc).__name__}: {exc}", flush=True)
+            stopped.append(name)
+            locked = isinstance(exc, RunLocked)
+            print(f"STOPPED {name}: {type(exc).__name__}: {exc}", flush=True)
         except Exception as exc:  # never let one model end the provider job
-            stopped.append(spec["original_name"])
-            print(f"STOPPED {spec['original_name']}: unexpected {type(exc).__name__}: {exc}", flush=True)
+            stopped.append(name)
+            print(f"STOPPED {name}: unexpected {type(exc).__name__}: {exc}", flush=True)
             traceback.print_exc()
-    print(f"FINISHED {len(specs)} model(s); stopped {len(stopped)}: {stopped}", flush=True)
-    return stopped
+        path = results_path(spec, args.out)
+        if locked or not path.exists():
+            continue  # a locked model belongs to another process; its file is not read here
+        try:
+            pending = unresolved_cells(path)
+        except (CorruptResults, ValueError):
+            continue  # an unreadable file: the model is already reported as STOPPED
+        if pending:
+            need_resume += len(pending)
+            print(f"PENDING {name}: {len(pending)} cells end in an error and need a resume to be re-attempted: "
+                  f"{pending[:20]}{' ...' if len(pending) > 20 else ''}", flush=True)
+    print(f"FINISHED {len(specs)} model(s); stopped {len(stopped)}: {stopped}; {need_resume} cells need a resume",
+          flush=True)
+    return {"stopped": stopped, "need_resume": need_resume}
+
+
+def cli(argv=None):
+    """Exit status 1 when any model stopped or any cell needs a resume, else 0."""
+    summary = main(argv)
+    return 1 if summary["stopped"] or summary["need_resume"] else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(1 if main() else 0)
+    raise SystemExit(cli())
