@@ -12,10 +12,11 @@ def _write(path, cells):
 
 
 def test_completeness_check_flags_missing_and_duplicates(tmp_path):
-    _write(tmp_path / "m-1.jsonl", [("C1", "TS", "ok"), ("C1", "TS", "ok"), ("C1", "ST", "non_response")])
+    _write(tmp_path / "m-1.jsonl", [("C1", "TS", "ok"), ("C1", "TS", "ok"), ("C1", "ST", "non_response"), ("C9", "TS", "ok")])
     (row,) = check(tmp_path, [SPEC], ["C1", "C2"])
-    assert row["cells"] == 2 and row["missing"] == 2 and row["duplicates"] == 1
-    assert row["ok"] == 2 and row["non_response"] == 1
+    assert row["cells"] == 3 and row["missing"] == 2 and row["duplicates"] == 1
+    assert row["unexpected"] == 1
+    assert row["ok"] == 3 and row["non_response"] == 1
 
 
 def test_export_flat_tolerates_error_cells(tmp_path, monkeypatch):

@@ -23,6 +23,7 @@ def check(out_dir, specs, case_ids):
         report.append({"model": spec["original_name"], "cells": len(cells),
                        "missing": len(expected - set(cells)),
                        "duplicates": sum(1 for v in cells.values() if v > 1),
+                       "unexpected": len(set(cells) - expected),
                        "ok": statuses["ok"], "non_response": statuses["non_response"]})
     return report
 
@@ -57,7 +58,7 @@ def main():
         w = csv.DictWriter(fh, fieldnames=list(report[0]))
         w.writeheader()
         w.writerows(report)
-    bad = [r for r in report if r["missing"] or r["duplicates"]]
+    bad = [r for r in report if r["missing"] or r["duplicates"] or r["unexpected"]]
     for r in report:
         print(r)
     if bad:
