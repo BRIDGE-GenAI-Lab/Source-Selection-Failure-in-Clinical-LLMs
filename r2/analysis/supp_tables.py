@@ -1,7 +1,10 @@
-"""Supplement tables that can be built before the repeated experiment (R2, Task 12a).
+"""Supplement tables (R2): those built before the repeated experiment (Task 12a) and those built from its
+outputs (Task 12b).
 
-Every table is a function returning a list of dict rows. `write_all` writes the available ones as CSV
-and reports the pending ones. A pending table raises `PendingData` naming the missing input.
+Every table is a function returning a list of dict rows. `write_all` writes every table whose inputs exist
+as CSV and reports the others as pending; a repeated-experiment table raises `PendingData` naming each
+missing input. `write_repeated(out_dir, root)` writes only the repeated-experiment tables, optionally from a
+sandbox root (root/analysis_repeated, root/verification).
 """
 import csv
 import json
@@ -12,7 +15,7 @@ from pathlib import Path
 
 from r2 import profiles
 from r2.audit.coerced_choices import RUNNER_MAX_TOKENS
-from r2.paths import AUDIT_DIR, DATA_V2, LEGACY_EVAL, ORIGINAL_RUNS_DIR, REPO, RUNS_V2
+from r2.paths import AUDIT_DIR, DATA_V2, LEGACY_EVAL, ORIGINAL_RUNS_DIR, REPO, VERIFY_DIR
 
 OUT_DIR = Path("/Volumes/Lexar/LLM_Tool_use/npj_R2_WORKING/tables")
 ORIGINAL_ANALYSIS = REPO / "analysis_original"
@@ -395,27 +398,183 @@ def modifications_by_type():
     return out
 
 
-# ---------------------------------------------------------------- pending tables
+# ---------------------------------------------------------------- repeated-experiment tables (Task 12b)
+# Inputs are read where their writers put them:
+# - r2.analysis.repeated.run -> repeated.OUT (analysis_repeated/): headline.json, sensitivity.json,
+#   per_model.csv, per_type.csv, per_category.csv, gee.csv, calibration_overall.csv, calibration_per_model.csv;
+# - r2.run.check_complete.main -> analysis_repeated/completeness.csv;
+# - r2.run.probe_models.main -> analysis_repeated/model_availability.csv;
+# - r2.verify.score_review (score, apply_consensus) -> VERIFY_DIR: kappa.csv, excluded_pairs.json, flags.json,
+#   final_review.csv.
+# `root` (a sandbox) replaces the repository root: root/analysis_repeated and root/verification.
+ANALYSIS_REPEATED = REPO / "analysis_repeated"
+VERIFY = VERIFY_DIR
 
-def _pending(rel, base="repo"):
-    def build(root=None):
-        base_dir = Path(root) if root else (RUNS_V2 if base == "runs" else REPO)
-        path = base_dir / rel
-        if not path.exists():
-            raise PendingData(str(path))
-        raise NotImplementedError(f"{path} exists; implement this table in Task 12b")
-    return build
+
+def _dirs(root):
+    if root is None:
+        return ANALYSIS_REPEATED, VERIFY
+    return Path(root) / "analysis_repeated", Path(root) / "verification"
 
 
-PENDING_TABLES = {
-    "S_models_repeated": _pending("analysis_repeated/completeness.csv"),
-    "S_physician_verification": _pending("verification/kappa.csv"),
-    "S_per_model_repeated": _pending("analysis_repeated/per_model.csv"),
-    "S_per_type_repeated": _pending("analysis_repeated/per_type.csv"),
-    "S_gee_repeated": _pending("analysis_repeated/gee.csv"),
-    "S_calibration_repeated": _pending("analysis_repeated/calibration_overall.csv"),
-    "S_sensitivity": _pending("analysis_repeated/sensitivity.json"),
+def _need(*paths):
+    missing = [str(p) for p in paths if not Path(p).exists()]
+    if missing:
+        raise PendingData(", ".join(missing))
+    return paths
+
+
+def _num(x):
+    """CSV text -> int or float where it is a number; blank stays blank."""
+    if x in (None, ""):
+        return ""
+    try:
+        f = float(x)
+    except ValueError:
+        return x
+    return int(f) if f.is_integer() and "." not in str(x) and "e" not in str(x).lower() else f
+
+
+def models_repeated(root=None):
+    from r2.run.harness import load_specs
+    ana, _ = _dirs(root)
+    comp_path, avail_path = _need(ana / "completeness.csv", ana / "model_availability.csv")
+    comp = {r["model"]: r for r in _read_csv(comp_path)}
+    avail = {r["original_name"]: r for r in _read_csv(avail_path)}
+    out = []
+    for spec in load_specs():
+        name = spec["original_name"]
+        c, a = comp.get(name, {}), avail.get(name, {})
+        temp = "provider default temperature" if spec.get("temperature") is None else f"temperature {spec['temperature']}"
+        out.append({"model": name, "requested_model_id": spec["model_id"],
+                    "served_model_id": c.get("model_served") or a.get("served") or "not served",
+                    "provider": spec["provider"], "reasoning": "Yes" if spec.get("reasoning") else "No",
+                    "decoding": f"{temp}, {spec.get('token_param', 'max_tokens')} {int(spec['max_tokens']):,}",
+                    "substituted_for": spec.get("substituted_for") or "",
+                    "availability": a.get("status") or NOT_RECORDED,
+                    "ok": _num(c.get("ok")), "non_responses": _num(c.get("non_response")),
+                    "errors": _num(c.get("errors"))})
+    return out
+
+
+def physician_verification(root=None):
+    from r2.analysis.repeated import FLAG_ITEMS
+    from r2.verify.score_review import EXCLUDE_IF_NO, QUESTIONS
+    _, ver = _dirs(root)
+    kappa_p, ex_p, fl_p, final_p = _need(ver / "kappa.csv", ver / "excluded_pairs.json", ver / "flags.json",
+                                         ver / "final_review.csv")
+    kappa = {r["item"]: r for r in _read_csv(kappa_p)}
+    excluded = json.loads(ex_p.read_text())
+    flags = {k: v for k, v in json.loads(fl_p.read_text()).items() if k != "synthetic"}  # synthetic-world marker
+    ex_by = Counter(i for items in excluded.get("reasons", {}).values() for i in items)
+    fl_by = Counter(i for items in flags.values() for i in items)
+    out = []
+    for item, question in QUESTIONS:
+        role = [r for r, keep in (("exclusion (N)", item in EXCLUDE_IF_NO), ("flag", item in FLAG_ITEMS)) if keep]
+        k = kappa.get(item, {})
+        out.append({"item": item, "question": question, "role": "; ".join(role) or "none",
+                    "agreement": _num(k.get("agreement")), "kappa": _num(k.get("kappa")),
+                    "pairs_excluded": ex_by[item] if item in EXCLUDE_IF_NO else "",
+                    "pairs_flagged": fl_by[item] if item in FLAG_ITEMS else "", "pairs_reviewed": ""})
+    out.append({"item": "any item", "question": "", "role": "", "agreement": "", "kappa": "",
+                "pairs_excluded": len(excluded["excluded"]), "pairs_flagged": len(flags),
+                "pairs_reviewed": len(_read_csv(final_p))})
+    return out
+
+
+SENSITIVITY_COLS = ("n", "n_models", "n_pairs", "position_averaged_accuracy", "paa_lo", "paa_hi", "accuracy", "acc_lo",
+                    "acc_hi", "primacy", "primacy_lo", "primacy_hi", "acc_sham_first", "acc_sham_first_lo",
+                    "acc_sham_first_hi", "acc_sham_second", "acc_sham_second_lo", "acc_sham_second_hi")
+
+
+def sensitivity(root=None):
+    from r2.analysis.repeated import SENSITIVITY
+    ana, _ = _dirs(root)
+    head_p, sens_p = _need(ana / "headline.json", ana / "sensitivity.json")
+    head = json.loads(head_p.read_text())
+    sens = json.loads(sens_p.read_text())
+    rows = [("primary", "Primary analysis: verified, non-excluded pairs; valid responses", head["primary"])]
+    rows += [(k, SENSITIVITY[k], sens[k]) for k in SENSITIVITY]
+    out = []
+    for key, desc, s in rows:
+        row = {"analysis": key, "description": desc}
+        row.update({c: _fmt(s[c]) for c in SENSITIVITY_COLS})  # a missing key is an error, not a blank cell
+        row["excluded_models"] = "; ".join(s.get("excluded_models") or [])
+        out.append(row)
+    return out
+
+
+TYPE_COLS = ("n", "n_pairs", "failures", "failure_rate", "lo", "hi")
+
+
+def per_type_repeated(root=None):
+    from r2.analysis.stats import CATEGORY
+    ana, _ = _dirs(root)
+    t_p, c_p = _need(ana / "per_type.csv", ana / "per_category.csv")
+    out = [{"stratum": "modification type", "level": r["sham_type"], "category": CATEGORY[r["sham_type"]],
+            **{c: _num(r[c]) for c in TYPE_COLS}} for r in _read_csv(t_p)]
+    out += [{"stratum": "category", "level": r["category"], "category": r["category"],
+             **{c: _num(r[c]) for c in TYPE_COLS}} for r in _read_csv(c_p)]
+    return out
+
+
+GEE_LABEL = {"sham_first[T.True]": "Modified excerpt shown first (vs second)"}
+GEE_CATEGORY = "C(category, Treatment('metadata'))[T."
+
+
+def gee_repeated(root=None):
+    """Odds ratios of the pre-specified GEE for order and modification category; the model fixed effects and
+    the intercept are not tabulated."""
+    ana, _ = _dirs(root)
+    (g_p,) = _need(ana / "gee.csv")
+    out = []
+    for r in _read_csv(g_p):
+        term = r[""]
+        if term in GEE_LABEL:
+            label = GEE_LABEL[term]
+        elif term.startswith(GEE_CATEGORY):
+            label = f"Category: {term[len(GEE_CATEGORY):-1].replace('_', ' ')} (vs metadata)"
+        else:
+            continue
+        out.append({"term": term, "label": label, **{c: _num(r[c]) for c in ("OR", "lo", "hi", "p")}})
+    return out
+
+
+PER_MODEL_COLS = ("model", "n", "acc_sham_first", "acc_sham_first_lo", "acc_sham_first_hi", "n_sham_first",
+                  "acc_sham_second", "acc_sham_second_lo", "acc_sham_second_hi", "n_sham_second", "primacy",
+                  "primacy_lo", "primacy_hi", "position_averaged_accuracy", "paa_lo", "paa_hi", "n_pair_units",
+                  "invariant_correct", "position_driven", "wrong_both", "mcnemar_n10", "mcnemar_n01", "mcnemar_p",
+                  "mcnemar_p_fdr")
+
+
+def per_model_repeated(root=None):
+    ana, _ = _dirs(root)
+    (pm_p,) = _need(ana / "per_model.csv")
+    return [{c: (r[c] if c == "model" else _num(r[c])) for c in PER_MODEL_COLS} for r in _read_csv(pm_p)]
+
+
+CAL_COLS = ("n_conf", "ece", "mce", "brier", "auroc", "mean_conf", "accuracy_conf")
+
+
+def calibration_repeated(root=None):
+    ana, _ = _dirs(root)
+    o_p, m_p = _need(ana / "calibration_overall.csv", ana / "calibration_per_model.csv")
+    out = [{"scope": "overall", "model": "", **{c: _num(r[c]) for c in CAL_COLS}} for r in _read_csv(o_p)]
+    out += [{"scope": "model", "model": r["model"], **{c: _num(r[c]) for c in CAL_COLS}} for r in _read_csv(m_p)]
+    return out
+
+
+REPEATED_TABLES = {
+    "S_models_repeated": models_repeated,
+    "S_physician_verification": physician_verification,
+    "S_per_model_repeated": per_model_repeated,
+    "S_per_type_repeated": per_type_repeated,
+    "S_gee_repeated": gee_repeated,
+    "S_calibration_repeated": calibration_repeated,
+    "S_sensitivity": sensitivity,
 }
+PENDING_TABLES = REPEATED_TABLES  # pre-results name: each raises PendingData until its inputs exist
+
 
 AVAILABLE_TABLES = {
     "S_audit_by_type": audit_by_type,
@@ -429,6 +588,8 @@ AVAILABLE_TABLES = {
 
 
 def write_csv(path, rows):
+    if not rows:
+        raise ValueError(f"{Path(path).name}: no rows to write (its input has no matching entries)")
     with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]))
         w.writeheader()
@@ -455,24 +616,72 @@ S_coerced_choices.csv
   pairs identical at the model input. parse_failures_at_token_limit counts parse failures whose raw reply
   used exactly the runner's max_tokens: column hit_token_limit of audit/coerced_choices.csv, derived there
   from usage.completion_tokens in results/<run>/raw/<case>_response.json.
+
+Repeated-experiment tables (written once analysis_repeated/ and the verification outputs exist)
+- S_models_repeated: r2/run/models_v2.json, analysis_repeated/completeness.csv (served identifier, ok,
+  non-responses, errors) and analysis_repeated/model_availability.csv (probe status).
+- S_physician_verification: verification/kappa.csv, excluded_pairs.json, flags.json, final_review.csv.
+  pairs_excluded / pairs_flagged count the pairs that list each item; the "any item" row counts pairs.
+- S_sensitivity: analysis_repeated/headline.json (primary) and sensitivity.json (S1-S5); CIs are
+  case-cluster bootstrap 95% CIs (2,000 resamples of vignettes, seed 20261005).
+- S_per_type_repeated: per_type.csv and per_category.csv; failure = modified excerpt selected; bootstrap CIs.
+- S_gee_repeated: gee.csv, the order and category terms (model fixed effects and intercept not shown).
+- S_per_model_repeated: per_model.csv. Single-order accuracies and primacy: Wilson 95% CIs;
+  position-averaged accuracy: case-cluster bootstrap 95% CI; McNemar exact test with BH-FDR across models.
+- S_calibration_repeated: calibration_overall.csv and calibration_per_model.csv (rows with a confidence in
+  [0, 1]; n_conf is their number).
 """
 
 
-def write_all(out_dir=None):
+def _root_synthetic(root):
+    """True when the inputs under `root` come from r2.analysis.synthetic (headline.json or excluded_pairs.json
+    carries "synthetic": true)."""
+    ana, ver = _dirs(root)
+    for path in (ana / "headline.json", ver / "excluded_pairs.json"):
+        if path.exists() and json.loads(path.read_text()).get("synthetic") is True:
+            return True
+    return False
+
+
+def _guard(out_dir, root):
+    synthetic = _root_synthetic(root)
+    if synthetic:  # synthetic tables never land in a real output location
+        from r2.analysis.synthetic import assert_sandbox
+        assert_sandbox(out_dir)
+    return synthetic
+
+
+def write_repeated(out_dir=None, root=None):
+    """Write each repeated-experiment table whose inputs exist; report the others as pending. Tables built from
+    a synthetic world carry a `synthetic` column and may only be written into a sandbox."""
     out_dir = Path(out_dir) if out_dir else OUT_DIR
+    synthetic = _guard(out_dir, root)
     out_dir.mkdir(parents=True, exist_ok=True)
     written, pending = {}, {}
+    for name, fn in REPEATED_TABLES.items():
+        try:
+            rows = fn(root=root)
+        except PendingData as exc:
+            pending[name] = str(exc)
+            continue
+        write_csv(out_dir / f"{name}.csv", [{**r, "synthetic": True} for r in rows] if synthetic else rows)
+        written[name] = len(rows)
+    return {"written": written, "pending": pending, "out_dir": str(out_dir)}
+
+
+def write_all(out_dir=None, root=None):
+    out_dir = Path(out_dir) if out_dir else OUT_DIR
+    _guard(out_dir, root)  # refuse before writing anything
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written = {}
     (out_dir / "README.txt").write_text(README_TEXT)
     for name, fn in AVAILABLE_TABLES.items():
         rows = fn()
         write_csv(out_dir / f"{name}.csv", rows)
         written[name] = len(rows)
-    for name, fn in PENDING_TABLES.items():
-        try:
-            fn()
-        except PendingData as exc:
-            pending[name] = str(exc)
-    return {"written": written, "pending": pending, "out_dir": str(out_dir)}
+    rep = write_repeated(out_dir, root=root)
+    written.update(rep["written"])
+    return {"written": written, "pending": rep["pending"], "out_dir": str(out_dir)}
 
 
 def main():

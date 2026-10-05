@@ -1,6 +1,7 @@
 import csv
 import json
 from collections import Counter
+from pathlib import Path
 
 import pytest
 
@@ -15,8 +16,10 @@ PENDING_NAMES = ["S_models_repeated", "S_physician_verification", "S_per_model_r
 
 @pytest.fixture(scope="module")
 def written(tmp_path_factory):
+    # the repeated-experiment inputs come from an empty sandbox root, so the pre-results expectations below
+    # hold whether or not the real verification/ and analysis_repeated/ outputs exist yet (review M6)
     out = tmp_path_factory.mktemp("tables")
-    res = st.write_all(out)
+    res = st.write_all(out, root=tmp_path_factory.mktemp("no_repeated_inputs"))
     return out, res
 
 
@@ -300,3 +303,160 @@ def test_inventory_error_counts_come_from_the_logs(written):
     g = rows["run_20260107_181353"]["reason_not_canonical"]
     assert "28 of 59 rows returned 429 rate-limit errors" in g and "no stop reason logged" in g
     assert "74 of 116 rows returned 429" in rows["run_20260107_181634"]["reason_not_canonical"]
+
+
+# ---- Task 12b: the repeated-experiment tables, built from a synthetic run ----
+REPEATED_COLUMNS = {
+    "S_models_repeated": ["model", "requested_model_id", "served_model_id", "provider", "reasoning", "decoding",
+                          "substituted_for", "availability", "ok", "non_responses", "errors"],
+    "S_physician_verification": ["item", "question", "role", "agreement", "kappa", "pairs_excluded",
+                                 "pairs_flagged", "pairs_reviewed"],
+    "S_sensitivity": ["analysis", "description", "n", "n_models", "n_pairs", "position_averaged_accuracy",
+                      "paa_lo", "paa_hi", "accuracy", "acc_lo", "acc_hi", "primacy", "primacy_lo", "primacy_hi",
+                      "acc_sham_first", "acc_sham_first_lo", "acc_sham_first_hi", "acc_sham_second",
+                      "acc_sham_second_lo", "acc_sham_second_hi", "excluded_models"],
+    "S_per_type_repeated": ["stratum", "level", "category", "n", "n_pairs", "failures", "failure_rate", "lo", "hi"],
+    "S_gee_repeated": ["term", "label", "OR", "lo", "hi", "p"],
+    "S_per_model_repeated": ["model", "n", "acc_sham_first", "acc_sham_first_lo", "acc_sham_first_hi",
+                             "n_sham_first", "acc_sham_second", "acc_sham_second_lo", "acc_sham_second_hi",
+                             "n_sham_second", "primacy", "primacy_lo", "primacy_hi", "position_averaged_accuracy",
+                             "paa_lo", "paa_hi", "n_pair_units", "invariant_correct", "position_driven",
+                             "wrong_both", "mcnemar_n10", "mcnemar_n01", "mcnemar_p", "mcnemar_p_fdr"],
+    "S_calibration_repeated": ["scope", "model", "n_conf", "ece", "mce", "brier", "auroc", "mean_conf",
+                               "accuracy_conf"],
+}
+
+
+@pytest.fixture(scope="module")
+def synth(tmp_path_factory):
+    from r2.analysis import repeated, synthetic
+    root = tmp_path_factory.mktemp("synth")
+    world = synthetic.build_world(root)
+    repeated.run(world["runs_main"], analysis_dir=world["analysis_dir"], pairs_path=world["pairs_path"],
+                 verify_dir=world["verify_dir"], specs=world["specs"])
+    return world
+
+
+def _csv(path):
+    with open(path, newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+def test_repeated_tables_read_the_paths_their_writers_use():
+    import inspect
+    from r2.analysis import repeated
+    from r2.paths import REPO
+    from r2.run import check_complete, probe_models
+    from r2.verify import score_review
+    assert st.ANALYSIS_REPEATED == repeated.OUT == REPO / "analysis_repeated"
+    assert st.VERIFY == score_review.VERIFY_DIR
+    assert '"analysis_repeated" / "completeness.csv"' in inspect.getsource(check_complete.main)
+    assert 'REPO / "analysis_repeated" / "model_availability.csv"' in inspect.getsource(probe_models.main)
+    for name in ("kappa.csv", "excluded_pairs.json", "flags.json", "final_review.csv"):
+        assert f'"{name}"' in inspect.getsource(score_review)
+
+
+@pytest.mark.parametrize("name", PENDING_NAMES)
+def test_repeated_table_from_a_synthetic_run(name, synth):
+    rows = st.PENDING_TABLES[name](root=synth["root"])
+    assert rows and list(rows[0]) == REPEATED_COLUMNS[name]
+
+
+def test_models_repeated_matches_specs_and_completeness(synth):
+    from r2.run.harness import load_specs
+    rows = st.PENDING_TABLES["S_models_repeated"](root=synth["root"])
+    specs = load_specs()
+    assert [r["model"] for r in rows] == [s["original_name"] for s in specs]
+    comp = {r["model"]: r for r in _csv(synth["analysis_dir"] / "completeness.csv")}
+    for r, s in zip(rows, specs):
+        assert r["requested_model_id"] == s["model_id"] and r["served_model_id"] == comp[r["model"]]["model_served"]
+        assert r["non_responses"] == int(comp[r["model"]]["non_response"])
+        assert r["reasoning"] == ("Yes" if s["reasoning"] else "No")
+        assert ("provider default" in r["decoding"]) == (s["temperature"] is None)
+
+
+def test_physician_verification_counts(synth):
+    rows = st.PENDING_TABLES["S_physician_verification"](root=synth["root"])
+    excluded = json.loads((synth["verify_dir"] / "excluded_pairs.json").read_text())
+    flags = {k: v for k, v in json.loads((synth["verify_dir"] / "flags.json").read_text()).items() if k != "synthetic"}
+    by = {r["item"]: r for r in rows}
+    assert by["any item"]["pairs_excluded"] == len(excluded["excluded"])
+    assert by["any item"]["pairs_flagged"] == len(flags)
+    assert by["any item"]["pairs_reviewed"] == len(_csv(synth["verify_dir"] / "final_review.csv"))
+    assert by["q5_edit_visible"]["pairs_excluded"] == len(excluded["excluded"])
+    assert by["q8_leakage"]["pairs_flagged"] == len(flags) and by["q8_leakage"]["pairs_excluded"] == ""
+    kappa = {r["item"]: r for r in _csv(synth["verify_dir"] / "kappa.csv")}
+    assert all(by[i]["kappa"] == float(kappa[i]["kappa"]) for i in kappa)
+
+
+def test_sensitivity_table_has_primary_and_s1_to_s5(synth):
+    rows = st.PENDING_TABLES["S_sensitivity"](root=synth["root"])
+    assert [r["analysis"] for r in rows] == ["primary", "S1_non_response_incorrect", "S2_including_excluded",
+                                            "S3_excluding_flagged", "S4_excluding_substituted",
+                                            "S5_excluding_generator_family"]
+    head = json.loads((synth["analysis_dir"] / "headline.json").read_text())
+    assert rows[0]["position_averaged_accuracy"] == head["primary"]["position_averaged_accuracy"]
+    assert rows[-1]["excluded_models"] == "gemini-2.5-flash-lite"
+    for r in rows:
+        assert r["paa_lo"] <= r["position_averaged_accuracy"] <= r["paa_hi"]
+
+
+def test_gee_table_keeps_order_and_category_terms_only(synth):
+    rows = st.PENDING_TABLES["S_gee_repeated"](root=synth["root"])
+    assert [r["term"] for r in rows] == ["sham_first[T.True]",
+                                        "C(category, Treatment('metadata'))[T.clinical_safety]",
+                                        "C(category, Treatment('metadata'))[T.injection]",
+                                        "C(category, Treatment('metadata'))[T.semantic]"]
+    assert rows[0]["label"] == "Modified excerpt shown first (vs second)"
+
+
+def test_per_type_and_calibration_tables_stack_their_sources(synth):
+    t = st.PENDING_TABLES["S_per_type_repeated"](root=synth["root"])
+    assert {r["stratum"] for r in t} == {"modification type", "category"}
+    assert sum(r["stratum"] == "modification type" for r in t) == len(_csv(synth["analysis_dir"] / "per_type.csv"))
+    cal = st.PENDING_TABLES["S_calibration_repeated"](root=synth["root"])
+    assert cal[0]["scope"] == "overall" and cal[0]["model"] == ""
+    assert len(cal) == 1 + len(_csv(synth["analysis_dir"] / "calibration_per_model.csv"))
+
+
+def test_missing_single_input_names_it(synth, tmp_path):
+    import shutil
+    root = tmp_path / "partial"
+    shutil.copytree(synth["root"] / "analysis_repeated", root / "analysis_repeated")
+    (root / "analysis_repeated" / "calibration_per_model.csv").unlink()
+    with pytest.raises(st.PendingData, match="calibration_per_model.csv"):
+        st.PENDING_TABLES["S_calibration_repeated"](root=root)
+
+
+def test_write_repeated_writes_every_table(synth, tmp_path):
+    res = st.write_repeated(tmp_path, root=synth["root"])
+    assert set(res["written"]) == set(PENDING_NAMES) and not res["pending"]
+    for name in PENDING_NAMES:
+        assert _csv(tmp_path / f"{name}.csv")
+
+
+
+# ---- fix round 1, M4 / M5 ----
+def test_sensitivity_table_fails_on_a_missing_key(synth, tmp_path):
+    import shutil
+    root = tmp_path / "r"
+    shutil.copytree(synth["root"] / "analysis_repeated", root / "analysis_repeated")
+    path = root / "analysis_repeated" / "sensitivity.json"
+    sens = json.loads(path.read_text())
+    del sens["S3_excluding_flagged"]["acc_sham_first_lo"]
+    path.write_text(json.dumps(sens))
+    with pytest.raises(KeyError, match="acc_sham_first_lo"):
+        st.PENDING_TABLES["S_sensitivity"](root=root)
+
+
+def test_write_csv_refuses_an_empty_table(tmp_path):
+    with pytest.raises(ValueError, match="no rows"):
+        st.write_csv(tmp_path / "S_empty.csv", [])
+    assert not (tmp_path / "S_empty.csv").exists()
+
+
+def test_expected_outputs_key_every_repeated_table_column():
+    exp = json.loads((Path(st.__file__).parent / "expected_outputs.json").read_text())
+    for name, cols in REPEATED_COLUMNS.items():
+        spec = exp["outputs"][f"tables/{name}.csv"]
+        assert spec["type"] == "csv" and list(spec["columns"]) == cols, name

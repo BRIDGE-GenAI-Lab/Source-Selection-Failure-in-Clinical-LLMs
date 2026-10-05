@@ -1,0 +1,1397 @@
+{
+  "_doc": [
+    "Every repeated-experiment output that the R2 manuscript, supplement and response letter depend on, and the pending markers each one fills.",
+    "Sources of the markers: npj_R2_WORKING/PENDING_INDEX.md (with PENDING.md, PENDING_supplement.md, PENDING_response.md), edits/content.py, build_response.py (Tables R3, R5, R6) and edits/numbers.py (PENDING keys).",
+    "The documents name one key exactly (analysis_repeated/headline.json primary.position_averaged_accuracy, paa_lo, paa_hi); the other keys follow the names of analysis_original/headline.json, which edits/numbers.py already reads, so one reader serves both experiments.",
+    "Paths: analysis_repeated/* is relative to the analysis output directory (repeated.OUT by default); figures/* to the figures output directory; tables/* to the tables output directory.",
+    "json keys are dotted paths. csv entries list required columns, and for gee.csv the required row labels (first column).",
+    "tests/r2/test_repeated_outputs.py runs the whole pipeline on a synthetic world (r2/analysis/synthetic.py) and checks that every key below is produced.",
+    "Markers that need a number from outside the repeated-experiment outputs are listed under out_of_scope with their source, for the post-results numbers.py reader."
+  ],
+  "markers": {
+    "R01": {
+      "text": "primary outcome sentence: pooled position-averaged accuracy with 95% CI",
+      "where": [
+        "manuscript Abstract",
+        "response AE item 5 (quoted manuscript text)",
+        "response R3 comment 8b (quoted manuscript text)"
+      ]
+    },
+    "R02": {
+      "text": "order-effect and modification-type sentence",
+      "where": [
+        "manuscript Abstract",
+        "response AE item 5 (quoted manuscript text)",
+        "response R3 comment 8b (quoted manuscript text)"
+      ]
+    },
+    "R03": {
+      "text": "served model identifiers and substitutions (substitutions: r2/run/models_v2.json substituted_for)",
+      "where": [
+        "manuscript Methods / Models",
+        "response AE item 4 (quoted manuscript text)",
+        "response R3 comment 4 (quoted manuscript text)"
+      ]
+    },
+    "R04": {
+      "text": "dates of the main run (numbers key rep_call_dates)",
+      "where": [
+        "manuscript Methods / Repeated Experiment",
+        "supplement 10. Repeated experiment: prompt and requests",
+        "response AE item 3 (quoted manuscript text)",
+        "response R3 comment 5 (quoted manuscript text)"
+      ]
+    },
+    "R05": {
+      "text": "primary outcome: pooled position-averaged accuracy with case-cluster bootstrap 95% CI against 50%, evaluations analyzed, non-responses and models without valid responses; the five pre-specified sensitivity analyses (Supplementary Table S8)",
+      "where": [
+        "manuscript Results / Primary Outcome in the Repeated Experiment",
+        "response AE item 3 (quoted manuscript text)"
+      ]
+    },
+    "R06": {
+      "text": "primacy, accuracy with the modified excerpt first and second, GEE OR for modified-first, order-invariant detection, position-driven responding and wrong in both orders, with bootstrap 95% CIs (Figure 2)",
+      "where": [
+        "manuscript Results / Order Effects and Pair-Level Outcomes",
+        "response AE item 3 (quoted manuscript text)",
+        "response R3 main comment (quoted manuscript text)"
+      ]
+    },
+    "R07": {
+      "text": "Figure 2 image: (A) primacy, (B) accuracy with the modified excerpt first and second, (C) pair-level outcomes per model; Figure 2 legend with n and the exclusion rule",
+      "where": [
+        "manuscript Results / Order Effects and Pair-Level Outcomes"
+      ]
+    },
+    "R08": {
+      "text": "failure rate by modification type and category with bootstrap 95% CIs and GEE category ORs, reported as associations (Figure 3, Table 1; Supplementary Tables S11 and S12)",
+      "where": [
+        "manuscript Results / Modification Types",
+        "response AE item 3 (quoted manuscript text)"
+      ]
+    },
+    "R09": {
+      "text": "Figure 3 image: failure rate by modification type with 95% CIs and n per type after exclusions; Figure 3 legend with n and the exclusion rule",
+      "where": [
+        "manuscript Results / Modification Types"
+      ]
+    },
+    "R10": {
+      "text": "Table 1 rows from table1_rows() on the repeated experiment: one failure and one success per modification type, from verified, non-excluded pairs, with model and order",
+      "where": [
+        "manuscript Results / Modification Types"
+      ]
+    },
+    "R11": {
+      "text": "Table 1 note: selection rule (one failure and one success per modification type, drawn with a fixed seed from verified, non-excluded pairs) and abbreviations",
+      "where": [
+        "manuscript Results / Modification Types"
+      ]
+    },
+    "R12": {
+      "text": "per-model position-averaged accuracy with case-cluster bootstrap 95% CIs and McNemar content-sensitivity tests with FDR correction (Figure 4; Supplementary Table S13)",
+      "where": [
+        "manuscript Results / Per-Model Results"
+      ]
+    },
+    "R13": {
+      "text": "Figure 4 image: per-model position-averaged accuracy with case-cluster bootstrap 95% CIs and order markers; Figure 4 legend with n and the exclusion rule",
+      "where": [
+        "manuscript Results / Per-Model Results"
+      ]
+    },
+    "R14": {
+      "text": "expected calibration error, Brier score and AUROC overall and per model (Supplementary Table S14)",
+      "where": [
+        "manuscript Results / Confidence"
+      ]
+    },
+    "R15": {
+      "text": "exploratory: differences reported by the models, rationale categories, and concordance of per-model position-averaged accuracy between the original experiment (discriminable pairs) and the repeated experiment",
+      "where": [
+        "manuscript Results / Exploratory Analyses"
+      ]
+    },
+    "R16": {
+      "text": "headline synthesis of the repeated experiment in plain terms; one-clause result of the repeated experiment; one-sentence statement of what the repeated experiment shows for the central conclusion",
+      "where": [
+        "manuscript Discussion (two markers)",
+        "response Associate Editor closing",
+        "response AE item 5 (quoted manuscript text)",
+        "response R3 general (quoted manuscript text)"
+      ]
+    },
+    "R17": {
+      "text": "interpretation of the order effect in the repeated experiment",
+      "where": [
+        "manuscript Discussion"
+      ]
+    },
+    "R18": {
+      "text": "interpretation of modification-type, per-model and confidence results, as associations, with comparison to prior work",
+      "where": [
+        "manuscript Discussion"
+      ]
+    },
+    "R19": {
+      "text": "result of sensitivity analysis S5",
+      "where": [
+        "manuscript Discussion",
+        "response R3 comment 1 (quoted manuscript text)"
+      ]
+    },
+    "R20": {
+      "text": "headline result of the repeated experiment: pooled position-averaged accuracy with 95% CI and the order effect",
+      "where": [
+        "response Cover letter"
+      ]
+    },
+    "R21": {
+      "text": "Table R3, column 'Repeated experiment': repeated-experiment value for each row (pairs analyzed, evaluations, accuracy, position-averaged accuracy, selected position A, accuracy with the modified excerpt first and second, rationales calling the excerpts identical, modification types with at least one pair), with case-cluster bootstrap 95% CI",
+      "where": [
+        "response Correction section (Table R3)"
+      ]
+    },
+    "R22": {
+      "text": "Table R5, column 'Repeated experiment': failure rate by type with 95% CI and n after exclusions",
+      "where": [
+        "response AE item 3 (Table R5)"
+      ]
+    },
+    "R23": {
+      "text": "Table R6, column 'Served identifier': served model identifier and any substitution, per model",
+      "where": [
+        "response AE item 4 (Table R6)"
+      ]
+    },
+    "S2": {
+      "text": "Supplementary Table S2: rows per model: requested and served identifiers, provider, reasoning class, decoding, model substituted for, non-responses",
+      "where": [
+        "supplement Supplementary Table S2"
+      ]
+    },
+    "S7": {
+      "text": "Supplementary Table S7: per-item agreement and Cohen kappa, pairs excluded by reason and pairs flagged by reason",
+      "where": [
+        "supplement Supplementary Table S7",
+        "manuscript Results / Physician Verification of the Corrected Stimulus Set"
+      ]
+    },
+    "S8": {
+      "text": "Supplementary Table S8: primary outcome under sensitivity analyses 1 to 5, with case-cluster bootstrap 95% CIs",
+      "where": [
+        "supplement Supplementary Table S8"
+      ]
+    },
+    "S11": {
+      "text": "Supplementary Table S11: failure rate by modification type and by category with case-cluster bootstrap 95% CIs",
+      "where": [
+        "supplement Supplementary Table S11"
+      ]
+    },
+    "S12": {
+      "text": "Supplementary Table S12: odds ratios with 95% CIs for modified-first and modification category",
+      "where": [
+        "supplement Supplementary Table S12"
+      ]
+    },
+    "S13": {
+      "text": "Supplementary Table S13: per-model accuracy in each order with Wilson 95% CIs, position-averaged accuracy with case-cluster bootstrap 95% CIs, pair-level outcomes and McNemar tests with FDR correction",
+      "where": [
+        "supplement Supplementary Table S13"
+      ]
+    },
+    "S14": {
+      "text": "Supplementary Table S14: expected calibration error, Brier score and AUROC overall and per model",
+      "where": [
+        "supplement Supplementary Table S14"
+      ]
+    }
+  },
+  "aliases": {
+    "analysis_repeated/headline.json": {
+      "primary.position_averaged_accuracy_lo": "primary.paa_lo",
+      "primary.position_averaged_accuracy_hi": "primary.paa_hi"
+    },
+    "analysis_repeated/sensitivity.json": {
+      "<S>.position_averaged_accuracy_lo": "<S>.paa_lo",
+      "<S>.position_averaged_accuracy_hi": "<S>.paa_hi"
+    }
+  },
+  "outputs": {
+    "analysis_repeated/headline.json": {
+      "type": "json",
+      "writer": "r2.analysis.repeated.run",
+      "keys": {
+        "primary.position_averaged_accuracy": [
+          "R01",
+          "R05",
+          "R16",
+          "R20",
+          "R21"
+        ],
+        "primary.paa_lo": [
+          "R01",
+          "R05",
+          "R16",
+          "R20",
+          "R21"
+        ],
+        "primary.paa_hi": [
+          "R01",
+          "R05",
+          "R16",
+          "R20",
+          "R21"
+        ],
+        "primary.position_averaged_accuracy_lo": [
+          "R21"
+        ],
+        "primary.position_averaged_accuracy_hi": [
+          "R21"
+        ],
+        "primary.n": [
+          "R05",
+          "R21"
+        ],
+        "primary.accuracy": [
+          "R21"
+        ],
+        "primary.acc_lo": [
+          "R21"
+        ],
+        "primary.acc_hi": [
+          "R21"
+        ],
+        "primary.primacy": [
+          "R02",
+          "R06",
+          "R17",
+          "R20",
+          "R21"
+        ],
+        "primary.primacy_lo": [
+          "R02",
+          "R06",
+          "R17",
+          "R20",
+          "R21"
+        ],
+        "primary.primacy_hi": [
+          "R02",
+          "R06",
+          "R17",
+          "R20",
+          "R21"
+        ],
+        "primary.acc_sham_first": [
+          "R02",
+          "R06",
+          "R17",
+          "R20",
+          "R21"
+        ],
+        "primary.acc_sham_first_lo": [
+          "R02",
+          "R06",
+          "R17",
+          "R21"
+        ],
+        "primary.acc_sham_first_hi": [
+          "R02",
+          "R06",
+          "R17",
+          "R21"
+        ],
+        "primary.acc_sham_second": [
+          "R02",
+          "R06",
+          "R17",
+          "R20",
+          "R21"
+        ],
+        "primary.acc_sham_second_lo": [
+          "R02",
+          "R06",
+          "R17",
+          "R21"
+        ],
+        "primary.acc_sham_second_hi": [
+          "R02",
+          "R06",
+          "R17",
+          "R21"
+        ],
+        "n_models": [
+          "R05"
+        ],
+        "n_pairs": [
+          "R05",
+          "R21"
+        ],
+        "n_types": [
+          "R21"
+        ],
+        "n_excluded_pairs": [
+          "R05",
+          "S7"
+        ],
+        "n_flagged_pairs": [
+          "R05",
+          "S7"
+        ],
+        "n_cells": [
+          "R05"
+        ],
+        "non_response": [
+          "R05"
+        ],
+        "models_without_ok_cells": [
+          "R05"
+        ],
+        "n_pair_units": [
+          "R06"
+        ],
+        "invariant_correct": [
+          "R06",
+          "R16"
+        ],
+        "invariant_correct_lo": [
+          "R06"
+        ],
+        "invariant_correct_hi": [
+          "R06"
+        ],
+        "position_driven": [
+          "R06",
+          "R16",
+          "R17"
+        ],
+        "position_driven_lo": [
+          "R06"
+        ],
+        "position_driven_hi": [
+          "R06"
+        ],
+        "wrong_both": [
+          "R06"
+        ],
+        "wrong_both_lo": [
+          "R06"
+        ],
+        "wrong_both_hi": [
+          "R06"
+        ],
+        "rep_call_dates.first": [
+          "R04"
+        ],
+        "rep_call_dates.last": [
+          "R04"
+        ],
+        "exclusion_rule": [
+          "R07",
+          "R09",
+          "R13"
+        ],
+        "n_api_errors": [
+          "R05"
+        ],
+        "n_flagged_analyzed_pairs": [
+          "R05",
+          "S8"
+        ],
+        "substitutions": [
+          "R03",
+          "R23",
+          "S2"
+        ],
+        "gee_converged": [
+          "R02",
+          "R06",
+          "R17",
+          "S12"
+        ],
+        "rep_call_dates.per_model": [
+          "R04"
+        ],
+        "rep_call_dates.basis": [
+          "R04"
+        ]
+      }
+    },
+    "analysis_repeated/sensitivity.json": {
+      "type": "json",
+      "writer": "r2.analysis.repeated.run",
+      "each_of": [
+        "S1_non_response_incorrect",
+        "S2_including_excluded",
+        "S3_excluding_flagged",
+        "S4_excluding_substituted",
+        "S5_excluding_generator_family"
+      ],
+      "keys": {
+        "<S>.n": [
+          "R05",
+          "S8"
+        ],
+        "<S>.n_models": [
+          "S8"
+        ],
+        "<S>.n_pairs": [
+          "S8"
+        ],
+        "<S>.position_averaged_accuracy": [
+          "R05",
+          "S8"
+        ],
+        "<S>.paa_lo": [
+          "R05",
+          "S8"
+        ],
+        "<S>.paa_hi": [
+          "R05",
+          "S8"
+        ],
+        "<S>.accuracy": [
+          "S8"
+        ],
+        "<S>.acc_lo": [
+          "S8"
+        ],
+        "<S>.acc_hi": [
+          "S8"
+        ],
+        "<S>.primacy": [
+          "S8"
+        ],
+        "<S>.acc_sham_first": [
+          "S8"
+        ],
+        "<S>.acc_sham_second": [
+          "S8"
+        ],
+        "S5_excluding_generator_family.position_averaged_accuracy": [
+          "R19"
+        ],
+        "S5_excluding_generator_family.paa_lo": [
+          "R19"
+        ],
+        "S5_excluding_generator_family.paa_hi": [
+          "R19"
+        ],
+        "S5_excluding_generator_family.excluded_models": [
+          "R19"
+        ],
+        "S4_excluding_substituted.excluded_models": [
+          "S8"
+        ],
+        "<S>.primacy_lo": [
+          "S8"
+        ],
+        "<S>.primacy_hi": [
+          "S8"
+        ],
+        "<S>.acc_sham_first_lo": [
+          "S8"
+        ],
+        "<S>.acc_sham_first_hi": [
+          "S8"
+        ],
+        "<S>.acc_sham_second_lo": [
+          "S8"
+        ],
+        "<S>.acc_sham_second_hi": [
+          "S8"
+        ]
+      }
+    },
+    "analysis_repeated/gee.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.repeated.run",
+      "columns": {
+        "OR": [
+          "R02",
+          "R06",
+          "R08",
+          "R17",
+          "S12"
+        ],
+        "lo": [
+          "R02",
+          "R06",
+          "R08",
+          "S12"
+        ],
+        "hi": [
+          "R02",
+          "R06",
+          "R08",
+          "S12"
+        ],
+        "p": [
+          "S12"
+        ]
+      },
+      "rows": {
+        "sham_first[T.True]": [
+          "R02",
+          "R06",
+          "R17",
+          "S12"
+        ],
+        "C(category, Treatment('metadata'))[T.clinical_safety]": [
+          "R08",
+          "S12"
+        ],
+        "C(category, Treatment('metadata'))[T.injection]": [
+          "R08",
+          "S12"
+        ],
+        "C(category, Treatment('metadata'))[T.semantic]": [
+          "R08",
+          "S12"
+        ]
+      }
+    },
+    "analysis_repeated/per_type.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.repeated.run",
+      "columns": {
+        "sham_type": [
+          "R08",
+          "R09",
+          "R22",
+          "S11"
+        ],
+        "category": [
+          "R09",
+          "S11"
+        ],
+        "n": [
+          "R09",
+          "R22",
+          "S11"
+        ],
+        "n_pairs": [
+          "R09",
+          "S11"
+        ],
+        "failures": [
+          "S11"
+        ],
+        "failure_rate": [
+          "R02",
+          "R08",
+          "R09",
+          "R18",
+          "R22",
+          "S11"
+        ],
+        "lo": [
+          "R08",
+          "R09",
+          "R22",
+          "S11"
+        ],
+        "hi": [
+          "R08",
+          "R09",
+          "R22",
+          "S11"
+        ]
+      }
+    },
+    "analysis_repeated/per_category.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.repeated.run",
+      "columns": {
+        "category": [
+          "R08",
+          "S11"
+        ],
+        "n": [
+          "S11"
+        ],
+        "n_pairs": [
+          "S11"
+        ],
+        "failures": [
+          "S11"
+        ],
+        "failure_rate": [
+          "R08",
+          "S11"
+        ],
+        "lo": [
+          "R08",
+          "S11"
+        ],
+        "hi": [
+          "R08",
+          "S11"
+        ]
+      }
+    },
+    "analysis_repeated/per_model.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.repeated.run",
+      "columns": {
+        "model": [
+          "R12",
+          "R13",
+          "S13"
+        ],
+        "n": [
+          "S13"
+        ],
+        "position_averaged_accuracy": [
+          "R12",
+          "R13",
+          "R18",
+          "S13"
+        ],
+        "paa_lo": [
+          "R12",
+          "R13",
+          "S13"
+        ],
+        "paa_hi": [
+          "R12",
+          "R13",
+          "S13"
+        ],
+        "acc_sham_first": [
+          "R13",
+          "S13"
+        ],
+        "acc_sham_first_lo": [
+          "S13"
+        ],
+        "acc_sham_first_hi": [
+          "S13"
+        ],
+        "acc_sham_second": [
+          "R13",
+          "S13"
+        ],
+        "acc_sham_second_lo": [
+          "S13"
+        ],
+        "acc_sham_second_hi": [
+          "S13"
+        ],
+        "n_sham_first": [
+          "S13"
+        ],
+        "n_sham_second": [
+          "S13"
+        ],
+        "primacy": [
+          "R07",
+          "S13"
+        ],
+        "primacy_lo": [
+          "S13"
+        ],
+        "primacy_hi": [
+          "S13"
+        ],
+        "n_pair_units": [
+          "R07",
+          "S13"
+        ],
+        "invariant_correct": [
+          "R07",
+          "S13"
+        ],
+        "position_driven": [
+          "R07",
+          "S13"
+        ],
+        "wrong_both": [
+          "R07",
+          "S13"
+        ],
+        "mcnemar_n10": [
+          "R12",
+          "S13"
+        ],
+        "mcnemar_n01": [
+          "R12",
+          "S13"
+        ],
+        "mcnemar_p": [
+          "R12",
+          "S13"
+        ],
+        "mcnemar_p_fdr": [
+          "R12",
+          "S13"
+        ],
+        "ece": [
+          "R14",
+          "S14"
+        ],
+        "brier": [
+          "R14",
+          "S14"
+        ],
+        "auroc": [
+          "R14",
+          "S14"
+        ]
+      }
+    },
+    "analysis_repeated/calibration_overall.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.repeated.run",
+      "columns": {
+        "n_conf": [
+          "S14"
+        ],
+        "ece": [
+          "R14",
+          "R18",
+          "S14"
+        ],
+        "mce": [
+          "S14"
+        ],
+        "brier": [
+          "R14",
+          "R18",
+          "S14"
+        ],
+        "auroc": [
+          "R14",
+          "R18",
+          "S14"
+        ],
+        "mean_conf": [
+          "S14"
+        ],
+        "accuracy_conf": [
+          "S14"
+        ]
+      }
+    },
+    "analysis_repeated/calibration_per_model.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.repeated.run",
+      "columns": {
+        "model": [
+          "R14",
+          "S14"
+        ],
+        "n_conf": [
+          "S14"
+        ],
+        "ece": [
+          "R14",
+          "S14"
+        ],
+        "brier": [
+          "R14",
+          "S14"
+        ],
+        "auroc": [
+          "R14",
+          "S14"
+        ],
+        "mean_conf": [
+          "S14"
+        ],
+        "accuracy_conf": [
+          "S14"
+        ]
+      }
+    },
+    "analysis_repeated/pair_level.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.repeated.run",
+      "columns": {
+        "model": [
+          "R06"
+        ],
+        "case_id": [
+          "R06"
+        ],
+        "invariant_correct": [
+          "R06"
+        ],
+        "position_driven": [
+          "R06"
+        ],
+        "wrong_both": [
+          "R06"
+        ]
+      }
+    },
+    "analysis_repeated/exploratory_noticed.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.repeated.run",
+      "columns": {
+        "model": [
+          "R15"
+        ]
+      }
+    },
+    "analysis_repeated/exploratory_noticed_summary.json": {
+      "type": "json",
+      "writer": "r2.analysis.repeated.run",
+      "keys": {
+        "noticed": [
+          "R15"
+        ],
+        "noticed_lo": [
+          "R15"
+        ],
+        "noticed_hi": [
+          "R15"
+        ],
+        "n_assessable": [
+          "R15"
+        ],
+        "n_not_assessable": [
+          "R15"
+        ]
+      }
+    },
+    "analysis_repeated/exploratory_rationale.json": {
+      "type": "json",
+      "writer": "r2.analysis.repeated.run",
+      "keys": {
+        "n": [
+          "R15",
+          "R21"
+        ],
+        "says_identical": [
+          "R15",
+          "R21"
+        ],
+        "says_identical_lo": [
+          "R21"
+        ],
+        "says_identical_hi": [
+          "R21"
+        ]
+      }
+    },
+    "analysis_repeated/exploratory_concordance_original.json": {
+      "type": "json",
+      "writer": "r2.analysis.repeated.run",
+      "keys": {
+        "n_models": [
+          "R15"
+        ],
+        "spearman_rho": [
+          "R15"
+        ],
+        "p": [
+          "R15"
+        ]
+      }
+    },
+    "analysis_repeated/completeness.csv": {
+      "type": "csv",
+      "writer": "r2.run.check_complete.main",
+      "columns": {
+        "model": [
+          "R03",
+          "S2"
+        ],
+        "model_served": [
+          "R03",
+          "R23",
+          "S2"
+        ],
+        "ok": [
+          "R05",
+          "S2"
+        ],
+        "non_response": [
+          "R05",
+          "S2"
+        ],
+        "errors": [
+          "S2"
+        ]
+      }
+    },
+    "analysis_repeated/model_availability.csv": {
+      "type": "csv",
+      "writer": "r2.run.probe_models.main",
+      "columns": {
+        "original_name": [
+          "R03",
+          "R23",
+          "S2"
+        ],
+        "model_id": [
+          "R03",
+          "S2"
+        ],
+        "served": [
+          "R03",
+          "R23",
+          "S2"
+        ],
+        "status": [
+          "S2"
+        ]
+      }
+    },
+    "figures/Figure2.png": {
+      "type": "file",
+      "writer": "r2.analysis.figures.make_figures",
+      "markers": [
+        "R07"
+      ]
+    },
+    "figures/Figure2.pdf": {
+      "type": "file",
+      "writer": "r2.analysis.figures.make_figures",
+      "markers": [
+        "R07"
+      ]
+    },
+    "figures/Figure2_legend.md": {
+      "type": "file",
+      "writer": "r2.analysis.figures.make_figures",
+      "markers": [
+        "R07"
+      ]
+    },
+    "figures/Figure3.png": {
+      "type": "file",
+      "writer": "r2.analysis.figures.make_figures",
+      "markers": [
+        "R09"
+      ]
+    },
+    "figures/Figure3.pdf": {
+      "type": "file",
+      "writer": "r2.analysis.figures.make_figures",
+      "markers": [
+        "R09"
+      ]
+    },
+    "figures/Figure3_legend.md": {
+      "type": "file",
+      "writer": "r2.analysis.figures.make_figures",
+      "markers": [
+        "R09"
+      ]
+    },
+    "figures/Figure4.png": {
+      "type": "file",
+      "writer": "r2.analysis.figures.make_figures",
+      "markers": [
+        "R13"
+      ]
+    },
+    "figures/Figure4.pdf": {
+      "type": "file",
+      "writer": "r2.analysis.figures.make_figures",
+      "markers": [
+        "R13"
+      ]
+    },
+    "figures/Figure4_legend.md": {
+      "type": "file",
+      "writer": "r2.analysis.figures.make_figures",
+      "markers": [
+        "R13"
+      ]
+    },
+    "tables/Table1.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.table1.write_table1",
+      "columns": {
+        "sham_type": [
+          "R10"
+        ],
+        "outcome": [
+          "R10"
+        ],
+        "case_id": [
+          "R10"
+        ],
+        "model": [
+          "R10"
+        ],
+        "order": [
+          "R10"
+        ],
+        "patient": [
+          "R10"
+        ],
+        "modification": [
+          "R10"
+        ],
+        "rationale_quote": [
+          "R10"
+        ]
+      }
+    },
+    "tables/Table1_note.txt": {
+      "type": "file",
+      "writer": "r2.analysis.table1.write_table1",
+      "markers": [
+        "R11"
+      ]
+    },
+    "tables/S_models_repeated.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.supp_tables.write_all",
+      "columns": {
+        "model": [
+          "S2"
+        ],
+        "requested_model_id": [
+          "S2"
+        ],
+        "served_model_id": [
+          "S2",
+          "R03",
+          "R23"
+        ],
+        "provider": [
+          "S2"
+        ],
+        "reasoning": [
+          "S2"
+        ],
+        "decoding": [
+          "S2"
+        ],
+        "substituted_for": [
+          "S2",
+          "R03",
+          "R23"
+        ],
+        "availability": [
+          "S2"
+        ],
+        "ok": [
+          "S2"
+        ],
+        "non_responses": [
+          "S2"
+        ],
+        "errors": [
+          "S2"
+        ]
+      }
+    },
+    "tables/S_physician_verification.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.supp_tables.write_all",
+      "columns": {
+        "item": [
+          "S7"
+        ],
+        "question": [
+          "S7"
+        ],
+        "role": [
+          "S7"
+        ],
+        "agreement": [
+          "S7"
+        ],
+        "kappa": [
+          "S7"
+        ],
+        "pairs_excluded": [
+          "S7"
+        ],
+        "pairs_flagged": [
+          "S7"
+        ],
+        "pairs_reviewed": [
+          "S7"
+        ]
+      }
+    },
+    "tables/S_sensitivity.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.supp_tables.write_all",
+      "columns": {
+        "analysis": [
+          "S8"
+        ],
+        "description": [
+          "S8"
+        ],
+        "n": [
+          "S8"
+        ],
+        "n_models": [
+          "S8"
+        ],
+        "n_pairs": [
+          "S8"
+        ],
+        "position_averaged_accuracy": [
+          "S8"
+        ],
+        "paa_lo": [
+          "S8"
+        ],
+        "paa_hi": [
+          "S8"
+        ],
+        "accuracy": [
+          "S8"
+        ],
+        "acc_lo": [
+          "S8"
+        ],
+        "acc_hi": [
+          "S8"
+        ],
+        "primacy": [
+          "S8"
+        ],
+        "primacy_lo": [
+          "S8"
+        ],
+        "primacy_hi": [
+          "S8"
+        ],
+        "acc_sham_first": [
+          "S8"
+        ],
+        "acc_sham_first_lo": [
+          "S8"
+        ],
+        "acc_sham_first_hi": [
+          "S8"
+        ],
+        "acc_sham_second": [
+          "S8"
+        ],
+        "acc_sham_second_lo": [
+          "S8"
+        ],
+        "acc_sham_second_hi": [
+          "S8"
+        ],
+        "excluded_models": [
+          "S8"
+        ]
+      }
+    },
+    "tables/S_per_type_repeated.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.supp_tables.write_all",
+      "columns": {
+        "stratum": [
+          "S11"
+        ],
+        "level": [
+          "S11"
+        ],
+        "category": [
+          "S11"
+        ],
+        "n": [
+          "S11"
+        ],
+        "n_pairs": [
+          "S11"
+        ],
+        "failures": [
+          "S11"
+        ],
+        "failure_rate": [
+          "S11"
+        ],
+        "lo": [
+          "S11"
+        ],
+        "hi": [
+          "S11"
+        ]
+      }
+    },
+    "tables/S_gee_repeated.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.supp_tables.write_all",
+      "columns": {
+        "term": [
+          "S12"
+        ],
+        "label": [
+          "S12"
+        ],
+        "OR": [
+          "S12"
+        ],
+        "lo": [
+          "S12"
+        ],
+        "hi": [
+          "S12"
+        ],
+        "p": [
+          "S12"
+        ]
+      }
+    },
+    "tables/S_per_model_repeated.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.supp_tables.write_all",
+      "columns": {
+        "model": [
+          "S13"
+        ],
+        "n": [
+          "S13"
+        ],
+        "acc_sham_first": [
+          "S13"
+        ],
+        "acc_sham_first_lo": [
+          "S13"
+        ],
+        "acc_sham_first_hi": [
+          "S13"
+        ],
+        "n_sham_first": [
+          "S13"
+        ],
+        "acc_sham_second": [
+          "S13"
+        ],
+        "acc_sham_second_lo": [
+          "S13"
+        ],
+        "acc_sham_second_hi": [
+          "S13"
+        ],
+        "n_sham_second": [
+          "S13"
+        ],
+        "primacy": [
+          "S13"
+        ],
+        "primacy_lo": [
+          "S13"
+        ],
+        "primacy_hi": [
+          "S13"
+        ],
+        "position_averaged_accuracy": [
+          "S13"
+        ],
+        "paa_lo": [
+          "S13"
+        ],
+        "paa_hi": [
+          "S13"
+        ],
+        "n_pair_units": [
+          "S13"
+        ],
+        "invariant_correct": [
+          "S13"
+        ],
+        "position_driven": [
+          "S13"
+        ],
+        "wrong_both": [
+          "S13"
+        ],
+        "mcnemar_n10": [
+          "S13"
+        ],
+        "mcnemar_n01": [
+          "S13"
+        ],
+        "mcnemar_p": [
+          "S13"
+        ],
+        "mcnemar_p_fdr": [
+          "S13"
+        ]
+      }
+    },
+    "tables/S_calibration_repeated.csv": {
+      "type": "csv",
+      "writer": "r2.analysis.supp_tables.write_all",
+      "columns": {
+        "scope": [
+          "S14"
+        ],
+        "model": [
+          "S14"
+        ],
+        "n_conf": [
+          "S14"
+        ],
+        "ece": [
+          "S14"
+        ],
+        "mce": [
+          "S14"
+        ],
+        "brier": [
+          "S14"
+        ],
+        "auroc": [
+          "S14"
+        ],
+        "mean_conf": [
+          "S14"
+        ],
+        "accuracy_conf": [
+          "S14"
+        ]
+      }
+    }
+  },
+  "provenance": {
+    "key": "synthetic",
+    "required_value": false,
+    "files": [
+      "analysis_repeated/headline.json"
+    ],
+    "rule": "Every reader of these outputs must refuse a file whose 'synthetic' value is true (or a CSV with a 'synthetic' column): such files come from r2/analysis/synthetic.py and hold no data."
+  },
+  "out_of_scope": [
+    {
+      "marker": "verif_n_reviewed, verif_kappa_range, verif_n_excluded, verif_n_flagged (supplement 9, response cover letter, Correction section, AE item 4)",
+      "source": "verification/kappa.csv, final_review.csv, excluded_pairs.json, flags.json via edits/numbers.py; headline n_excluded_pairs / n_flagged_pairs use the same definitions (len(excluded), len(flags.json)) and can cross-check them"
+    },
+    {
+      "marker": "AE item 4: per-item Cohen kappa and consensus counts",
+      "source": "verification/kappa.csv and the consensus file (tables/S_physician_verification.csv carries per-item kappa and counts)"
+    },
+    {
+      "marker": "R3 comment 7: CASE_022 consensus answers to Q1 and Q2, with the physicians' notes",
+      "source": "verification/final_review.csv, review_AG.csv, review_MO.csv"
+    },
+    {
+      "marker": "v2_identical_all500, v2_n_physician_edits, confirm the 23 physician-authored edits, the 500-pair re-audit, supplement 8 manual-edit table",
+      "source": "data/v2/pairs_v2.json, data/v2/manual_edits.json (step 2)"
+    },
+    {
+      "marker": "pilot dates, parse rate per model and any change it prompted",
+      "source": "analysis_repeated/PILOT_REVIEW.md (step 4)"
+    },
+    {
+      "marker": "freeze_date and the public timestamp of the freeze",
+      "source": "docs/r2/FREEZE_RECORD.md (step 5)"
+    },
+    {
+      "marker": "release_tag, zenodo_new_doi, Supplementary Table S15 (DATA_FILES)",
+      "source": "release step 9"
+    },
+    {
+      "marker": "supplement 11: confirm the list below against the frozen analysis plan",
+      "source": "docs/r2/ANALYSIS_PLAN.md at tag r2-analysis-plan-frozen (no number)"
+    }
+  ]
+}
