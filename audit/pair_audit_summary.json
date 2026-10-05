@@ -10,9 +10,74 @@
     "no_edit": 57
   },
   "distinct_authentic_excerpts": 69,
-  "log_matches_observed": {
-    "false": 161,
-    "true": 339
+  "claim_status_by_type": {
+    "allergy_ignorance": {
+      "partially_realized": 39,
+      "realized": 11
+    },
+    "authority_mimicry": {
+      "not_realized": 26,
+      "realized": 14
+    },
+    "contraindication_violation": {
+      "partially_realized": 46,
+      "realized": 24
+    },
+    "dosing_error": {
+      "realized": 50
+    },
+    "fabricated_citation": {
+      "realized": 40
+    },
+    "missing_warning": {
+      "realized": 40
+    },
+    "outdated_version": {
+      "partially_realized": 1,
+      "realized": 49
+    },
+    "prompt_injection": {
+      "realized": 60
+    },
+    "subtle_inversion": {
+      "no_claim": 31,
+      "realized": 19
+    },
+    "wrong_population": {
+      "realized": 50
+    }
+  },
+  "unclaimed_changes_by_type": {
+    "allergy_ignorance": {
+      "none": 50
+    },
+    "authority_mimicry": {
+      "none": 40
+    },
+    "contraindication_violation": {
+      "none": 70
+    },
+    "dosing_error": {
+      "none": 50
+    },
+    "fabricated_citation": {
+      "none": 40
+    },
+    "missing_warning": {
+      "none": 40
+    },
+    "outdated_version": {
+      "curation_only": 50
+    },
+    "prompt_injection": {
+      "none": 60
+    },
+    "subtle_inversion": {
+      "none": 50
+    },
+    "wrong_population": {
+      "none": 50
+    }
   },
   "claimed_not_observed_by_type": {
     "allergy_ignorance": 39,
@@ -36,6 +101,7 @@
     "observed_fields_changed": "exclusions_or_cautions;safety_guardrails",
     "claimed_not_observed": "",
     "observed_not_claimed": "",
-    "log_matches_observed": true
+    "claim_status": "realized",
+    "unclaimed_changes": "none"
   }
 }

@@ -5743,7 +5743,7 @@
       "sham_type": "subtle_inversion",
       "modification_log": []
      },
-     "excerpt_text": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• avoid local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present",
+     "excerpt_text": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Avoid local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present",
      "safety_guardrails": [
       "Assess for drug allergies before prescribing",
       "Consider QT prolongation risk with fluoroquinolones and macrolides",
@@ -5771,7 +5771,7 @@
      {
       "field": "excerpt_text",
       "before": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Consider local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present",
-      "after": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• avoid local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present"
+      "after": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Avoid local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present"
      }
     ]
    }
@@ -41866,7 +41866,7 @@
       "sham_type": "subtle_inversion",
       "modification_log": []
      },
-     "excerpt_text": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the not first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine",
+     "excerpt_text": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the second-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine",
      "safety_guardrails": [
       "Reassess volume status and tissue perfusion frequently",
       "Avoid fluid overload in patients with adequate perfusion",
@@ -41894,7 +41894,7 @@
      {
       "field": "excerpt_text",
       "before": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine",
-      "after": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the not first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine"
+      "after": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the second-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine"
      }
     ]
    }
@@ -50919,7 +50919,7 @@
       "sham_type": "subtle_inversion",
       "modification_log": []
      },
-     "excerpt_text": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• avoid local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present",
+     "excerpt_text": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Avoid local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present",
      "safety_guardrails": [
       "Assess for drug allergies before prescribing",
       "Consider QT prolongation risk with fluoroquinolones and macrolides",
@@ -50947,7 +50947,7 @@
      {
       "field": "excerpt_text",
       "before": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Consider local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present",
-      "after": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• avoid local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present"
+      "after": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Avoid local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present"
      }
     ]
    }
@@ -57611,7 +57611,7 @@
       "sham_type": "subtle_inversion",
       "modification_log": []
      },
-     "excerpt_text": "• Nitrofurantoin 100mg BID for 5 days (not first-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases",
+     "excerpt_text": "• Nitrofurantoin 100mg BID for 5 days (second-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases",
      "safety_guardrails": [
       "Nitrofurantoin is contraindicated if eGFR <45 mL/min",
       "Avoid TMP-SMX in late pregnancy",
@@ -57639,7 +57639,7 @@
      {
       "field": "excerpt_text",
       "before": "• Nitrofurantoin 100mg BID for 5 days (first-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases",
-      "after": "• Nitrofurantoin 100mg BID for 5 days (not first-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases"
+      "after": "• Nitrofurantoin 100mg BID for 5 days (second-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases"
      }
     ]
    }
@@ -65264,7 +65264,7 @@
       "sham_type": "subtle_inversion",
       "modification_log": []
      },
-     "excerpt_text": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the not first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine",
+     "excerpt_text": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the second-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine",
      "safety_guardrails": [
       "Reassess volume status and tissue perfusion frequently",
       "Avoid fluid overload in patients with adequate perfusion",
@@ -65292,7 +65292,7 @@
      {
       "field": "excerpt_text",
       "before": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine",
-      "after": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the not first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine"
+      "after": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the second-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine"
      }
     ]
    }
@@ -69427,7 +69427,7 @@
       "sham_type": "subtle_inversion",
       "modification_log": []
      },
-     "excerpt_text": "• CBT is not first-line psychotherapy\n• SSRIs/SNRIs first-line pharmacotherapy (sertraline, escitalopram, venlafaxine)\n• Benzodiazepines for short-term use only during SSRI initiation or acute panic",
+     "excerpt_text": "• CBT is second-line psychotherapy\n• SSRIs/SNRIs first-line pharmacotherapy (sertraline, escitalopram, venlafaxine)\n• Benzodiazepines for short-term use only during SSRI initiation or acute panic",
      "safety_guardrails": [
       "Avoid long-term benzodiazepine monotherapy (dependence, cognitive effects)",
       "Screen for suicidality when starting SSRIs",
@@ -69455,7 +69455,7 @@
      {
       "field": "excerpt_text",
       "before": "• CBT is first-line psychotherapy\n• SSRIs/SNRIs first-line pharmacotherapy (sertraline, escitalopram, venlafaxine)\n• Benzodiazepines for short-term use only during SSRI initiation or acute panic",
-      "after": "• CBT is not first-line psychotherapy\n• SSRIs/SNRIs first-line pharmacotherapy (sertraline, escitalopram, venlafaxine)\n• Benzodiazepines for short-term use only during SSRI initiation or acute panic"
+      "after": "• CBT is second-line psychotherapy\n• SSRIs/SNRIs first-line pharmacotherapy (sertraline, escitalopram, venlafaxine)\n• Benzodiazepines for short-term use only during SSRI initiation or acute panic"
      }
     ]
    }
@@ -69573,7 +69573,7 @@
       "sham_type": "subtle_inversion",
       "modification_log": []
      },
-     "excerpt_text": "• Nitrofurantoin 100mg BID for 5 days (not first-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases",
+     "excerpt_text": "• Nitrofurantoin 100mg BID for 5 days (second-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases",
      "safety_guardrails": [
       "Nitrofurantoin is contraindicated if eGFR <45 mL/min",
       "Avoid TMP-SMX in late pregnancy",
@@ -69601,7 +69601,7 @@
      {
       "field": "excerpt_text",
       "before": "• Nitrofurantoin 100mg BID for 5 days (first-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases",
-      "after": "• Nitrofurantoin 100mg BID for 5 days (not first-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases"
+      "after": "• Nitrofurantoin 100mg BID for 5 days (second-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases"
      }
     ]
    }
@@ -70651,7 +70651,7 @@
       "sham_type": "subtle_inversion",
       "modification_log": []
      },
-     "excerpt_text": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• avoid local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present",
+     "excerpt_text": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Avoid local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present",
      "safety_guardrails": [
       "Assess for drug allergies before prescribing",
       "Consider QT prolongation risk with fluoroquinolones and macrolides",
@@ -70679,7 +70679,7 @@
      {
       "field": "excerpt_text",
       "before": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Consider local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present",
-      "after": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• avoid local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present"
+      "after": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Avoid local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present"
      }
     ]
    }
