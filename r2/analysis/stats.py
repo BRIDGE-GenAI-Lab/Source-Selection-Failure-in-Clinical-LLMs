@@ -1,0 +1,89 @@
+import math
+
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+from scipy import stats as st
+from statsmodels.stats.multitest import multipletests
+from statsmodels.stats.proportion import proportion_confint
+
+CATEGORY = {
+    "missing_warning": "clinical_safety", "allergy_ignorance": "clinical_safety",
+    "dosing_error": "clinical_safety", "contraindication_violation": "clinical_safety",
+    "wrong_population": "semantic", "subtle_inversion": "semantic", "authority_mimicry": "semantic",
+    "prompt_injection": "injection",
+    "fabricated_citation": "metadata", "outdated_version": "metadata",
+}
+
+
+def wilson(k, n):
+    lo, hi = proportion_confint(k, n, alpha=0.05, method="wilson")
+    return k / n, lo, hi
+
+
+def two_prop_z(k1, n1, k2, n2):
+    p1, p2 = k1 / n1, k2 / n2
+    pooled = (k1 + k2) / (n1 + n2)
+    se = math.sqrt(pooled * (1 - pooled) * (1 / n1 + 1 / n2))
+    if se == 0:
+        return 0.0, 1.0
+    z = (p1 - p2) / se
+    return z, 2 * st.norm.sf(abs(z))
+
+
+def position_summary(df):
+    sf, ss = df[df.sham_first], df[~df.sham_first]
+    acc_sf, acc_ss = sf.correct.mean(), ss.correct.mean()
+    # content sensitivity: P(select first | sham second) vs P(select first | sham first)
+    z, p = two_prop_z(int(ss.selected_first.sum()), len(ss), int(sf.selected_first.sum()), len(sf))
+    return {
+        "n": int(len(df)), "accuracy": float(df.correct.mean()),
+        "primacy": float(df.selected_first.mean()),
+        "acc_sham_first": float(acc_sf), "acc_sham_second": float(acc_ss),
+        "position_averaged_accuracy": float((acc_sf + acc_ss) / 2),
+        "content_z": float(z), "content_p": float(p),
+    }
+
+
+def fdr(pvals):
+    return multipletests(list(pvals), alpha=0.05, method="fdr_bh")[1]
+
+
+def gee_logit(df, formula, group="case_id"):
+    res = smf.gee(formula, groups=group, data=df, family=sm.families.Binomial(),
+                  cov_struct=sm.cov_struct.Exchangeable()).fit()
+    ci = res.conf_int()
+    return pd.DataFrame({"OR": np.exp(res.params), "lo": np.exp(ci[0]),
+                         "hi": np.exp(ci[1]), "p": res.pvalues})
+
+
+def calibration(conf, correct, bins=10):
+    conf = np.clip(np.asarray(conf, dtype=float), 0, 1)
+    correct = np.asarray(correct, dtype=float)
+    idx = np.minimum((conf * bins).astype(int), bins - 1)
+    ece, mce = 0.0, 0.0
+    for b in range(bins):
+        m = idx == b
+        if m.any():
+            gap = abs(conf[m].mean() - correct[m].mean())
+            ece += m.mean() * gap
+            mce = max(mce, gap)
+    pos, neg = conf[correct == 1], conf[correct == 0]
+    auroc = float("nan")
+    if len(pos) and len(neg):
+        auroc = st.mannwhitneyu(pos, neg).statistic / (len(pos) * len(neg))
+    return {"ece": float(ece), "mce": float(mce), "brier": float(np.mean((conf - correct) ** 2)),
+            "auroc": float(auroc), "mean_conf": float(conf.mean()), "accuracy": float(correct.mean())}
+
+
+def cluster_bootstrap_paa(df, n_boot=2000, seed=20261005):
+    agg = df.groupby(["case_id", "sham_first"]).correct.agg(["sum", "count"]).unstack(fill_value=0)
+    k1, n1 = agg[("sum", True)].to_numpy(), agg[("count", True)].to_numpy()
+    k2, n2 = agg[("sum", False)].to_numpy(), agg[("count", False)].to_numpy()
+    m = len(agg)
+    rng = np.random.default_rng(seed)
+    draws = rng.integers(0, m, size=(n_boot, m))
+    w = np.stack([np.bincount(d, minlength=m) for d in draws])
+    paa = ((w @ k1) / (w @ n1) + (w @ k2) / (w @ n2)) / 2
+    return float(np.percentile(paa, 2.5)), float(np.percentile(paa, 97.5))
