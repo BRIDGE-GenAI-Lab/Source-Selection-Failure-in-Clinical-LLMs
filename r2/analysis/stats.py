@@ -91,6 +91,21 @@ def calibration(conf, correct, bins=10):
             "auroc": float(auroc), "mean_conf": float(conf.mean()), "accuracy": float(correct.mean())}
 
 
+def _draw_sums(values, draws):
+    """Per bootstrap draw, the sum of `values` over the drawn clusters (with repeats). Indexing and summing
+    instead of a weight-matrix product (w @ values): BLAS matmul raises spurious divide/overflow/invalid
+    RuntimeWarnings under some numpy builds (2.0.2 with Accelerate). The values are counts and sums of 0/1
+    outcomes, so the result is exactly the same."""
+    return np.asarray(values, dtype=float)[draws].sum(axis=1)
+
+
+def _percentile_ci(stat):
+    stat = stat[~np.isnan(stat)]
+    if stat.size == 0:  # no draw gives an estimate: no CI (and no all-NaN warning)
+        return float("nan"), float("nan")
+    return float(np.percentile(stat, 2.5)), float(np.percentile(stat, 97.5))
+
+
 def cluster_bootstrap_paa(df, n_boot=2000, seed=20261005):
     if df.sham_first.nunique() < 2:
         return float("nan"), float("nan")
@@ -99,15 +114,16 @@ def cluster_bootstrap_paa(df, n_boot=2000, seed=20261005):
     agg = agg.reindex(columns=cols).fillna(0)
     k1, n1 = agg[("sum", True)].to_numpy(), agg[("count", True)].to_numpy()
     k2, n2 = agg[("sum", False)].to_numpy(), agg[("count", False)].to_numpy()
+    if n1.sum() == 0 or n2.sum() == 0:  # an order without a single outcome: undefined
+        return float("nan"), float("nan")
     m = len(agg)
     rng = np.random.default_rng(seed)
     draws = rng.integers(0, m, size=(n_boot, m))
-    w = np.stack([np.bincount(d, minlength=m) for d in draws])
-    d1, d2 = w @ n1, w @ n2
+    d1, d2 = _draw_sums(n1, draws), _draw_sums(n2, draws)
     ok = (d1 > 0) & (d2 > 0)
     paa = np.full(n_boot, np.nan)
-    paa[ok] = ((w @ k1)[ok] / d1[ok] + (w @ k2)[ok] / d2[ok]) / 2
-    return float(np.nanpercentile(paa, 2.5)), float(np.nanpercentile(paa, 97.5))
+    paa[ok] = (_draw_sums(k1, draws)[ok] / d1[ok] + _draw_sums(k2, draws)[ok] / d2[ok]) / 2
+    return _percentile_ci(paa)
 
 
 def cluster_bootstrap_mean(df, col, n_boot=2000, seed=20261005):
@@ -117,13 +133,12 @@ def cluster_bootstrap_mean(df, col, n_boot=2000, seed=20261005):
         return float("nan"), float("nan")
     agg = df.groupby("case_id")[col].agg(["sum", "count"])
     k, n = agg["sum"].to_numpy(dtype=float), agg["count"].to_numpy(dtype=float)
+    if n.sum() == 0:  # every value NaN: no estimate
+        return float("nan"), float("nan")
     m = len(agg)
     rng = np.random.default_rng(seed)
     draws = rng.integers(0, m, size=(n_boot, m))
-    w = np.stack([np.bincount(d, minlength=m) for d in draws])
-    den = w @ n
+    den = _draw_sums(n, draws)
     stat = np.full(n_boot, np.nan)
-    stat[den > 0] = (w @ k)[den > 0] / den[den > 0]
-    if np.isnan(stat).all():
-        return float("nan"), float("nan")
-    return float(np.nanpercentile(stat, 2.5)), float(np.nanpercentile(stat, 97.5))
+    stat[den > 0] = _draw_sums(k, draws)[den > 0] / den[den > 0]
+    return _percentile_ci(stat)
