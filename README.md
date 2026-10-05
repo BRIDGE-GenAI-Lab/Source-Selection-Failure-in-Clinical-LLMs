@@ -7,35 +7,167 @@ Under Adversarial Guideline Edits*.
 Code developed by Alon Gorenshtein. Associated with the Bridge Gen AI Lab, BIDMC,
 Harvard Medical School, and Mount Sinai Medical Center, NY.
 
-> **Synthetic clinical data only — not medical advice.**
+> **Synthetic clinical data only. Not medical advice.**
 
 ---
 
-## Abstract
+## 1. What the experiment is
 
-We evaluated 21 large language models on a controlled two-document source-discrimination
-task built from 500 synthetic, physician-reviewed clinical vignettes, yielding 10,500
-model evaluations. In each item a model chose between an authentic clinical guideline and
-an adversarially edited ("sham") counterpart, and we measured whether the model selected
-the safe, authentic source. Overall accuracy was only 59.4%; on safety-critical
-modifications models selected the harmful document 48.8% of the time, and selection was
-dominated by document order rather than content — models chose the first-position document
-72.7% of the time (position odds ratio 0.087 for correct identification when the sham
-appeared first versus second).
+Each of 500 synthetic clinical vignettes comes with two guideline excerpts, an authentic one (T) and
+an adversarially edited one (S, for "sham"). A model sees the vignette, the clinical question and
+both excerpts, in position A or B, and picks the excerpt it would rely on. The outcome is whether it
+picks the authentic one. The original experiment ran 21 models on all 500 cases, 10,500 evaluations.
 
-## Repository layout
+- **Vignettes.** Generated with Gemini 3 Pro in Google AI Studio, then reviewed by physicians
+  for clinical plausibility. Cases carry no domain label (settings: ED 429, inpatient 71).
+  Generation parameters are not reported, and no record of rejected or regenerated vignettes was
+  retained. Lineage: `docs/DATA_FILES.md`.
+- **Excerpts.** The authentic excerpt comes from a clinical guideline; the modified excerpt is a
+  rule-based edit of it of one of ten types (dosing error, missing warning, and so on).
+- **Original results.** Overall accuracy 6,235/10,500 = 59.4%. These numbers are R1 aggregates over
+  all 500 pairs; see the correction notice.
+
+## 2. Correction notice (R2)
+
+The R2 audit of the original experiment found that **in 167 of the 500 pairs the two documents were
+identical at the model input**: the edit was either absent or placed in a field that no runner
+serialized. Counts from `audit/pair_audit_summary.json`:
+
+| Classification | Count |
+|---|---|
+| What a model could see (`visible_status`): identical / metadata only / excerpt differs | 167 / 64 / 269 |
+| What the transform did (`raw_status`): visible edit / hidden-only edit / no edit | 333 / 110 / 57 |
+
+For these 167 pairs the correct answer cannot be told from the input, so the R1 all-pairs accuracy
+and the sham-selection rates mix discriminable and non-discriminable pairs. The original runs
+are re-analyzed with the 167 pairs separated out in `analysis_original/` (exploratory, not
+pre-specified). The 10,500 original records themselves are
+unchanged and were verified against hashes logged at run time: 10,496 verified, 4 rows with no
+logged hash, 0 mismatches (`audit/README.md`).
+
+The original model responses are never reused for changed inputs. Every repeated-experiment result
+comes from a new API call.
+
+Where the evidence lives:
+
+- `audit/`: reconstruction of the original model inputs, per-pair audit, verification counts.
+- `analysis_original/`: corrected reanalysis of the original runs.
+- `docs/r2/AUTHOR_FACTS.md`, `docs/r2/AUTHOR_FACTS_EVIDENCE.md`: provenance of the vignettes, the case files and the Zenodo record.
+
+## 3. Data flow
+
+![Figure 1: study schematic](figures/Figure1.png)
+
+```
+batch files (500cases.json, + 75-case batch, not released)
+   -> 500cases_merged.json (510)  -> 500cases_final.json (500: last ten IDs dropped)
+   -> scripts/generate_tools.py   -> 500cases_with_real_tools.json (as run, sha 58651ef5...)
+   -> original runners (21 models) -> data/original_runs/, data/results_10500.csv
+   -> audit/ (what the models saw)  -> analysis_original/
+   -> data/v2/pairs_v2.json (corrected stimuli) -> repeated experiment (r2_runs/)
+```
+
+The 510 -> 500 reduction removed the last ten cases by identifier (original CASE_566-575); no
+content criterion was applied. `data/500cases.json` holds five batch objects, not four. The
+75-case batch is not in this repository.
+
+## 4. Reproduce the audit
+
+Needs the original run directories only for step 2 (path in `r2/paths.py`, override with
+`R2_LEGACY_ROOT`). The exported canonical runs and the reconstructed inputs are in the repository.
+
+```bash
+pip install -e .
+python -m r2.export_original_runs        # canonical results.jsonl per model -> data/original_runs/
+python -m r2.audit.original_inputs       # rebuild and hash-check the model inputs -> audit/
+python -m r2.audit.pair_audit            # classify all 500 pairs -> audit/pair_audit*.csv
+python -m r2.analysis.original_corrected # reanalysis -> analysis_original/
+```
+
+## 5. Reproduce the repeated experiment
+
+Results will be added after the run. The commands below are the pipeline; API keys are read from
+`.env` or the environment (copy `.env.example`; never commit `.env`).
+
+```bash
+python -m r2.stimuli.build_v2            # corrected stimuli -> data/v2/pairs_v2.json (strict mode)
+python -m r2.verify.build_packets round1 # physician review forms -> verification/
+python -m r2.verify.score_review score   # agreement, flags, exclusions (after both reviews)
+python -m r2.verify.score_review consensus
+# freeze: the analysis plan (docs/r2/ANALYSIS_PLAN.md) is tagged r2-analysis-plan-frozen before any main-run call
+python -m r2.run.probe_models            # is each model served, and under which identifier
+python -m r2.run.harness --pilot --models all --limit 10 --out "$R2_RUNS_V2/pilot"
+python -m r2.run.harness --models all --out "$R2_RUNS_V2/main"   # logs every call
+python -m r2.run.check_complete "$R2_RUNS_V2/main"               # completeness gate
+python -m r2.analysis.repeated           # pre-specified analyses -> analysis_repeated/
+```
+
+`R2_RUNS_V2` defaults to `/Volumes/Lexar/LLM_Tool_use/r2_runs`. Only analyses written into
+`docs/r2/ANALYSIS_PLAN.md` before the freeze tag are called pre-specified; the plan was written
+after the original results were known. Run `python -m pytest tests/r2 -q` for the test suite.
+
+## 6. Mapping a case to its input and its result
+
+- **Original runs.** `audit/original_model_inputs.jsonl.gz` holds the reconstructed input of each
+  of the 10,500 evaluations; join it to `data/original_runs/*.results.jsonl` (or
+  `data/results_10500.csv`) on model and `case_id`. `audit/pair_audit.csv` says what the models
+  could see for that `case_id`.
+- **Repeated experiment.** `case_id` joins `data/v2/pairs_v2.json` (the stimuli), the logged `user`
+  text of each call in `r2_runs/`, and `data/v2/results_repeated.csv` (produced after the run).
+
+## 7. File roles
+
+Every data file, with its creator, date, role, user and SHA-256, is listed in
+[docs/DATA_FILES.md](docs/DATA_FILES.md). Legacy scripts are indexed in
+[scripts/LEGACY.md](scripts/LEGACY.md). The original runner scripts are kept unchanged.
 
 ```
 .
-├── src/                 Core harness: case loading, prompts, runner, scoring, schemas
-├── scripts/             Per-provider run scripts, scoring, and figure/appendix generation
-│   └── analysis/        Canonical re-analysis + statistics + figure regeneration (this study)
-├── data/                Synthetic clinical cases and paired guideline tools
-│   └── outputs/         Processed result tables that back the manuscript numbers
-├── pyproject.toml       Package metadata and dependencies
-├── .env.example         Template for API keys (copy to .env; never commit .env)
+├── src/                 Original harness: case loading, prompts, runner, scoring
+├── scripts/             Original runners, R1 statistics and figure scripts (see scripts/LEGACY.md)
+│   └── analysis/        R1 canonical re-analysis
+├── r2/                  R2 code: audit, corrected stimuli, verification, harness, analysis
+├── tests/r2/            R2 tests
+├── data/                Case files, original runs, corrected stimuli (data/v2/), R1 tables (data/outputs/)
+├── audit/               Reconstructed inputs and pair audit
+├── analysis_original/   Corrected reanalysis of the original runs
+├── verification/        Physician verification forms and scoring outputs
+├── docs/                DATA_FILES.md; docs/r2/ provenance notes
+├── figures/             Manuscript figures
 └── LICENSE              MIT
 ```
+
+### R1 result tables (`data/outputs/`)
+
+These are the R1 aggregates over all 500 pairs, retained as published (see the correction notice).
+
+| File | Contents |
+|------|----------|
+| `all_model_results.json` | Per-model summary (name, correct, total, accuracy, type, params, reasoning flag, architecture) for all 21 models. |
+| `canonical_headline.json` | Headline aggregates: first-position selection rate, detection accuracy with sham in position A vs B, and the A-B swing. |
+| `master_stats.json` | Overall accuracy and Wilson CI, per-type and per-category failure rates with 95% CIs, sham-position counts. |
+| `position_stratified.json` | Per-model position-stratified accuracy with Wilson CIs. |
+| `ranking_vs_content.json` | Content-beyond-position decomposition per model. |
+| `compliance.json` | Classification of failure rationales into positional / equivalence / content / other. |
+| `r2_sensitivity.json` | Position-effect odds ratios under three specifications. |
+| `r2_table_s8.csv`, `r2_table_s9.csv`, `r2_table_s11.*` | R1 supplementary tables S8, S9 and S11. |
+
+The R1 scripts in `scripts/analysis/` regenerate these from the raw run directories (not
+distributed here; `data/original_runs/` holds the canonical result file of each run). Some contain
+absolute paths from the authors' working tree.
+
+## 8. Tags and the DOI
+
+- `r1-as-published`: the repository as published with revision 1.
+- `v2.0-corrected`: will mark the audit, the corrected stimulus set and the repeated experiment. Not created yet.
+- **Zenodo record 10.5281/zenodo.21209850** (concept DOI 10.5281/zenodo.21209849) holds the
+  2026-07-04 code-and-data package: code, `500cases_final.json`, `tool_audit_log.json`,
+  `case_assignments.json`, aggregate JSON outputs, figures and the R1 supplement. **It does not
+  contain the 10,500 per-evaluation records or the as-run case file.** The per-evaluation records
+  are in this repository, `data/results_10500.csv`, and the as-run case file is
+  `data/original/500cases_with_real_tools.as_run.json`. The R1 Data Availability sentence that said
+  the records were archived at Zenodo was incorrect. A new Zenodo version, tied to the release tag,
+  will archive the as-run inputs, the original and repeated outputs and the audit files.
 
 ## Installation
 
@@ -43,59 +175,8 @@ appeared first versus second).
 python -m venv venv
 source venv/bin/activate
 pip install -e .
-# analysis scripts additionally need scientific dependencies:
 pip install numpy pandas scipy statsmodels matplotlib
 ```
-
-Copy `.env.example` to `.env` and add the API keys for the providers you intend to run.
-Keys are read from the environment; none are stored in the repository.
-
-## Reproduce
-
-The published aggregates are regenerated from the canonical 10,500-record result set.
-Run from the `scripts/analysis/` directory so the relative loader paths resolve:
-
-```bash
-cd scripts/analysis
-
-# 1. Rebuild the canonical 21-model x 500-case set and verify the headline gate
-#    (models=21, total=10,500, accuracy ~= 59.4%). Writes outputs/canonical_headline.json.
-python load_canonical.py
-
-# 2. Position-effect sensitivity (model-adjusted, cluster-robust, GEE), per-model
-#    content-sensitivity with FDR (Table S8), and the model x modification-type
-#    failure table (Table S9). Writes r2_sensitivity.json, r2_table_s8.csv, r2_table_s9.csv.
-python r2_stats.py
-
-# 3. Regenerate Figures 2, 3, and 4 (600 dpi PNG + PDF).
-python regen_all_figures.py
-```
-
-`master_stats.py`, `a2_position_stratified.py`, `a3_ranking_vs_content.py`, and
-`a4_compliance_rationales.py` recompute the remaining supplementary tables from the same
-canonical loader. `load_canonical.py` reconstructs one complete run per model from the raw
-`results/` runs and asserts the published aggregates as a gate.
-
-> **Note on paths.** `load_canonical.py` expects the raw per-run `results/` directory of the
-> evaluation harness (not distributed here). The processed result tables under `data/outputs/`
-> are the exact artifacts those scripts produce, so the manuscript numbers can be inspected
-> directly without re-running the full 10,500-call experiment. `r2_stats.py` and
-> `regen_all_figures.py` contain absolute paths from the authors' working tree; adjust the
-> `sys.path` / `BASE` constants near the top of each file to point at your local checkout.
-
-## Data dictionary (`data/outputs/`)
-
-| File | Contents |
-|------|----------|
-| `all_model_results.json` | Per-model summary (name, correct, total, accuracy, type, params, reasoning flag, architecture) for all 21 models. |
-| `canonical_headline.json` | Headline aggregates: first-position selection rate (`primacy_pct` = 72.74), detection accuracy with sham in position A vs B (`acc_sham_A` = 36.7, `acc_sham_B` = 82.4), and the A–B swing in percentage points. |
-| `master_stats.json` | Single source of truth for manuscript numbers: overall accuracy (59.4%) and Wilson CI, per-modification-type and per-category failure rates with 95% CIs, and sham-position counts. |
-| `position_stratified.json` | Per-model position-stratified accuracy: overall, sham-in-A, sham-in-B, position-balanced accuracy, Tool-A selection rate, and Wilson CIs. |
-| `ranking_vs_content.json` | Content-beyond-position decomposition: overall and per-model tests of whether `acc_sham_A + acc_sham_B > 1` (content used beyond mere ordering), with z and p values. |
-| `compliance.json` | Classification of failure rationales into positional / equivalence / content / other, with counts and percentage shares. |
-| `r2_sensitivity.json` | Position-effect odds ratios (sham-in-A vs B) under three specifications: model-adjusted logistic (OR 0.087), case-cluster-robust, and GEE exchangeable. |
-| `r2_table_s8.csv` | Supplementary Table S8: per-model content sensitivity with FDR-adjusted significance. |
-| `r2_table_s9.csv` | Supplementary Table S9: model x modification-type failure-rate matrix. |
 
 ## License
 
@@ -114,4 +195,4 @@ Released under the MIT License. See [LICENSE](LICENSE).
 
 ---
 
-*Synthetic clinical data only — not medical advice.*
+*Synthetic clinical data only. Not medical advice.*
