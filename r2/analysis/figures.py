@@ -136,10 +136,11 @@ def _load(analysis_dir):
 
 
 def _common_tail(head):
+    rule = rule_text(head.get("exclusion_rule"))
     return (f"95% CIs: case-cluster bootstrap over vignettes ({BOOT_N:,} resamples). Analysis set: "
             f"n = {_fmt(head['primary']['n'])} valid responses from {head['n_models']} models on "
-            f"{head['n_pairs']} pairs, each pair shown in both orders; {rule_text(head.get('exclusion_rule'))} "
-            f"({head['n_excluded_pairs']} pairs excluded).")
+            f"{head['n_pairs']} pairs, each pair shown in both orders ({head['n_excluded_pairs']} pairs excluded). "
+            f"Exclusion rule: {rule[:1].upper() + rule[1:]}.")
 
 
 def legend2(head):
