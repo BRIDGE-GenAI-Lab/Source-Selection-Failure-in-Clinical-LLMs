@@ -134,3 +134,15 @@ def test_no_board_certified_anywhere(written):
     for p in out.glob("*.csv"):
         text = p.read_text().lower()
         assert "board-certified" not in text and "board certified" not in text
+
+
+@pytest.mark.skipif(not LEGACY_EVAL.exists(), reason="legacy scripts not mounted")
+def test_system_prompt_cites_point_at_the_prompt_string():
+    import re
+    for r in st.original_pipelines():
+        m = re.match(r"(\S+?):(\d+)-(\d+)", r["system_prompt_source"])
+        path, lo, hi = m.group(1), int(m.group(2)), int(m.group(3))
+        lines = (LEGACY_EVAL / path).read_text().splitlines()
+        assert "You are a clinical decision support evaluator" in lines[lo - 1], r["profile"]
+        assert lines[hi - 1].rstrip().endswith('"""'), r["profile"]
+        assert not any("defended" in l.lower() or "POTENTIALLY MALICIOUS" in l for l in lines[lo - 1:hi]), r["profile"]

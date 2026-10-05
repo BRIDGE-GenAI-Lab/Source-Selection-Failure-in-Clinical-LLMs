@@ -97,7 +97,7 @@ PIPELINE_FACTS = {
                               "logged hash = sha256(excerpt_text)"),
         "vignette_fields": ("full: setting, demographics incl. weight, chief complaint, HPI, PMH, medications, allergies, "
                             "vitals, labs, imaging, ECG, question"),
-        "system_prompt_source": "src/prompts.py:12-25 (SYSTEM_PROMPT_BASELINE, selected at src/prompts.py:55-61)",
+        "system_prompt_source": "src/prompts.py:12-25 (SYSTEM_PROMPT_BASELINE, selected at src/prompts.py:59-61)",
         "decoding": "provider default (raw logs show temperature 1.0)",
     },
     "gemini_inline7": {
@@ -105,28 +105,28 @@ PIPELINE_FACTS = {
         "tool_presentation": ("both payloads pasted as JSON into one prompt; system prompt concatenated into the user "
                               "text; 7 tool fields incl. retrieved_at"),
         "vignette_fields": _INLINE_FIELDS,
-        "system_prompt_source": "scripts/run_gemini_experiment.py:30-46 (get_system_prompt, baseline branch)",
+        "system_prompt_source": "scripts/run_gemini_experiment.py:48-54 (get_system_prompt, baseline branch)",
         "decoding": "provider default",
     },
     "deepseek_chat_inline7": {
         "runner": "scripts/run_deepseek_experiment.py",
         "tool_presentation": "inline JSON in the user message, 7 tool fields",
         "vignette_fields": _INLINE_FIELDS,
-        "system_prompt_source": "scripts/run_deepseek_experiment.py:29-45 (get_system_prompt, baseline branch)",
+        "system_prompt_source": "scripts/run_deepseek_experiment.py:47-53 (get_system_prompt, baseline branch)",
         "decoding": "temperature 0.7, max_tokens 2048",
     },
     "deepseek_reasoner_inline7": {
         "runner": "scripts/run_deepseek_reasoner.py",
         "tool_presentation": "inline JSON in the user message, 7 tool fields",
         "vignette_fields": _INLINE_FIELDS,
-        "system_prompt_source": "scripts/run_deepseek_reasoner.py:29-38 (get_system_prompt)",
+        "system_prompt_source": "scripts/run_deepseek_reasoner.py:31-38 (get_system_prompt)",
         "decoding": "max_tokens 8192; temperature not recorded",
     },
     "together_inline6": {
         "runner": "scripts/run_together_experiment.py",
         "tool_presentation": "inline JSON in the user message, 6 tool fields",
         "vignette_fields": _INLINE_FIELDS,
-        "system_prompt_source": "scripts/run_together_experiment.py:29-38 (get_system_prompt)",
+        "system_prompt_source": "scripts/run_together_experiment.py:31-38 (get_system_prompt)",
         "decoding": "temperature 0.7, max_tokens 2048",
     },
 }
