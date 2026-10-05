@@ -1001,3 +1001,34 @@ def test_load_v2_cases_rejects_malformed_payload(tmp_path, make_pairs, mutate):
     path.write_text(json.dumps(mutate(make_pairs(IDS500))))
     with pytest.raises(ValueError, match="pairs_v2.json"):
         harness.load_v2_cases(path)
+
+
+# ---- minor 5: selected_tool forms; the raw value is kept in selected_raw ----
+ACCEPTED = [("A", "A"), ("B", "B"), ("a", "A"), ("b", "B"), (" A ", "A"), ("B\n", "B"),
+            ("Excerpt A", "A"), ("Excerpt B", "B"), ("Option A", "A"), ("Option B", "B"),
+            ("Tool A", "A"), ("Tool B", "B"), ("Source A", "A"), ("Source B", "B"),
+            ("excerpt a", "A"), ("OPTION B", "B"), ("tool b", "B"), ("SOURCE a", "A"),
+            ("  Tool  A ", "A"), ("Excerpt\tB", "B")]
+REJECTED = ["A or B", "Neither", "", "C", "Excerpt C", "A.", "Tool", "ExcerptA", "Guideline excerpt A",
+            "A and B", "Tool A or Tool B", None, 1, ["A"]]
+
+
+@pytest.mark.parametrize("raw,expected", ACCEPTED)
+def test_parse_decision_accepts_selected_forms(raw, expected):
+    d = parse_decision(json.dumps({"selected_tool": raw, "confidence": 0.5}))
+    assert d["selected_tool"] == expected and d["selected_raw"] == raw
+
+
+@pytest.mark.parametrize("raw", REJECTED)
+def test_parse_decision_rejects_other_selected_values(raw):
+    assert parse_decision(json.dumps({"selected_tool": raw, "confidence": 0.5})) is None
+
+
+def test_selected_form_flows_into_the_record():
+    client = FakeClient(['{"selected_tool": "Tool A", "confidence": 0.9}'])
+    rec = execute_cell(client, SPEC, CASES["CASE_001"], "ST", CTX, sleep=lambda s: None)
+    assert rec["status"] == "ok" and rec["selected_tool"] == "A" and rec["correct"] == 0  # ST: A is the sham
+    assert rec["decision"]["selected_raw"] == "Tool A" and rec["decision"]["selected_tool"] == "A"
+    client = FakeClient(['{"selected_tool": "Neither"}', '{"selected_tool": "A or B"}'])
+    rec = execute_cell(client, SPEC, CASES["CASE_001"], "ST", CTX, sleep=lambda s: None)
+    assert rec["status"] == "non_response" and rec["selected_tool"] is None and len(rec["attempts"]) == 2

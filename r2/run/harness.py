@@ -29,6 +29,9 @@ PROVIDERS = {
 RETRY_PROMPT = "Return only the JSON object described above, with no other text."
 TRANSIENT = {"RateLimitError", "APIConnectionError", "APITimeoutError", "InternalServerError"}
 THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
+# Accepted selected_tool values (after strip, any case): "A"/"B", or "Excerpt|Option|Tool|Source A|B".
+# Anything else is not a decision (non_response). The value as sent is kept in selected_raw.
+SELECTED = re.compile(r"(?:(?:excerpt|option|tool|source)\s+)?([ab])", re.I)
 TOKEN_PARAMS = ("max_tokens", "max_completion_tokens")
 INCIDENTS = "incidents.jsonl"  # the former shared incident file; still never treated as a result file
 INCIDENTS_SUFFIX = ".incidents.jsonl"  # per model: <safe_name>.incidents.jsonl, written under the model lock
@@ -192,6 +195,14 @@ class _Breaker:
                 f"same error text {self.same}x in a row): {text}")
 
 
+def normalize_selected(value):
+    """'A' or 'B' for an accepted selected_tool value (see SELECTED), else None."""
+    if not isinstance(value, str):
+        return None
+    m = SELECTED.fullmatch(value.strip())
+    return m.group(1).upper() if m else None
+
+
 def parse_decision(text):
     if not text:
         return None
@@ -208,8 +219,9 @@ def parse_decision(text):
         except json.JSONDecodeError:
             start = text.find("{", start + 1)
             continue
-        sel = str(obj.get("selected_tool", "")).strip().upper() if isinstance(obj, dict) else ""
-        if sel in ("A", "B"):
+        sel = normalize_selected(obj.get("selected_tool")) if isinstance(obj, dict) else None
+        if sel is not None:
+            obj["selected_raw"] = obj["selected_tool"]
             obj["selected_tool"] = sel
             obj["confidence_raw"] = obj.get("confidence")
             try:
