@@ -611,6 +611,44 @@ def test_create_honors_retry_after(header, expected):
     assert sleeps == [expected]
 
 
+# ---- Step 4b N2: Retry-After capped at 900 s, non-finite or negative values fall back, every sleep logged ----
+def _http_date(seconds_from_now):
+    from datetime import datetime, timedelta, timezone
+    from email.utils import format_datetime
+    return format_datetime(datetime.now(timezone.utc) + timedelta(seconds=seconds_from_now), usegmt=True)
+
+
+@pytest.mark.parametrize("header,expected", [
+    ("899", 899.0), ("900", 900.0), ("901", 900), ("86400", 900), ("1e19", 900),
+    ("inf", 2), ("Infinity", 2), ("-inf", 2), ("nan", 2), ("1e400", 2), ("-5", 2), ("0", 2),
+])
+def test_create_caps_retry_after(header, expected):
+    sleeps = []
+    assert _create(_Seq([_rate_limited(header), "ok"]), {}, sleeps.append) == "ok"
+    assert sleeps == [expected]
+
+
+def test_create_caps_retry_after_http_date():
+    sleeps = []
+    assert _create(_Seq([_rate_limited(_http_date(7200)), _rate_limited(_http_date(-60)), "ok"]), {},
+                   sleeps.append) == "ok"
+    assert sleeps == [900, 4]  # far future → cap; past date → backoff of the second try
+
+
+def test_create_prints_a_line_before_each_sleep(capsys):
+    def sleep(seconds):
+        print(f"<slept {seconds}>")
+    _create(_Seq([_rate_limited("86400"), _fake_exc("APIConnectionError")("reset"), "ok"]),
+            {"model": "prov/m-1"}, sleep)
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 4
+    assert lines[0].startswith("RETRY prov/m-1 try 1/10: RateLimitError: slow down; sleeping 900 s")
+    assert "Retry-After 86400" in lines[0] and "capped" in lines[0]
+    assert lines[1] == "<slept 900>"
+    assert lines[2].startswith("RETRY prov/m-1 try 2/10: APIConnectionError: reset; sleeping 4 s")
+    assert lines[3] == "<slept 4>"
+
+
 @pytest.mark.parametrize("served,ok", [("prov/m-1", True), ("other-org/M-1", True), ("m-1", True),
                                        ("prov/m-1-preview", False), ("prov/m-1-FP8", False), ("prov/m", False)])
 def test_check_served_exact_after_normalization(served, ok):

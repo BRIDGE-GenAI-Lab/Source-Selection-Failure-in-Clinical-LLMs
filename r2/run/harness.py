@@ -4,6 +4,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -30,6 +31,8 @@ THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
 TOKEN_PARAMS = ("max_tokens", "max_completion_tokens")
 INCIDENTS = "incidents.jsonl"
 N_PAIRS = 500
+RETRY_TRIES = 10
+RETRY_AFTER_CAP = 900  # seconds; a longer Retry-After is slept as this, then retried
 FREEZE_TAG = "r2-analysis-plan-frozen"
 
 
@@ -215,7 +218,8 @@ def check_served(spec, served):
 
 
 def _retry_after(exc):
-    """Seconds requested by a Retry-After header on the exception's HTTP response, if any."""
+    """Seconds requested by a Retry-After header (delta-seconds or HTTP-date) on the exception's HTTP
+    response; None when absent, unparseable, non-finite or negative (the caller then uses its backoff)."""
     headers = getattr(getattr(exc, "response", None), "headers", None)
     if not headers:
         return None
@@ -223,19 +227,21 @@ def _retry_after(exc):
     if value is None:
         return None
     try:
-        return max(0.0, float(value))
+        seconds = float(value)
     except (TypeError, ValueError):
-        pass
-    try:
-        when = parsedate_to_datetime(str(value))
-    except (TypeError, ValueError):
-        return None
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
+        try:
+            when = parsedate_to_datetime(str(value))
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        seconds = (when - datetime.now(timezone.utc)).total_seconds()
+    return seconds if math.isfinite(seconds) and seconds >= 0 else None
 
 
-def _create(client, kwargs, sleep, tries=10):
+def _create(client, kwargs, sleep, tries=RETRY_TRIES):
+    """One API call with retries on transient errors: exponential backoff, or the server's Retry-After
+    when longer, capped at RETRY_AFTER_CAP. Every sleep is announced on stdout first."""
     for i in range(tries):
         try:
             return client.chat.completions.create(**kwargs)
@@ -244,7 +250,12 @@ def _create(client, kwargs, sleep, tries=10):
                 raise
             backoff = min(300, 2 * 2 ** i)
             requested = _retry_after(exc)
-            sleep(backoff if requested is None else max(requested, backoff))
+            delay = backoff if requested is None else min(RETRY_AFTER_CAP, max(requested, backoff))
+            note = ("none" if requested is None else
+                    f"{requested:g} s" + (f", capped at {RETRY_AFTER_CAP} s" if requested > RETRY_AFTER_CAP else ""))
+            print(f"RETRY {kwargs.get('model')} try {i + 1}/{tries}: {type(exc).__name__}: {str(exc)[:200]}; "
+                  f"sleeping {delay:g} s (backoff {backoff} s, Retry-After {note})", flush=True)
+            sleep(delay)
 
 
 def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=None):
