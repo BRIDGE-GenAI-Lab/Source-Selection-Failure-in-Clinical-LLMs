@@ -92,3 +92,8 @@ def test_cluster_bootstrap_mean_widens_for_clustered_data():
     lo, hi = cluster_bootstrap_mean(df, "correct")
     _, wlo, whi = wilson(int(df.correct.sum()), len(df))
     assert (hi - lo) > 3 * (whi - wlo)
+
+
+def test_wilson_empty_arm_is_nan_not_error():
+    p, lo, hi = wilson(0, 0)
+    assert np.isnan(p) and np.isnan(lo) and np.isnan(hi)

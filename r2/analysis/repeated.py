@@ -10,7 +10,7 @@ import pandas as pd
 from scipy.stats import binomtest, spearmanr
 
 from r2.analysis.stats import (CATEGORY, calibration, cluster_bootstrap_mean, cluster_bootstrap_paa, fdr,
-                               gee_logit, position_summary)
+                               gee_logit, position_summary, wilson)
 from r2.paths import DATA_V2, REPO, RUNS_V2, VERIFY_DIR
 from r2.run.harness import final_records, load_specs, results_path
 
@@ -142,19 +142,23 @@ def repeated_frame(out_dir=None, *, pairs_path=None, verify_dir=None, specs=None
     return df
 
 
-def pair_level(df):
-    """One row per (model, pair) with an ok record in both orders; the three outcomes are exclusive."""
-    if df.empty or "status" not in df:
-        return pd.DataFrame(columns=PAIR_COLS)
+def _pair_units(ok):
+    """Model-pair units with an ok record in both orders; the three outcomes are exclusive and exhaustive."""
     rows = []
-    for (model, cid), g in df[df.status == "ok"].groupby(["model", "case_id"]):
-        if len(g) != 2:
+    for (model, cid), g in ok.groupby(["model", "case_id"]):
+        if len(g) != 2 or g.sham_first.nunique() != 2:
             continue
         rows.append({"model": model, "case_id": cid,
                      "invariant_correct": int(g.correct.sum() == 2),
                      "position_driven": int(g.selected_first.nunique() == 1),
                      "wrong_both": int(g.correct.sum() == 0)})
     return pd.DataFrame(rows, columns=PAIR_COLS)
+
+
+def pair_level(df):
+    if df.empty or "status" not in df:
+        return pd.DataFrame(columns=PAIR_COLS)
+    return _pair_units(df[df.status == "ok"])
 
 
 def _ok(df):
@@ -199,18 +203,49 @@ def mcnemar(g):
     return n10, n01, float(p)
 
 
+CAL_COLS = ("ece", "mce", "brier", "auroc", "mean_conf", "accuracy")
+
+
+def calibration_table(analysis, by=None):
+    """Calibration of confidence for correctness (ANALYSIS_PLAN item 7) on rows with a confidence in [0, 1];
+    overall, or one row per level of `by`. `accuracy_conf` is the accuracy of those rows."""
+    groups = [(None, analysis)] if by is None else list(analysis.groupby(by))
+    rows = []
+    for key, g in groups:
+        conf = g.dropna(subset=["confidence"])
+        cal = calibration(conf.confidence, conf.correct) if len(conf) else {k: float("nan") for k in CAL_COLS}
+        row = {} if by is None else {by: key}
+        row.update({"n_conf": len(conf), **{("accuracy_conf" if k == "accuracy" else k): v for k, v in cal.items()}})
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _wilson_rate(flags):
+    """Wilson 95% CI for a single proportion; NaN for an empty arm."""
+    flags = pd.Series(flags, dtype=float)
+    return wilson(int(flags.sum()), len(flags))
+
+
 def per_model_table(analysis):
-    nan = float("nan")
+    """One row per model. Single proportions (accuracy with the modified excerpt first / second, primacy)
+    carry Wilson 95% CIs; position-averaged accuracy carries a case-cluster bootstrap CI (ruling 13b I6);
+    content sensitivity is the exact McNemar test (M12) with BH-FDR across models."""
     per_model = []
+    cal = calibration_table(analysis, "model").set_index("model") if len(analysis) else None
     for model, g in analysis.groupby("model"):
         s = _pooled(g)
+        sf, ss = g[g.sham_first], g[~g.sham_first]
+        s["n_sham_first"], s["n_sham_second"] = len(sf), len(ss)
+        for col, flags in (("acc_sham_first", sf.correct), ("acc_sham_second", ss.correct),
+                           ("primacy", g.selected_first)):
+            _, s[f"{col}_lo"], s[f"{col}_hi"] = _wilson_rate(flags)
         s["paa_lo"], s["paa_hi"] = cluster_bootstrap_paa(g)
         s["mcnemar_n10"], s["mcnemar_n01"], s["mcnemar_p"] = mcnemar(g)
-        conf = g.dropna(subset=["confidence"])
-        cal = calibration(conf.confidence, conf.correct) if len(conf) else {
-            k: nan for k in ("ece", "mce", "brier", "auroc", "mean_conf", "accuracy")}
-        cal = {("accuracy_conf" if k == "accuracy" else k): v for k, v in cal.items()}
-        s.update({"model": model, **cal})
+        units = _pair_units(g)
+        s["n_pair_units"] = len(units)
+        for k in PAIR_COLS[2:]:
+            s[k] = float(units[k].mean()) if len(units) else float("nan")
+        s.update({"model": model, **cal.loc[model].to_dict()})
         per_model.append(s)
     pm = pd.DataFrame(per_model)
     pm["mcnemar_p_fdr"] = float("nan")
@@ -245,23 +280,6 @@ def rate_table(analysis, col):
         lo, hi = cluster_bootstrap_mean(g.assign(failure=1 - g.correct), "failure")
         rows.append({col: key, "n": len(g), "failures": fails, "failure_rate": fails / len(g),
                      "lo": lo, "hi": hi, **{k: v for k, v in _pooled(g).items() if k != "n"}})
-    return pd.DataFrame(rows)
-
-
-CAL_COLS = ("ece", "mce", "brier", "auroc", "mean_conf", "accuracy")
-
-
-def calibration_table(analysis, by=None):
-    """Calibration of confidence for correctness (ANALYSIS_PLAN item 7) on rows with a confidence in [0, 1];
-    overall, or one row per level of `by`. `accuracy_conf` is the accuracy of those rows."""
-    groups = [(None, analysis)] if by is None else list(analysis.groupby(by))
-    rows = []
-    for key, g in groups:
-        conf = g.dropna(subset=["confidence"])
-        cal = calibration(conf.confidence, conf.correct) if len(conf) else {k: float("nan") for k in CAL_COLS}
-        row = {} if by is None else {by: key}
-        row.update({"n_conf": len(conf), **{("accuracy_conf" if k == "accuracy" else k): v for k, v in cal.items()}})
-        rows.append(row)
     return pd.DataFrame(rows)
 
 

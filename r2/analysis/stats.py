@@ -18,6 +18,8 @@ CATEGORY = {
 
 
 def wilson(k, n):
+    if n == 0:  # an empty arm (e.g. a model with no ok record in one order) has no estimate
+        return float("nan"), float("nan"), float("nan")
     lo, hi = proportion_confint(k, n, alpha=0.05, method="wilson")
     return k / n, lo, hi
 

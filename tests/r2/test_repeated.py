@@ -314,3 +314,38 @@ def test_run_writes_calibration_per_model_and_valid_json(tmp_path, monkeypatch):
         json.loads(p.read_text(), parse_constant=refuse)  # no NaN / Infinity tokens anywhere
     conc = json.loads((out / "exploratory_concordance_original.json").read_text())
     assert conc["n_models"] == 0 and conc["spearman_rho"] is None and conc["p"] is None
+
+
+# ---- per-model Wilson CIs (ruling 2026-10-05) and per-model pair-level outcomes ----
+def test_per_model_table_has_wilson_cis_for_single_proportions():
+    from r2.analysis.stats import wilson
+    df = _model_frame("m", lambda sf: not sf, n=30)
+    wrong = df.index[(df.sham_first) & (df.index % 3 == 0)]  # some wrong answers with the modified excerpt first
+    df.loc[wrong, "selected_first"] = True
+    df["correct"] = (df.selected_first != df.sham_first).astype(int)
+    row = per_model_table(df).set_index("model").loc["m"]
+    sf, ss = df[df.sham_first], df[~df.sham_first]
+    for col, k, n in (("acc_sham_first", int(sf.correct.sum()), len(sf)),
+                      ("acc_sham_second", int(ss.correct.sum()), len(ss)),
+                      ("primacy", int(df.selected_first.sum()), len(df))):
+        p, lo, hi = wilson(k, n)
+        assert abs(row[col] - p) < 1e-12 and abs(row[f"{col}_lo"] - lo) < 1e-12 and abs(row[f"{col}_hi"] - hi) < 1e-12
+    assert row.n_sham_first == len(sf) and row.n_sham_second == len(ss)
+    # the position-averaged accuracy keeps its case-cluster bootstrap CI
+    assert row.paa_lo <= row.position_averaged_accuracy <= row.paa_hi
+
+
+def test_per_model_table_wilson_empty_arm_is_nan():
+    one_arm = _model_frame("arm", lambda sf: True)
+    row = per_model_table(one_arm[one_arm.sham_first]).set_index("model").loc["arm"]
+    assert pd.isna(row.acc_sham_second) and pd.isna(row.acc_sham_second_lo) and pd.isna(row.acc_sham_second_hi)
+    assert row.acc_sham_first_lo <= row.acc_sham_first <= row.acc_sham_first_hi
+
+
+def test_per_model_table_has_pair_level_outcomes():
+    pos = per_model_table(_model_frame("pos", lambda sf: True, n=10)).set_index("model").loc["pos"]
+    assert pos.n_pair_units == 10 and pos.position_driven == 1 and pos.invariant_correct == 0 and pos.wrong_both == 0
+    good = per_model_table(_model_frame("good", lambda sf: not sf, n=10)).set_index("model").loc["good"]
+    assert good.invariant_correct == 1 and good.position_driven == 0
+    rev = per_model_table(_model_frame("rev", lambda sf: sf, n=10)).set_index("model").loc["rev"]
+    assert rev.wrong_both == 1
