@@ -68,7 +68,7 @@ batch files (500cases.json, + 75-case batch, not released)
 ```
 
 The 510 -> 500 reduction removed the last ten cases by identifier (original CASE_566-575); no
-content criterion was applied. `data/500cases.json` holds five batch objects, not four. The
+content criterion was applied. `data/500cases.json` holds five batch objects (`Batch5` nested inside `Batch4`). The
 75-case batch is not in this repository.
 
 ## 4. Reproduce the audit
@@ -87,14 +87,15 @@ python -m r2.analysis.original_corrected # reanalysis -> analysis_original/
 ## 5. Reproduce the repeated experiment
 
 Results will be added after the run. The commands below are the pipeline; API keys are read from
-`.env` or the environment (copy `.env.example`; never commit `.env`).
+`.env` or the environment (copy `.env.example`, which lists `OPENAI_API_KEY`, `TOGETHER_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`; never commit `.env`).
 
 ```bash
 python -m r2.stimuli.build_v2            # corrected stimuli -> data/v2/pairs_v2.json (strict mode)
 python -m r2.verify.build_packets round1 # physician review forms -> verification/
 python -m r2.verify.score_review score   # agreement, flags, exclusions (after both reviews)
 python -m r2.verify.score_review consensus
-# freeze: the analysis plan (docs/r2/ANALYSIS_PLAN.md) is tagged r2-analysis-plan-frozen before any main-run call
+# freeze: the analysis plan (docs/r2/ANALYSIS_PLAN.md, not yet written; created before the repeated
+# experiment) is tagged r2-analysis-plan-frozen (not yet created) before any main-run call
 python -m r2.run.probe_models            # is each model served, and under which identifier
 python -m r2.run.harness --pilot --models all --limit 10 --out "$R2_RUNS_V2/pilot"
 python -m r2.run.harness --models all --out "$R2_RUNS_V2/main"   # logs every call
@@ -103,7 +104,8 @@ python -m r2.analysis.repeated           # pre-specified analyses -> analysis_re
 ```
 
 `R2_RUNS_V2` defaults to `/Volumes/Lexar/LLM_Tool_use/r2_runs`. Only analyses written into
-`docs/r2/ANALYSIS_PLAN.md` before the freeze tag are called pre-specified; the plan was written
+`docs/r2/ANALYSIS_PLAN.md` (not yet written; created before the repeated experiment) before the
+freeze tag `r2-analysis-plan-frozen` (not yet created) are called pre-specified; the plan was written
 after the original results were known. Run `python -m pytest tests/r2 -q` for the test suite.
 
 ## 6. Mapping a case to its input and its result

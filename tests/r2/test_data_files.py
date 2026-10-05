@@ -11,6 +11,13 @@ PENDING = ["analysis_repeated/", "r2_runs/", "data/v2/results_repeated.csv",
            "verification/excluded_pairs.json"]
 ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|(.*)\|\s*$")
 SHA = re.compile(r"`([0-9a-f]{64})`")
+SHA_CELL = re.compile(r"`([0-9a-f]{64})`\s*$")
+
+
+def _sha_cell(rest):
+    """The dedicated SHA-256 cell: the last cell of the row, not a hash quoted in the prose."""
+    m = SHA_CELL.search(rest.rstrip())
+    return m.group(1) if m else None
 
 
 def _rows():
@@ -38,10 +45,10 @@ def test_listed_sha256_matches_file():
     bad = []
     n = 0
     for path, rest in _rows().items():
-        m = SHA.search(rest)
-        if m:
+        sha = _sha_cell(rest)
+        if sha:
             n += 1
-            if hashlib.sha256((REPO / path).read_bytes()).hexdigest() != m.group(1):
+            if hashlib.sha256((REPO / path).read_bytes()).hexdigest() != sha:
                 bad.append(path)
     assert n == len(_tracked())
     assert not bad, f"SHA mismatch: {bad}"
@@ -50,7 +57,7 @@ def test_listed_sha256_matches_file():
 def test_every_json_and_csv_input_has_a_sha():
     rows = _rows()
     nosha = [p for p in _tracked() if p.endswith((".json", ".csv", ".jsonl"))
-             and not SHA.search(rows.get(p, ""))]
+             and not _sha_cell(rows.get(p, ""))]
     assert not nosha, nosha
 
 
@@ -77,3 +84,13 @@ def test_legacy_index_covers_every_script():
                          text=True, check=True).stdout
     missing = [p for p in out.split("\0") if p.endswith(".py") and f"`{p}`" not in text]
     assert not missing, missing
+
+
+def test_sha_is_taken_from_the_last_cell_not_a_hash_quoted_in_the_role():
+    quoted = "a" * 64
+    real = "b" * 64
+    line = f"| `x/y.json` | script; commit abc1234 | 2026-10-05 | quotes `{quoted}` in prose | audit | `{real}` |"
+    m = ROW.match(line)
+    assert m and m.group(1) == "x/y.json"
+    assert _sha_cell(m.group(2)) == real
+    assert SHA.search(m.group(2)).group(1) == quoted  # the old first-match rule would pick this one

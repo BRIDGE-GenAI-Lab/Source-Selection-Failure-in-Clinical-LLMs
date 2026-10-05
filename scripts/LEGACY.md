@@ -8,8 +8,8 @@ Runner profiles (`r2/profiles.py`): `openai_fc` (4 models, `src/runner.py`), `ge
 
 ## Case and tool construction
 
-- `scripts/map_cases.py`: keyword-maps cases to 8 guideline domains and writes `data/case_assignments.json` (2026-01-03). Fed the earlier case file only. No reported number.
-- `scripts/extract_pdfs.py`: extracts text from the guideline PDFs for the tool excerpts. No reported number.
+- `scripts/map_cases.py`: keyword-maps cases to 8 guideline domains and writes `data/case_assignments.json` (2026-01-03). Fed the earlier case file only. No reported number traced to it.
+- `scripts/extract_pdfs.py`: extracts text from the guideline PDFs for the tool excerpts. No reported number traced to it.
 - `scripts/generate_tools.py`: builds the authentic (T) and modified (S) tools, the sham-type assignment and `data/tool_audit_log.json`; produced the as-run case file. Defined the stimuli behind every number. Its modification log claims more than the files show (`audit/pair_audit.csv`).
 
 ## Original runners (kept unchanged)
@@ -19,10 +19,10 @@ Runner profiles (`r2/profiles.py`): `openai_fc` (4 models, `src/runner.py`), `ge
 - `scripts/run_deepseek_experiment.py`: DeepSeek chat runner. Profile `deepseek_chat_inline7`. Produced deepseek-chat's results.
 - `scripts/run_deepseek_reasoner.py`: DeepSeek reasoner runner. Profile `deepseek_reasoner_inline7`. Produced deepseek-reasoner's results.
 - `scripts/run_together_experiment.py`: Together.ai runner. Profile `together_inline6`. Produced 14 models' results.
-- `scripts/run_groq_experiment.py`: Groq runner. No canonical model used it. No reported number.
-- `scripts/run_opensource_experiment.py`: local HuggingFace runner. No canonical model used it. No reported number.
-- `scripts/run_opensource_mps.py`: local Apple-silicon runner (small Qwen2.5 models). No canonical model used it. No reported number.
-- `scripts/score_and_report.py`: command line scoring and report from one run directory (`src/scoring.py`, `src/report.py`). Per-run scoring only. No reported R1 aggregate depends on it.
+- `scripts/run_groq_experiment.py`: Groq runner. No canonical model used it. No reported number traced to it.
+- `scripts/run_opensource_experiment.py`: local HuggingFace runner. No canonical model used it. No reported number traced to it.
+- `scripts/run_opensource_mps.py`: local Apple-silicon runner (small Qwen2.5 models). No canonical model used it. No reported number traced to it.
+- `scripts/score_and_report.py`: command line scoring and report from one run directory (`src/scoring.py`, `src/report.py`). Per-run scoring only. No reported number traced to it.
 
 ## R1 statistics (all-pairs; superseded by `analysis_original/`)
 
@@ -35,8 +35,8 @@ Runner profiles (`r2/profiles.py`): `openai_fc` (4 models, `src/runner.py`), `ge
 - `scripts/analysis/cluster_regression.py`: cluster-aware primary regression (table S11). Yes.
 - `scripts/analysis/regen_all_figures.py`: regenerates R1 Figures 2-4. Figures only.
 - `scripts/analysis/fig1_schematic.py`: R1 Figure 1 schematic. Figure only.
-- `scripts/analysis/preflight_edit.py`: R1 manuscript, supplement and response text edits. No numbers computed.
-- `scripts/calc_overall_pvalue.py`: overall p-value from the raw run directories (exploratory scratch). No reported number traced.
+- `scripts/analysis/preflight_edit.py`: R1 manuscript, supplement and response text edits. No numbers computed (none traced).
+- `scripts/calc_overall_pvalue.py`: overall p-value from the raw run directories (exploratory scratch). No reported number traced to it.
 - `scripts/calc_position_stats_10500.py`: aggregate position-bias statistics for the 21 models (R1 appendix). Yes, R1 appendix.
 - `scripts/compute_10500_stats.py`: statistics over the 10,500 records (R1 appendix). Yes, R1 appendix.
 - `scripts/compute_appendix_stats.py`: writes `appendix_stats_10500.json`, the input of the R1 appendix tables. Yes, R1 appendix.

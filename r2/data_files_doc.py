@@ -21,7 +21,7 @@ ORIG = "original experiment"
 RULES = [
     (r"data/500cases\.json$", "Gemini 3 Pro in Google AI Studio (copy-paste of the generator output; no script); saved 2026-01-03 12:20",
      "legacy, not used by any run directly",
-     "Raw vignette batches. The file holds a list of four objects, but there are five dataset headers: `Batch5` (CASE_401-500) is nested inside `Batch4`'s `cases` array after its 35th case. `generated_utc` stamps: 2025-05-15T14:30:00Z, 14:35, 14:40, 14:45 (Batch4, CASE_301-335 only), 14:50 (Batch5). These stamps were written by the generator inside the JSON and are not real generation times. CASE_336-400 never existed. CASE_335 is truncated (9 of 15 fields, no clinical question). Input to `scripts/map_cases.py`"),
+     "Raw vignette batches. The file holds five batch objects (`Batch5` nested inside `Batch4`): four are top-level list items and `Batch5` (CASE_401-500) sits in `Batch4`'s `cases` array after its 35th case. `generated_utc` stamps: 2025-05-15T14:30:00Z, 14:35, 14:40, 14:45 (Batch4, CASE_301-335 only), 14:50 (Batch5). These stamps were written by the generator inside the JSON and are not real generation times. CASE_336-400 never existed. CASE_335 is truncated (9 of 15 fields, no clinical question). Input to `scripts/map_cases.py`"),
     (r"data/500cases_merged\.json$", "unrecorded merge (no script on disk); `generated_utc` 2026-01-03T20:29:39Z",
      "legacy, not used by any run directly",
      "510 cases: the five batches above plus the 75-case batch (CASE_501-575, `Batch_Final_75`, which is not in this repository). All cases are field-identical to the batch files"),
