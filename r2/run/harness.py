@@ -11,6 +11,7 @@ import time
 from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 from r2.paths import DATA_V2, REPO, RUNS_V2, VERIFY_DIR
@@ -168,11 +169,16 @@ def parse_decision(text):
         sel = str(obj.get("selected_tool", "")).strip().upper() if isinstance(obj, dict) else ""
         if sel in ("A", "B"):
             obj["selected_tool"] = sel
+            obj["confidence_raw"] = obj.get("confidence")
             try:
-                obj["confidence"] = min(max(float(obj.get("confidence")), 0.0), 1.0)
+                conf = float(obj["confidence_raw"])
             except (TypeError, ValueError):
-                obj["confidence"] = None
-            if not isinstance(obj.get("differences_found"), list):
+                conf = None
+            obj["confidence"] = conf if conf is not None and 0.0 <= conf <= 1.0 else None  # no rescaling
+            diffs = obj.get("differences_found")
+            if isinstance(diffs, str):
+                obj["differences_found"] = [diffs] if diffs.strip() else []
+            elif not isinstance(diffs, list):
                 obj["differences_found"] = []
             return obj
         start = text.find("{", start + 1)
@@ -184,22 +190,47 @@ def _norm(model):
 
 
 def check_served(spec, served):
+    """Exact match after dropping any org/ prefix and lower-casing; `served_prefix` in the spec is an
+    explicit opt-in for a different expected served identifier."""
     expected = _norm(spec.get("served_prefix") or spec["model_id"])
-    if not _norm(served).startswith(expected):
+    if _norm(served) != expected:
         raise ModelMismatch(f"requested {spec['model_id']!r}, provider served {served!r}")
 
 
-def _create(client, kwargs, sleep, tries=6):
+def _retry_after(exc):
+    """Seconds requested by a Retry-After header on the exception's HTTP response, if any."""
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if not headers:
+        return None
+    value = headers.get("retry-after") or headers.get("Retry-After")
+    if value is None:
+        return None
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        pass
+    try:
+        when = parsedate_to_datetime(str(value))
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
+
+
+def _create(client, kwargs, sleep, tries=10):
     for i in range(tries):
         try:
             return client.chat.completions.create(**kwargs)
         except Exception as exc:
             if type(exc).__name__ not in TRANSIENT or i == tries - 1:
                 raise
-            sleep(min(60, 2 * 2 ** i))
+            backoff = min(300, 2 * 2 ** i)
+            requested = _retry_after(exc)
+            sleep(backoff if requested is None else max(requested, backoff))
 
 
-def execute_cell(client, spec, case, order, context, sleep=time.sleep):
+def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=None):
     msgs = render_messages(case, order)
     messages = [{"role": "system", "content": msgs["system"]}, {"role": "user", "content": msgs["user"]}]
     attempts, decision, error = [], None, None
@@ -220,7 +251,15 @@ def execute_cell(client, spec, case, order, context, sleep=time.sleep):
                 break
             raise
         latency_ms = (time.time() - t0) * 1000
-        check_served(spec, resp.get("model"))
+        try:
+            check_served(spec, resp.get("model"))
+        except ModelMismatch as exc:
+            if out_dir is not None:  # the paid response is the drift evidence: keep it before stopping
+                _log_incident(out_dir, {"kind": "model_mismatch", "model_id": spec["model_id"],
+                                        "original_name": spec["original_name"], "case_id": case["case_id"],
+                                        "order": order, "error": str(exc), "request": kwargs, "response": resp,
+                                        "latency_ms": latency_ms, **context})
+            raise
         message = ((resp.get("choices") or [{}])[0].get("message")) or {}
         content = message.get("content") or ""
         attempts.append({"request": kwargs, "response": resp, "latency_ms": latency_ms})
@@ -356,7 +395,8 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
                 for order in ORDERS:
                     if (cid, order) in done:
                         continue
-                    rec = execute_cell(client, spec, cases[cid], order, context, sleep=sleep)
+                    rec = execute_cell(client, spec, cases[cid], order, context, sleep=sleep,
+                                       out_dir=out_dir)
                     fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
                     fh.flush()
                     os.fsync(fh.fileno())
@@ -365,19 +405,34 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
 
 
 def _clean_commit():
-    dirty = subprocess.run(["git", "status", "--porcelain", "r2", "data/v2"], cwd=REPO,
-                           capture_output=True, text=True).stdout.strip()
-    if dirty:
-        raise SystemExit(f"commit r2/ and data/v2/ before running:\n{dirty}")
-    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
+    status = subprocess.run(["git", "status", "--porcelain", "r2", "data/v2"], cwd=REPO,
+                            capture_output=True, text=True)
+    if status.returncode != 0:
+        raise SystemExit(f"git status failed (rc {status.returncode}); cannot record harness_commit")
+    if status.stdout.strip():
+        raise SystemExit(f"commit r2/ and data/v2/ before running:\n{status.stdout.strip()}")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True)
+    sha = head.stdout.strip()
+    if head.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise SystemExit(f"git rev-parse HEAD failed (rc {head.returncode}, output {sha!r}); "
+                         "cannot record harness_commit")
+    return sha
 
 
 def _select(specs, selector):
     if selector == "all":
         return specs
     if selector.startswith("provider:"):
-        return [s for s in specs if s["provider"] == selector.split(":", 1)[1]]
-    names = set(selector.split(","))
+        provider = selector.split(":", 1)[1]
+        if provider not in {s["provider"] for s in specs}:
+            raise SystemExit(f"--models: unknown provider {provider!r}; "
+                             f"known: {sorted({s['provider'] for s in specs})}")
+        return [s for s in specs if s["provider"] == provider]
+    names = {n.strip() for n in selector.split(",") if n.strip()}
+    unknown = sorted(names - {s["original_name"] for s in specs})
+    if unknown:
+        raise SystemExit(f"--models: unknown model name(s) {unknown}; "
+                         "use original_name values from models_v2.json")
     return [s for s in specs if s["original_name"] in names]
 
 

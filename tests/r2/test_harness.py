@@ -219,11 +219,17 @@ def test_create_retries_then_succeeds():
     assert out == "ok" and sleeps == [2, 4]
 
 
-def test_create_gives_up_after_six():
+def test_create_six_failures_then_success_on_seventh_call():
+    sleeps = []
+    out = _create(_Seq([_fake_exc("RateLimitError")("z")] * 6 + ["ok"]), {}, sleeps.append)
+    assert out == "ok" and sleeps == [2, 4, 8, 16, 32, 64]
+
+
+def test_create_gives_up_after_ten():
     sleeps = []
     with pytest.raises(Exception, match="z"):
-        _create(_Seq([_fake_exc("RateLimitError")("z")] * 6), {}, sleeps.append)
-    assert len(sleeps) == 5
+        _create(_Seq([_fake_exc("RateLimitError")("z")] * 10), {}, sleeps.append)
+    assert sleeps == [2, 4, 8, 16, 32, 64, 128, 256, 300]
 
 
 def test_create_non_transient_raises_immediately():
@@ -480,3 +486,102 @@ def test_pilot_refuses_main_out_dir(no_side_effects):
     from r2.paths import RUNS_V2
     with pytest.raises(SystemExit, match="pilot"):
         harness.main(["--pilot", "--out", str(RUNS_V2 / "main")])
+
+
+# ---- M1-M5, M17 ----
+def _rate_limited(retry_after):
+    exc = _fake_exc("RateLimitError")("slow down")
+    exc.response = type("R", (), {"headers": {"retry-after": retry_after}})()
+    return exc
+
+
+@pytest.mark.parametrize("header,expected", [("30", 30.0), ("1", 2), ("not-a-number", 2)])
+def test_create_honors_retry_after(header, expected):
+    sleeps = []
+    assert _create(_Seq([_rate_limited(header), "ok"]), {}, sleeps.append) == "ok"
+    assert sleeps == [expected]
+
+
+@pytest.mark.parametrize("served,ok", [("prov/m-1", True), ("other-org/M-1", True), ("m-1", True),
+                                       ("prov/m-1-preview", False), ("prov/m-1-FP8", False), ("prov/m", False)])
+def test_check_served_exact_after_normalization(served, ok):
+    from r2.run.harness import check_served
+    if ok:
+        check_served(SPEC, served)
+    else:
+        with pytest.raises(ModelMismatch):
+            check_served(SPEC, served)
+
+
+def test_check_served_prefix_opt_in():
+    from r2.run.harness import check_served
+    spec = {**SPEC, "model_id": "gemini-2.5-flash-lite", "served_prefix": "models/gemini-2.5-flash-lite"}
+    check_served(spec, "gemini-2.5-flash-lite")
+    with pytest.raises(ModelMismatch):
+        check_served(spec, "gemini-2.5-flash-lite-preview-06-17")
+
+
+def test_model_mismatch_response_logged_to_incidents(tmp_path):
+    with pytest.raises(ModelMismatch):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD], served="prov/m-1-preview"), CTX, sleep=lambda s: None)
+    (inc,) = [json.loads(l) for l in (tmp_path / "incidents.jsonl").read_text().splitlines()]
+    assert inc["kind"] == "model_mismatch" and inc["response"]["model"] == "prov/m-1-preview"
+    assert inc["case_id"] == "CASE_001" and inc["request"]["model"] == "prov/m-1"
+    assert not results_path(SPEC, tmp_path).read_text()
+
+
+class _Proc:
+    def __init__(self, rc, out):
+        self.returncode, self.stdout = rc, out
+
+
+@pytest.mark.parametrize("status,head,ok", [((0, ""), (0, "a" * 40 + "\n"), True),
+                                            ((128, ""), (0, "a" * 40), False),
+                                            ((0, ""), (128, ""), False),
+                                            ((0, ""), (0, "HEAD"), False),
+                                            ((0, " M r2/x.py"), (0, "a" * 40), False)])
+def test_clean_commit_requires_git_success_and_sha(monkeypatch, status, head, ok):
+    def fake_run(cmd, **kw):
+        return _Proc(*status) if "status" in cmd else _Proc(*head)
+    monkeypatch.setattr(harness.subprocess, "run", fake_run)
+    if ok:
+        assert harness._clean_commit() == "a" * 40
+    else:
+        with pytest.raises(SystemExit):
+            harness._clean_commit()
+
+
+def test_parse_decision_keeps_raw_confidence():
+    d = parse_decision('{"selected_tool": "A", "confidence": 85}')
+    assert d["confidence"] is None and d["confidence_raw"] == 85
+    d = parse_decision('{"selected_tool": "A", "confidence": "0.7"}')
+    assert d["confidence"] == 0.7 and d["confidence_raw"] == "0.7"
+    d = parse_decision('{"selected_tool": "A", "confidence": -0.1}')
+    assert d["confidence"] is None and d["confidence_raw"] == -0.1
+    d = parse_decision('{"selected_tool": "A", "confidence": 1}')
+    assert d["confidence"] == 1.0
+    d = parse_decision('{"selected_tool": "A"}')
+    assert d["confidence"] is None and d["confidence_raw"] is None
+
+
+def test_parse_decision_wraps_string_differences():
+    d = parse_decision('{"selected_tool": "B", "differences_found": "B cites 2010, A cites 2019"}')
+    assert d["differences_found"] == ["B cites 2010, A cites 2019"]
+    assert parse_decision('{"selected_tool": "B", "differences_found": ["x"]}')["differences_found"] == ["x"]
+    assert parse_decision('{"selected_tool": "B", "differences_found": null}')["differences_found"] == []
+
+
+SPECS = [{"original_name": "a", "provider": "openai", "model_id": "a"},
+         {"original_name": "b", "provider": "together", "model_id": "b"}]
+
+
+def test_select_known_names_and_providers():
+    assert harness._select(SPECS, "all") == SPECS
+    assert harness._select(SPECS, "provider:together") == SPECS[1:]
+    assert harness._select(SPECS, "a,b") == SPECS
+
+
+@pytest.mark.parametrize("selector,name", [("provider:gemini", "gemini"), ("a,zz", "zz")])
+def test_select_rejects_unknown(selector, name):
+    with pytest.raises(SystemExit, match=name):
+        harness._select(SPECS, selector)
