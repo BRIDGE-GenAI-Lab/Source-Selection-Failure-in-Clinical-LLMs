@@ -62,7 +62,7 @@ def test_identical_set_is_167_cases_for_every_model(rows):
 
 def test_no_runner_shows_assessment_context_or_case_flags(rows):
     cases, _ = load_original_cases()
-    for r in rows[::7]:
+    for r in rows:
         c = cases[r["case_id"]]
         ctx = (c.get("assessment_context") or "").strip()
         if ctx:
@@ -70,3 +70,11 @@ def test_no_runner_shows_assessment_context_or_case_flags(rows):
         for flag in c.get("case_flags") or []:
             if "_" in flag:
                 assert flag not in r["user"]
+
+
+def test_verification_scope_present(rows):
+    from r2.audit.original_inputs import SCOPE_OPENAI_FC
+    assert all(r["verification_scope"] for r in rows)
+    for r in rows:
+        assert (r["verification_scope"] == SCOPE_OPENAI_FC) == (r["profile"] == "openai_fc")
+    assert SCOPE_OPENAI_FC.startswith("excerpt_text sha256 (logged by src/runner.py)")

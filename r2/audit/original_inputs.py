@@ -21,6 +21,10 @@ MESSAGE_VARIABLE = {
     "deepseek_reasoner_inline7": "user_message",
     "together_inline6": "user_message",
 }
+SCOPE_OPENAI_FC = ("excerpt_text sha256 (logged by src/runner.py); metadata, system, user, tools "
+                   "reconstructed from original code, not logged")
+SCOPE_INLINE = ("full tool payload dict sha256 (logged) + first 500 chars of the message (logged raw "
+                "prompt); remainder reconstructed from the runner's own f-string")
 _MODULES = {}
 _FSTRINGS = {}
 
@@ -158,6 +162,7 @@ def build_all(write=True):
             "sha256_logged": logged_hashes, "sha256_reconstructed": rec["sha256"],
             "hash_status": status, "prompt_prefix_verified": prefix_ok,
             "identical_except_label": a == b,
+            "verification_scope": SCOPE_OPENAI_FC if profile == "openai_fc" else SCOPE_INLINE,
         })
     if write:
         _write(rows)
@@ -171,6 +176,7 @@ def _write(rows):
             for row in rows:
                 gz.write((json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8"))
     per = defaultdict(Counter)
+    scope = {row["profile"]: row["verification_scope"] for row in rows}
     for row in rows:
         c = per[(row["model"], row["profile"], row["run_dir"])]
         c["n"] += 1
@@ -181,10 +187,12 @@ def _write(rows):
     with open(AUDIT_DIR / "original_inputs_verification.csv", "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["model", "profile", "run_dir", "n", "verified", "no_logged_hash", "MISMATCH",
-                    "prompt_prefix_verified", "prompt_prefix_failed", "identical_pairs"])
+                    "prompt_prefix_verified", "prompt_prefix_failed", "identical_pairs",
+                    "verification_scope"])
         for (model, profile, run_dir), c in sorted(per.items()):
             w.writerow([model, profile, run_dir, c["n"], c["verified"], c["no_logged_hash"],
-                        c["MISMATCH"], c["prefix_true"], c["prefix_false"], c["identical_pairs"]])
+                        c["MISMATCH"], c["prefix_true"], c["prefix_false"], c["identical_pairs"],
+                            scope[profile]])
 
 
 if __name__ == "__main__":
