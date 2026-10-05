@@ -5,8 +5,8 @@ from collections import Counter
 from pathlib import Path
 
 from r2.paths import DATA_V2, REPO, RUNS_V2
-from r2.run.harness import (ORDERS, CorruptResults, final_records, is_error_only, is_unresolved, iter_result_files, load_specs,
-                            load_v2_cases, read_records, results_path)
+from r2.run.harness import (ORDERS, CorruptResults, final_records, is_error_only, is_unresolved,
+                            iter_result_files, load_specs, load_v2_cases, read_records, results_path)
 
 
 def _cell_counts(records):
@@ -137,7 +137,8 @@ def main():
             print(f"UNRESOLVED {r['model']}: {r['unresolved_errors']} cells end in an error not yet re-attempted "
                   f"(resume the model): {r['unresolved_cells']}")
     if bad:
-        raise SystemExit(f"{len(bad)} models incomplete, duplicated, with invalid records or with unresolved errors")
+        raise SystemExit(f"{len(bad)} models incomplete, duplicated, with invalid records "
+                         "or with unresolved errors")
     print("exported", export_flat(out_dir, specs))
 
 
