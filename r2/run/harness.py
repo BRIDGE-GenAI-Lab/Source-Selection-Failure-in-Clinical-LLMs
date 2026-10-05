@@ -56,7 +56,10 @@ class RunLocked(RuntimeError):
 CELL_ERRORS = {"BadRequestError", "UnprocessableEntityError"}
 MODEL_ERRORS = {"AuthenticationError", "PermissionDeniedError", "NotFoundError"}
 # Circuit breaker: stop a model after this many consecutive cell-error records, or when the same
-# error text (first ERROR_TEXT_CHARS characters) repeats this many times in a row among error records.
+# error text (first ERROR_TEXT_CHARS characters) repeats this many times among error records with no ok
+# record in between. Only fresh cells count; a re-attempted cell (one that already has an error-only
+# record) is invisible to the breaker. A re-attempt that fails with the error text of an earlier
+# error-only record for the same cell is final: it is written with "persistent_error": true.
 BREAKER_LIMIT = 3
 ERROR_TEXT_CHARS = 200
 
@@ -116,8 +119,18 @@ def iter_result_files(out_dir):
 
 
 def is_error_only(r):
-    """An API error before any response was received: not a completed cell, re-attempted on resume."""
+    """An API error before any response was received. Not a completed cell unless it is marked
+    persistent_error (see is_done); otherwise re-attempted on resume."""
     return "error" in r and not r.get("attempts")
+
+
+def is_done(r):
+    """A record that completes its cell: it carries a response, or it is a final persistent error."""
+    return not is_error_only(r) or r.get("persistent_error") is True
+
+
+def _error_text(r):
+    return r["error"][:ERROR_TEXT_CHARS]
 
 
 def read_records(path):
@@ -137,11 +150,15 @@ class _Breaker:
         self.spec, self.consecutive, self.text, self.same = spec, 0, None, 0
 
     def observe(self, rec):
+        """Called for fresh cells only. Any record without an error resets the consecutive count; an ok
+        record also resets the same-text count."""
+        if rec.get("status") == "ok":
+            self.text, self.same = None, 0
         if "error" not in rec:
             self.consecutive = 0
             return
         self.consecutive += 1
-        text = rec["error"][:ERROR_TEXT_CHARS]
+        text = _error_text(rec)
         self.same = self.same + 1 if text == self.text else 1
         self.text = text
         if self.consecutive >= BREAKER_LIMIT or self.same >= BREAKER_LIMIT:
@@ -324,9 +341,11 @@ def _spec_mismatches(r, spec, msgs):
 
 
 def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
-    done = set()
+    """(done, error_texts). done: cells with a completing record (is_done). error_texts: per cell, the
+    first ERROR_TEXT_CHARS characters of every error-only record, for the persistent-error rule."""
+    done, error_texts = set(), {}
     if not path.exists():
-        return done
+        return done, error_texts
     lines = path.read_bytes().split(b"\n")
     if lines and lines[-1] == b"":
         lines.pop()
@@ -341,7 +360,7 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
             if i == len(lines) - 1:
                 print(f"WARNING: dropped torn final line ({len(line)} bytes) in {path}", flush=True)
                 os.truncate(path, start)  # keeps every earlier byte; nothing is rewritten
-                return done
+                return done, error_texts
             raise CorruptResults(f"{path}: unparseable line {i + 1}")
         key = (r["case_id"], r["order"])
         msgs = render_messages(cases[key[0]], key[1]) if key[0] in cases else None
@@ -359,9 +378,11 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
             _log_incident(out_dir, {"kind": "accepted_spec_change", "model_id": spec["model_id"],
                                     "file": path.name, "case_id": key[0], "order": key[1], "field": field,
                                     "recorded": recorded, "current": current})
-        if not is_error_only(r):
+        if is_done(r):
             done.add(key)
-    return done
+        else:
+            error_texts.setdefault(key, set()).add(_error_text(r))
+    return done, error_texts
 
 
 @contextmanager
@@ -385,7 +406,7 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
     out_dir.mkdir(parents=True, exist_ok=True)
     path = results_path(spec, out_dir)
     with _model_lock(out_dir, spec):
-        done = _done(path, cases, context, spec, out_dir, accept_spec_change)
+        done, error_texts = _done(path, cases, context, spec, out_dir, accept_spec_change)
         ids = sorted(cases)[:limit] if limit else sorted(cases)
         if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
             with open(path, "a", encoding="utf-8") as fh:
@@ -398,10 +419,16 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
                         continue
                     rec = execute_cell(client, spec, cases[cid], order, context, sleep=sleep,
                                        out_dir=out_dir)
+                    earlier = error_texts.get((cid, order))
+                    if earlier and is_error_only(rec) and _error_text(rec) in earlier:
+                        rec["persistent_error"] = True
+                        print(f"FINAL {spec['original_name']} {cid} {order}: same error as an earlier "
+                              f"attempt, recorded as persistent_error: {_error_text(rec)}", flush=True)
                     fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
                     fh.flush()
                     os.fsync(fh.fileno())
-                    breaker.observe(rec)
+                    if not earlier:  # re-attempted cells count toward neither breaker rule
+                        breaker.observe(rec)
     return path
 
 

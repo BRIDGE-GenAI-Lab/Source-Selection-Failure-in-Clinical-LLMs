@@ -271,11 +271,19 @@ def test_breaker_trips_after_three_consecutive_cell_errors(tmp_path):
     assert len(client.calls) == 3
 
 
-def test_breaker_trips_on_same_error_text_three_times_in_a_row(tmp_path):
+def test_same_text_counter_resets_on_ok_record(tmp_path):
     client = ScriptedClient([_bad("same"), GOOD, _bad("same"), GOOD, _bad("same"), GOOD])
-    with pytest.raises(ModelUnavailable):
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(_recs(results_path(SPEC, tmp_path))) == 6
+
+
+def test_same_text_counter_not_reset_by_non_response_without_error(tmp_path):
+    # A parse failure (non_response, no error key) resets the consecutive rule but not the same-text rule.
+    client = ScriptedClient([_bad("same"), "nope", "nope", _bad("same"), "nope", "nope", _bad("same"), GOOD])
+    with pytest.raises(ModelUnavailable, match="same error text 3x"):
         run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
-    assert len(_recs(results_path(SPEC, tmp_path))) == 5
+    recs = _recs(results_path(SPEC, tmp_path))
+    assert len(recs) == 5 and [("error" in r) for r in recs] == [True, False, True, False, True]
 
 
 def test_breaker_not_tripped_by_distinct_interleaved_errors(tmp_path):
@@ -297,6 +305,107 @@ def test_error_only_record_is_reattempted_on_resume(tmp_path):
     client3 = FakeClient([])
     run_model(SPEC, SUBSET, tmp_path, client3, CTX, sleep=lambda s: None)
     assert client3.calls == []
+
+
+# ---- Step 4b N1: a repeated identical cell error is final; re-attempted cells are outside the breaker ----
+SUBSET6 = {k: CASES[k] for k in ("CASE_001", "CASE_002", "CASE_003", "CASE_004", "CASE_005", "CASE_006")}
+
+
+class CellClient(FakeClient):
+    """Deterministic per cell: a cell in `failing` always raises BadRequestError(text), the rest reply GOOD."""
+
+    def __init__(self, cases, failing, text="Invalid prompt: your prompt was flagged"):
+        super().__init__([])
+        self.cell_of = {render_messages(c, o)["user"]: (cid, o) for cid, c in cases.items() for o in ("TS", "ST")}
+        self.failing, self.text = set(failing), text
+
+    def create(self, **kw):
+        self.calls.append(kw)
+        if self.cell_of[kw["messages"][1]["content"]] in self.failing:
+            raise _bad(self.text)
+        return _Resp(GOOD, kw["model"])
+
+
+def _run_tolerant(*args, **kw):
+    """One harness invocation of run_model; a breaker stop ends the invocation, as STOPPED does in main()."""
+    try:
+        run_model(*args, sleep=lambda s: None, **kw)
+    except ModelUnavailable:
+        pass
+
+
+def test_persistent_identical_errors_do_not_deadlock_the_model(tmp_path):
+    from r2.run.check_complete import check
+    from r2.run.harness import final_records
+    failing = {("CASE_001", "ST"), ("CASE_003", "ST"), ("CASE_005", "ST")}  # 3 non-adjacent of 12 cells
+    for _ in range(2):  # a first run plus one resume
+        _run_tolerant(SPEC, SUBSET6, tmp_path, CellClient(SUBSET6, failing), CTX)
+    fin = final_records(results_path(SPEC, tmp_path))
+    assert len(fin) == 12
+    assert sum(r["status"] == "ok" for r in fin) == 9
+    persistent = [r for r in fin if r.get("persistent_error")]
+    assert {(r["case_id"], r["order"]) for r in persistent} == failing
+    assert all(r["status"] == "non_response" and r["persistent_error"] is True and r["attempts"] == []
+               for r in persistent)
+    client3 = CellClient(SUBSET6, failing)
+    run_model(SPEC, SUBSET6, tmp_path, client3, CTX, sleep=lambda s: None)
+    assert client3.calls == []  # a cell whose last record is persistent_error is done
+    (row,) = check(tmp_path, [SPEC], sorted(SUBSET6))
+    assert (row["cells"], row["missing"], row["duplicates"]) == (12, 0, 0)
+    assert (row["ok"], row["non_response"], row["errors"], row["superseded_errors"]) == (9, 3, 3, 3)
+
+
+@pytest.mark.parametrize("first,second,final", [
+    ("x", "x", True),
+    ("x", "y", False),
+    ("e" * 300 + "1", "e" * 300 + "2", True),  # compared on the first 200 characters of the error text
+], ids=["same-text", "different-text", "same-first-200-chars"])
+def test_reattempt_is_final_only_on_the_same_error_text(tmp_path, first, second, final):
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad(first), GOOD]), CTX, limit=1, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad(second)]), CTX, limit=1, sleep=lambda s: None)
+    last = _recs(results_path(SPEC, tmp_path))[-1]
+    assert last["status"] == "non_response" and last.get("persistent_error", False) is final
+    client = FakeClient([GOOD])
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=1, sleep=lambda s: None)
+    assert len(client.calls) == (0 if final else 1)
+
+
+def test_repeat_of_any_earlier_error_text_is_final(tmp_path, capsys):
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), GOOD]), CTX, limit=1, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("y")]), CTX, limit=1, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x")]), CTX, limit=1, sleep=lambda s: None)
+    recs = _recs(results_path(SPEC, tmp_path))
+    assert [r.get("persistent_error", False) for r in recs if r["order"] == "TS"] == [False, False, True]
+    assert "FINAL m CASE_001 TS" in capsys.readouterr().out
+    client = FakeClient([])
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=1, sleep=lambda s: None)
+    assert client.calls == []
+
+
+def test_reattempted_cells_do_not_count_toward_the_breaker(tmp_path):
+    # Run 1 trips on 3 consecutive distinct errors. On resume the same 3 cells fail again with new texts:
+    # they are re-attempts, so they neither trip the breaker nor become final, and the fresh cells run.
+    with pytest.raises(ModelUnavailable):
+        run_model(SPEC, SUBSET3, tmp_path, ScriptedClient([_bad("a"), _bad("b"), _bad("c")]), CTX,
+                  sleep=lambda s: None)
+    client = ScriptedClient([_bad("d"), _bad("e"), _bad("f"), GOOD, GOOD, GOOD])
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(client.calls) == 6
+    recs = _recs(results_path(SPEC, tmp_path))
+    assert len(recs) == 9 and not any(r.get("persistent_error") for r in recs)
+
+
+def test_reattempt_ok_does_not_reset_the_fresh_cell_breaker(tmp_path):
+    # Re-attempted cells are invisible to the breaker: an ok re-attempt between fresh errors does not reset it.
+    run_model(SPEC, SUBSET3, tmp_path, ScriptedClient([GOOD, GOOD, _bad("a"), GOOD, GOOD, GOOD]), CTX,
+              sleep=lambda s: None)  # CASE_002/TS is error-only
+    path = results_path(SPEC, tmp_path)
+    keep = [r for r in _recs(path) if r["order"] == "TS" and r["case_id"] in ("CASE_001", "CASE_002")]
+    _rewrite(path, keep)  # resume order: 001/ST fresh, 002/TS re-attempt, 002/ST fresh, 003/TS fresh
+    client = ScriptedClient([_bad("p"), GOOD, _bad("q"), _bad("r")])
+    with pytest.raises(ModelUnavailable, match="3 consecutive"):
+        run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(client.calls) == 4
 
 
 def test_final_records_takes_last_record_per_cell(tmp_path):
