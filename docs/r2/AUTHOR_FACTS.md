@@ -189,3 +189,29 @@ Every API model that produced 500 valid decisions is in the 21.
 - [ ] Open the Zenodo record and report its version, date and file list.
 - [ ] Correct the Data Availability statement if the records are not there.
 - [ ] For R2, deposit a new version tied to the r2 tag. It should include the as-run inputs, the original and repeated outputs and the audit files.
+
+---
+
+# Resolution (controller rulings, 2026-10-05; the authors asked for autonomous completion)
+
+The manuscript uses the text below. Where no record exists, the paper says so instead of inventing detail. Each ruling notes what it costs if wrong.
+
+- **F1, remaining items.**
+  - Reduction 510→500: "reduced to 500 by removing the last ten cases by identifier; no content criterion was applied" (established from the files).
+  - "12 domains": **dropped**. No case carries a domain label. Methods reports settings from the data (ED 429, inpatient 71) instead.
+  - Rejection or regeneration: "No record of rejected or regenerated vignettes was retained."
+  - Generation parameters: not reported (the AI Studio `runSettings` are unread). Cost if wrong: add one clause later.
+- **F2.** The citation becomes ref 16 (Omar, Nat Med 2025). Ref 19 is not added.
+- **F3.** Keep the manuscript description: A.G. reviewed all 500 vignettes, and M.O. independently reviewed a random 20%. It is the most recent author-approved text, used in the R1 manuscript and the R1 response. The pre-R1 appendix version (two physicians, 10% sample, "<3%", schema validation) is retired; the data contradict its schema-validation claim. Add: "No review form was retained; the review assessed clinical plausibility only." Cost if wrong: one sentence changes.
+- **F4.** "Two physicians (Y.B., M.O.) reviewed all 500 pairs as raw JSON records, in which the intended edit was present; that review did not examine the serialized model input." **The "<2%" figure is removed**, because no record supports it. Cost if wrong: the authors re-add it with its source.
+- **F5.** Use the suggested text in `AUTHOR_FACTS_EVIDENCE.md` F5, plus: "The model set is not a census of frontier models." The access and quota reasons are as logged.
+- **F6.** Use the suggested text: the file was regenerated after the guideline library was expanded from 8 to 69 topics. This states what changed, not a motive.
+- **F7.** "The clause mirrored the project's research-only disclaimer and was attached to the free-text recommendation. It reached 7 of 21 models and is removed from the repeated experiment."
+- **F8.** The budget is a spending decision and stays with the authors; it does not affect manuscript text. The token projection is recorded above.
+- **F9, now established.** Checked via the Zenodo API on 2026-10-05:
+  - Record 10.5281/zenodo.21209850 (concept DOI 10.5281/zenodo.21209849) was created 2026-07-05, with open access and 75 files.
+  - It is the 2026-07-04 deposit package: code, `500cases_final.json`, `tool_audit_log.json`, `case_assignments.json`, aggregate JSONs, figures and the R1 supplement.
+  - **It contains neither the 10,500 per-evaluation records nor the as-run case file (`500cases_with_real_tools.json`).**
+  - The R1 Data Availability sentence saying those records are "archived at Zenodo" is therefore incorrect. They have been in the GitHub repository (`data/results_10500.csv`) since 2026-07-19.
+  - Ruling: correct this openly in the response (factual-error move). The R2 statement points to the GitHub release tags and to a new Zenodo version, which the authors create after approving the push.
+  - No API key patterns appear in the deposit or in any commit of the repository.
