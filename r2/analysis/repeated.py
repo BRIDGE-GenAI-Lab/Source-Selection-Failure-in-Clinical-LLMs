@@ -1,8 +1,11 @@
 """Pre-specified analyses of the repeated experiment (docs/r2/ANALYSIS_PLAN.md).
 Exploratory outputs are written with an 'exploratory_' prefix."""
 import json
+import math
 import re
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from scipy.stats import binomtest, spearmanr
 
@@ -12,6 +15,50 @@ from r2.paths import DATA_V2, REPO, RUNS_V2, VERIFY_DIR
 from r2.run.harness import final_records, load_specs, results_path
 
 OUT = REPO / "analysis_repeated"
+# Items for which r2.verify.score_review.flag_reasons flags a pair (flags.json values).
+FLAG_ITEMS = ("q1_vignette_consistent", "q2_question_answerable", "q3_authentic_concordant", "q8_leakage")
+PAIR_COLS = ["model", "case_id", "invariant_correct", "position_driven", "wrong_both"]
+
+
+def _plain(x):
+    """JSON-safe copy: NaN and +/-inf become None (JSON null); numpy scalars become Python scalars."""
+    if isinstance(x, dict):
+        return {str(k): _plain(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple, set)):
+        return [_plain(v) for v in x]
+    if isinstance(x, np.generic):
+        x = x.item()
+    if isinstance(x, float) and not math.isfinite(x):
+        return None
+    return x
+
+
+def write_json(path, obj):
+    Path(path).write_text(json.dumps(_plain(obj), indent=2, allow_nan=False) + "\n")
+
+
+def load_verification(verify_dir, case_ids):
+    """Read and validate the physician-verification outputs that r2.verify.score_review.apply_consensus
+    writes: excluded_pairs.json {"rule": str, "excluded": [case_id], ...} and flags.json
+    {case_id: [flag item, ...]}. Returns (excluded, flagged, rule)."""
+    verify_dir = Path(verify_dir)
+    ex = json.loads((verify_dir / "excluded_pairs.json").read_text())
+    if not isinstance(ex, dict) or not isinstance(ex.get("rule"), str) or not isinstance(ex.get("excluded"), list) \
+            or not all(isinstance(c, str) for c in ex["excluded"]):
+        raise ValueError(f"{verify_dir}/excluded_pairs.json: expected {{'rule': str, 'excluded': [case_id]}}")
+    unknown = sorted(set(ex["excluded"]) - set(case_ids))
+    if unknown:
+        raise ValueError(f"{verify_dir}/excluded_pairs.json: case_ids not in pairs_v2.json: {unknown[:10]}")
+    flags = json.loads((verify_dir / "flags.json").read_text())
+    if not isinstance(flags, dict):
+        raise ValueError(f"{verify_dir}/flags.json: expected an object {{case_id: [flag item]}}")
+    for cid, items in flags.items():
+        if cid not in case_ids:
+            raise ValueError(f"{verify_dir}/flags.json: {cid} is not in pairs_v2.json")
+        if not isinstance(items, list) or not items or not set(items) <= set(FLAG_ITEMS):
+            raise ValueError(f"{verify_dir}/flags.json: {cid} must map to a non-empty list of {FLAG_ITEMS}, "
+                             f"got {items!r}")
+    return set(ex["excluded"]), set(flags), ex["rule"]
 
 
 def _tokens(text):
@@ -51,11 +98,19 @@ def _snippets(case):
     return [s for s in out if s.strip()]
 
 
-def repeated_frame(out_dir=RUNS_V2 / "main"):
-    pairs = {c["case_id"]: c for c in json.loads((DATA_V2 / "pairs_v2.json").read_text())["cases"]}
-    excluded = set(json.loads((VERIFY_DIR / "excluded_pairs.json").read_text())["excluded"])
-    flagged = set(json.loads((VERIFY_DIR / "flags.json").read_text()))
-    specs = load_specs()
+FRAME_COLS = ["model", "case_id", "order", "status", "sham_first", "selected_first", "correct", "confidence",
+              "differences", "rationale", "finished_at", "sham_type", "category", "excluded", "flagged",
+              "substituted", "noticed"]
+
+
+def repeated_frame(out_dir=None, *, pairs_path=None, verify_dir=None, specs=None):
+    """One row per final record (last record per cell) of every current spec's result file.
+    `noticed` (E1) is 1.0 / 0.0, or NaN when not assessable (no ok response, or no edit snippet of 3+ words)."""
+    out_dir = RUNS_V2 / "main" if out_dir is None else out_dir
+    pairs_path = DATA_V2 / "pairs_v2.json" if pairs_path is None else pairs_path
+    pairs = {c["case_id"]: c for c in json.loads(Path(pairs_path).read_text())["cases"]}
+    excluded, flagged, rule = load_verification(VERIFY_DIR if verify_dir is None else verify_dir, set(pairs))
+    specs = load_specs() if specs is None else specs
     substituted = {s["original_name"] for s in specs if s.get("substituted_for")}
     rows = []
     for spec in specs:
@@ -71,29 +126,35 @@ def repeated_frame(out_dir=RUNS_V2 / "main"):
                 "selected_first": None if sel is None else sel == "A",
                 "correct": r.get("correct"), "confidence": d.get("confidence"),
                 "differences": d.get("differences_found") or [],
+                "rationale": d.get("trust_rationale") or "", "finished_at": r.get("finished_at"),
             })
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows, columns=FRAME_COLS[:11])
     df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce")
     df["sham_type"] = df.case_id.map(lambda c: pairs[c]["eval"]["sham_trap_type"])
     df["category"] = df.sham_type.map(CATEGORY)
     df["excluded"] = df.case_id.isin(excluded)
     df["flagged"] = df.case_id.isin(flagged)
     df["substituted"] = df.model.isin(substituted)
-    df["noticed"] = [noticed(diff, _snippets(pairs[c])) for diff, c in zip(df.differences, df.case_id)]
+    df["noticed"] = pd.Series([
+        np.nan if status != "ok" or (v := noticed(diff, _snippets(pairs[c]))) is None else float(v)
+        for diff, c, status in zip(df.differences, df.case_id, df.status)], index=df.index, dtype=float)
+    df.attrs["exclusion_rule"] = rule
     return df
 
 
 def pair_level(df):
-    ok = df[df.status == "ok"]
+    """One row per (model, pair) with an ok record in both orders; the three outcomes are exclusive."""
+    if df.empty or "status" not in df:
+        return pd.DataFrame(columns=PAIR_COLS)
     rows = []
-    for (model, cid), g in ok.groupby(["model", "case_id"]):
+    for (model, cid), g in df[df.status == "ok"].groupby(["model", "case_id"]):
         if len(g) != 2:
             continue
         rows.append({"model": model, "case_id": cid,
                      "invariant_correct": int(g.correct.sum() == 2),
-                     "wrong_both": int(g.correct.sum() == 0),
-                     "position_driven": int(g.selected_first.nunique() == 1)})
-    return pd.DataFrame(rows)
+                     "position_driven": int(g.selected_first.nunique() == 1),
+                     "wrong_both": int(g.correct.sum() == 0)})
+    return pd.DataFrame(rows, columns=PAIR_COLS)
 
 
 def _ok(df):
@@ -116,8 +177,8 @@ def sensitivity_non_response(df):
     """Non-responses scored incorrect. Selection is undefined for them, so only n, accuracy and
     position-averaged accuracy are meaningful; primacy is set to NaN."""
     d = df.copy()
-    d["correct"] = d.correct.fillna(0).astype(int)
-    d["selected_first"] = d.selected_first.fillna(False).astype(bool)
+    d["correct"] = pd.to_numeric(d.correct, errors="coerce").fillna(0).astype(int)
+    d["selected_first"] = [bool(v) if isinstance(v, (bool, np.bool_)) else False for v in d.selected_first]
     s = _pooled(d)
     s["primacy"] = float("nan")
     return s
@@ -187,8 +248,39 @@ def rate_table(analysis, col):
     return pd.DataFrame(rows)
 
 
-def run(out_dir=RUNS_V2 / "main", write=True):
-    df = repeated_frame(out_dir)
+CAL_COLS = ("ece", "mce", "brier", "auroc", "mean_conf", "accuracy")
+
+
+def calibration_table(analysis, by=None):
+    """Calibration of confidence for correctness (ANALYSIS_PLAN item 7) on rows with a confidence in [0, 1];
+    overall, or one row per level of `by`. `accuracy_conf` is the accuracy of those rows."""
+    groups = [(None, analysis)] if by is None else list(analysis.groupby(by))
+    rows = []
+    for key, g in groups:
+        conf = g.dropna(subset=["confidence"])
+        cal = calibration(conf.confidence, conf.correct) if len(conf) else {k: float("nan") for k in CAL_COLS}
+        row = {} if by is None else {by: key}
+        row.update({"n_conf": len(conf), **{("accuracy_conf" if k == "accuracy" else k): v for k, v in cal.items()}})
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def concordance(per_model, original_csv):
+    """E2 (exploratory): Spearman correlation of per-model position-averaged accuracy, original experiment
+    (discriminable pairs) vs repeated experiment, over the models in both. Undefined (None) below 3 models."""
+    orig = pd.read_csv(original_csv).set_index("model")
+    rep = per_model.set_index("model")
+    common = sorted(set(orig.index) & set(rep.index))
+    rho = p = float("nan")
+    if len(common) >= 3:
+        rho, p = spearmanr(orig.loc[common, "position_averaged_accuracy"], rep.loc[common, "position_averaged_accuracy"])
+    return {"n_models": len(common), "spearman_rho": float(rho), "p": float(p)}
+
+
+def run(out_dir=None, write=True, *, analysis_dir=None, pairs_path=None, verify_dir=None, specs=None,
+        original_csv=None):
+    """Every path defaults to r2.paths at call time; a sandbox passes its own."""
+    df = repeated_frame(out_dir, pairs_path=pairs_path, verify_dir=verify_dir, specs=specs)
     analysis = _ok(df[~df.excluded])
     pairs = pair_level(df[~df.excluded])
     head = {
@@ -199,31 +291,28 @@ def run(out_dir=RUNS_V2 / "main", write=True):
         "non_response": int((df[~df.excluded].status == "non_response").sum()),
     }
     for k in ("invariant_correct", "position_driven", "wrong_both"):
-        head[k] = float(pairs[k].mean())
+        head[k] = float(pairs[k].mean()) if len(pairs) else float("nan")
         head[f"{k}_lo"], head[f"{k}_hi"] = cluster_bootstrap_mean(pairs, k)
     sens = sensitivity_summaries(df)
     if write:
-        OUT.mkdir(exist_ok=True)
+        out = Path(OUT if analysis_dir is None else analysis_dir)
+        out.mkdir(parents=True, exist_ok=True)
         pm = per_model_table(analysis)
-        pm.sort_values("position_averaged_accuracy", ascending=False).to_csv(OUT / "per_model.csv", index=False)
+        pm.sort_values("position_averaged_accuracy", ascending=False).to_csv(out / "per_model.csv", index=False)
         for col, name in (("sham_type", "per_type"), ("category", "per_category")):
-            rate_table(analysis, col).to_csv(OUT / f"{name}.csv", index=False)
+            rate_table(analysis, col).to_csv(out / f"{name}.csv", index=False)
         gee_logit(analysis, "correct ~ sham_first + C(category, Treatment('metadata')) + C(model)"
-                  ).to_csv(OUT / "gee.csv")
-        conf = analysis.dropna(subset=["confidence"])
-        pd.DataFrame([calibration(conf.confidence, conf.correct)]).to_csv(OUT / "calibration_overall.csv", index=False)
-        pairs.to_csv(OUT / "pair_level.csv", index=False)
-        (OUT / "sensitivity.json").write_text(json.dumps(sens, indent=2))
+                  ).to_csv(out / "gee.csv")
+        calibration_table(analysis).to_csv(out / "calibration_overall.csv", index=False)
+        calibration_table(analysis, "model").to_csv(out / "calibration_per_model.csv", index=False)
+        pairs.to_csv(out / "pair_level.csv", index=False)
+        write_json(out / "sensitivity.json", sens)
         (analysis.groupby(["model", "sham_type"]).noticed.mean().unstack()
-                 .to_csv(OUT / "exploratory_noticed.csv"))
-        orig = pd.read_csv(REPO / "analysis_original" / "per_model_discriminable.csv").set_index("model")
-        rep = pm.set_index("model")
-        common = sorted(set(orig.index) & set(rep.index))
-        rho, p = spearmanr(orig.loc[common, "position_averaged_accuracy"],
-                           rep.loc[common, "position_averaged_accuracy"])
-        (OUT / "exploratory_concordance_original.json").write_text(
-            json.dumps({"n_models": len(common), "spearman_rho": rho, "p": p}, indent=2))
-        (OUT / "headline.json").write_text(json.dumps(head, indent=2))
+                 .to_csv(out / "exploratory_noticed.csv"))
+        original_csv = REPO / "analysis_original" / "per_model_discriminable.csv" if original_csv is None \
+            else original_csv
+        write_json(out / "exploratory_concordance_original.json", concordance(pm, original_csv))
+        write_json(out / "headline.json", head)
     return head
 
 

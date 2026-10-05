@@ -1,6 +1,7 @@
 import json
 
 import pandas as pd
+import pytest
 
 from r2.analysis import repeated
 from r2.analysis.repeated import (_ok, _snippets, noticed, pair_level, per_model_table, repeated_frame,
@@ -76,14 +77,21 @@ def test_repeated_frame_tolerates_error_cells(tmp_path, monkeypatch):
     (results / f"{model}.jsonl").write_text(json.dumps(ok) + "\n" + json.dumps(err) + "\n")
     verify = tmp_path / "verify"
     verify.mkdir()
-    (verify / "excluded_pairs.json").write_text(json.dumps({"rule": "x", "excluded": [], "reasons": {}}))
-    (verify / "flags.json").write_text("{}")
+    (verify / "excluded_pairs.json").write_text(json.dumps({"rule": "x", "excluded": [c2],
+                                                            "reasons": {c2: ["q5_edit_visible"]}}))
+    (verify / "flags.json").write_text(json.dumps({c1: ["q8_leakage"]}))
     monkeypatch.setattr(repeated, "VERIFY_DIR", verify)
     monkeypatch.setattr(repeated, "load_specs", lambda *a, **k: [{"original_name": model, "model_id": model}])
     df = repeated_frame(results)
     assert len(df) == 2
     row = df[df.case_id == c2].iloc[0]
     assert row.status == "non_response" and pd.isna(row.correct)
+    assert bool(row.excluded) and not bool(row.flagged)
+    assert pd.isna(row.noticed)  # no response: E1 is not assessable, never "not noticed"
+    ok_row = df[df.case_id == c1].iloc[0]
+    assert not bool(ok_row.excluded) and bool(ok_row.flagged)
+    assert ok_row.noticed == 0.0  # "d" shares no 3-word sequence with the edit
+    assert df.noticed.dtype == float
     assert len(_ok(df)) == 1
 
 
@@ -220,3 +228,89 @@ def test_rate_table_uses_cluster_bootstrap():
         _, wlo, whi = wilson(int(r.failures), int(r.n))
         assert r.lo <= r.failure_rate <= r.hi and (r.lo, r.hi) != (wlo, whi)
     assert "content_z" not in t.columns and "content_p" not in t.columns
+
+
+# ---- deferred Task 11 minors ----
+PAIR_COLS = ["model", "case_id", "invariant_correct", "position_driven", "wrong_both"]
+
+
+def test_pair_level_empty_frame_and_no_complete_pairs():
+    empty = pair_level(pd.DataFrame())
+    assert list(empty.columns) == PAIR_COLS and empty.empty
+    one_order = _df(lambda sf: True)
+    one_order = one_order[one_order.order == "TS"]
+    out = pair_level(one_order)
+    assert list(out.columns) == PAIR_COLS and out.empty
+    non_ok = _df(lambda sf: True).assign(status="non_response")
+    assert pair_level(non_ok).empty
+
+
+def test_write_json_turns_nan_and_inf_into_null(tmp_path):
+    import numpy as np
+    path = tmp_path / "x.json"
+    repeated.write_json(path, {"a": float("nan"), "b": [np.float64("nan"), 1.5], "c": {"d": np.inf},
+                               "e": np.int64(3), "f": np.bool_(True)})
+
+    def refuse(token):
+        raise ValueError(f"invalid JSON constant {token}")
+    data = json.loads(path.read_text(), parse_constant=refuse)
+    assert data == {"a": None, "b": [None, 1.5], "c": {"d": None}, "e": 3, "f": True}
+
+
+def test_non_response_sensitivity_emits_no_warning():
+    import warnings
+    df = _df(lambda sf: not sf).astype({"selected_first": object, "correct": object})
+    df.loc[0, ["status", "correct", "selected_first"]] = ["non_response", None, None]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        s = sensitivity_non_response(df)
+    assert abs(s["accuracy"] - 19 / 20) < 1e-9
+
+
+def _verify_dir(tmp_path, excluded="{\"rule\": \"x\", \"excluded\": [], \"reasons\": {}}", flags="{}"):
+    verify = tmp_path / "verify"
+    verify.mkdir(exist_ok=True)
+    (verify / "excluded_pairs.json").write_text(excluded)
+    (verify / "flags.json").write_text(flags)
+    return verify
+
+
+@pytest.mark.parametrize("flags", ['["CASE_001"]', '{"CASE_001": "q8_leakage"}', '{"CASE_001": []}',
+                                   '{"CASE_001": ["q5_edit_visible"]}', '{"NOT_A_CASE": ["q8_leakage"]}'])
+def test_flags_json_shape_is_validated(tmp_path, flags):
+    from r2.paths import DATA_V2
+    pairs = {c["case_id"] for c in json.loads((DATA_V2 / "pairs_v2.json").read_text())["cases"]}
+    with pytest.raises(ValueError, match="flags.json"):
+        repeated.load_verification(_verify_dir(tmp_path, flags=flags), pairs)
+
+
+@pytest.mark.parametrize("excluded", ['{"excluded": "CASE_001"}', '{"rule": "x"}', '{"rule": "x", "excluded": ["NOPE"]}'])
+def test_excluded_pairs_shape_is_validated(tmp_path, excluded):
+    from r2.paths import DATA_V2
+    pairs = {c["case_id"] for c in json.loads((DATA_V2 / "pairs_v2.json").read_text())["cases"]}
+    with pytest.raises(ValueError, match="excluded_pairs.json"):
+        repeated.load_verification(_verify_dir(tmp_path, excluded=excluded), pairs)
+
+
+def test_flag_items_match_score_review():
+    from r2.verify.score_review import flag_reasons
+    every_flag = {"q1_vignette_consistent": "N", "q2_question_answerable": "N", "q3_authentic_concordant": "P",
+                  "q8_leakage": "Y"}
+    assert set(flag_reasons(every_flag)) == set(repeated.FLAG_ITEMS)
+
+
+def test_run_writes_calibration_per_model_and_valid_json(tmp_path, monkeypatch):
+    monkeypatch.setattr(repeated, "repeated_frame", lambda *a, **k: _synthetic_frame())
+    out = tmp_path / "analysis_repeated"
+    repeated.run(write=True, analysis_dir=out)
+    cal = pd.read_csv(out / "calibration_per_model.csv")
+    assert sorted(cal.model) == ["good", "pos"]
+    for col in ("n_conf", "ece", "mce", "brier", "auroc", "mean_conf", "accuracy_conf"):
+        assert col in cal.columns, col
+
+    def refuse(token):
+        raise ValueError(token)
+    for p in out.glob("*.json"):
+        json.loads(p.read_text(), parse_constant=refuse)  # no NaN / Infinity tokens anywhere
+    conc = json.loads((out / "exploratory_concordance_original.json").read_text())
+    assert conc["n_models"] == 0 and conc["spearman_rho"] is None and conc["p"] is None
