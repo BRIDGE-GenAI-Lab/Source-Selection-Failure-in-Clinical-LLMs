@@ -74,15 +74,34 @@ def apply_consensus(path_a, path_b, consensus_path):
     """Consensus file lists only adjudicated items: case_id,item,consensus."""
     a = _load(path_a)
     b = _load(path_b)
-    final = a.copy()
-    cons = pd.read_csv(consensus_path, dtype=str)
+    if list(a.index) != list(b.index):
+        raise ValueError("the two forms cover different case_ids")
+    qkeys = [q for q, _ in QUESTIONS]
+    blanks = {q: int((a[q] == "").sum() + (b[q] == "").sum()) for q in qkeys}
+    if any(blanks.values()):
+        raise ValueError(f"blank answers in the forms: { {q: n for q, n in blanks.items() if n} }")
+    cons = pd.read_csv(consensus_path, dtype=str).fillna("")
     for _, r in cons.iterrows():
-        final.loc[r.case_id, r["item"]] = r.consensus.strip().upper()
+        cid, item, val = r["case_id"], r["item"], str(r["consensus"]).strip().upper()
+        if cid not in a.index:
+            raise ValueError(f"consensus row for unknown case_id {cid}")
+        if item not in qkeys:
+            raise ValueError(f"consensus row for unknown item {item} ({cid})")
+        allowed = ("Y", "N", "P") if item == "q3_authentic_concordant" else ("Y", "N")
+        if val not in allowed:
+            raise ValueError(f"consensus value {val!r} not allowed for {item} ({cid}); allowed {allowed}")
+        if a.loc[cid, item] == b.loc[cid, item]:
+            raise ValueError(f"consensus row for {cid} {item} but the reviewers already agree; "
+                             "it would override agreement")
+    final = a.copy()
+    for _, r in cons.iterrows():
+        final.loc[r["case_id"], r["item"]] = str(r["consensus"]).strip().upper()
     for q, _ in QUESTIONS:
         mismatch = (a[q] != b[q])
         unresolved = [cid for cid in final.index[mismatch]
                       if not ((cons.case_id == cid) & (cons["item"] == q)).any()]
-        assert not unresolved, f"{q}: disagreements without consensus: {unresolved[:10]}"
+        if unresolved:
+            raise ValueError(f"{q}: disagreements without consensus: {unresolved[:10]}")
     excluded = {cid: exclusion_reasons(row) for cid, row in final.iterrows() if exclusion_reasons(row)}
     flags = {cid: flag_reasons(row) for cid, row in final.iterrows() if flag_reasons(row)}
     (VERIFY_DIR / "excluded_pairs.json").write_text(json.dumps(

@@ -53,3 +53,88 @@ def test_write_forms_refuses_incomplete_set():
     with pytest.raises(RuntimeError):
         write_forms()
     assert sorted(p.name for p in VERIFY_DIR.iterdir()) == before
+
+
+# ---- score / consensus on toy forms (all I/O in tmp_path) ----
+import pandas as pd  # noqa: E402
+
+from r2.verify import score_review as sr  # noqa: E402
+
+QKEYS = [q for q, _ in sr.QUESTIONS]
+
+
+def _form(path, overrides=None, cases=("C1", "C2", "C3")):
+    rows = []
+    for cid in cases:
+        row = {"case_id": cid, **{q: "Y" for q in QKEYS}, "q8_leakage": "N"}
+        row.update((overrides or {}).get(cid, {}))
+        rows.append(row)
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return path
+
+
+def _cons(path, rows):
+    pd.DataFrame(rows, columns=["case_id", "item", "consensus"]).to_csv(path, index=False)
+    return path
+
+
+@pytest.fixture
+def toy(tmp_path, monkeypatch):
+    monkeypatch.setattr(sr, "VERIFY_DIR", tmp_path)
+    a = _form(tmp_path / "a.csv", {"C1": {"q5_edit_visible": "N"}, "C2": {"q3_authentic_concordant": "P"}})
+    b = _form(tmp_path / "b.csv", {"C1": {"q5_edit_visible": "N"}, "C3": {"q8_leakage": "Y"}})
+    return tmp_path, a, b
+
+
+def test_score_writes_kappa_and_disagreements(toy):
+    d, a, b = toy
+    sr.score(a, b)
+    adj = pd.read_csv(d / "adjudication_needed.csv")
+    assert set(zip(adj.case_id, adj["item"])) == {("C2", "q3_authentic_concordant"), ("C3", "q8_leakage")}
+    assert set(pd.read_csv(d / "kappa.csv")["item"]) == set(QKEYS)
+
+
+def test_consensus_refuses_unresolved_disagreement(toy):
+    d, a, b = toy
+    c = _cons(d / "c.csv", [("C2", "q3_authentic_concordant", "P")])
+    with pytest.raises(ValueError, match="without consensus"):
+        sr.apply_consensus(a, b, c)
+    assert not (d / "excluded_pairs.json").exists()
+
+
+def test_consensus_outputs_shapes(toy):
+    d, a, b = toy
+    c = _cons(d / "c.csv", [("C2", "q3_authentic_concordant", "P"), ("C3", "q8_leakage", "N")])
+    sr.apply_consensus(a, b, c)
+    ex = json.loads((d / "excluded_pairs.json").read_text())
+    assert set(ex) == {"rule", "excluded", "reasons"}
+    assert ex["excluded"] == ["C1"] and ex["reasons"] == {"C1": ["q5_edit_visible"]}
+    assert json.loads((d / "flags.json").read_text()) == {"C2": ["q3_authentic_concordant"]}
+
+
+@pytest.mark.parametrize("rule,rows,kw", [
+    ("different case_ids", [], {"b_cases": ("C1", "C2", "X9")}),
+    ("blank answers", [], {"a_blank": True}),
+    ("unknown case_id", [("ZZ", "q8_leakage", "N")], {}),
+    ("unknown item", [("C3", "q9_nope", "N")], {}),
+    ("not allowed", [("C3", "q8_leakage", "P")], {}),
+    ("not allowed", [("C3", "q8_leakage", "maybe")], {}),
+    ("already agree", [("C1", "q5_edit_visible", "Y")], {}),
+])
+def test_consensus_input_validation(toy, rule, rows, kw):
+    d, a, b = toy
+    if "b_cases" in kw:
+        b = _form(d / "b2.csv", cases=kw["b_cases"])
+    if kw.get("a_blank"):
+        a = _form(d / "a2.csv", {"C1": {"q1_vignette_consistent": ""}})
+    base = [("C2", "q3_authentic_concordant", "P"), ("C3", "q8_leakage", "N")]
+    c = _cons(d / "c.csv", base + rows)
+    with pytest.raises(ValueError, match=rule):
+        sr.apply_consensus(a, b, c)
+    assert not (d / "excluded_pairs.json").exists()
+
+
+def test_consensus_p_allowed_only_for_q3(toy):
+    d, a, b = toy
+    c = _cons(d / "c.csv", [("C2", "q3_authentic_concordant", "P"), ("C3", "q8_leakage", "Y")])
+    sr.apply_consensus(a, b, c)
