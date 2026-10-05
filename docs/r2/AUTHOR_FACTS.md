@@ -21,3 +21,157 @@ F6. Why the case file changed between the Jan 3 runs (input hash 6389e074…) an
 F7. Why the original prompts included "research-only; not medical advice".
 F8. API budget approval for about 21,000 calls, and confirmation that rotated keys are in r2_repo/.env.
 F9. Zenodo DOI 10.5281/zenodo.21209850: was it minted, and for which repository state?
+
+---
+
+# Answers from files on disk (searched 2026-10-05)
+
+Full evidence (file paths, quotes and computations) is in `docs/r2/AUTHOR_FACTS_EVIDENCE.md`. Each item gives a status and the facts the files establish, then the open items as a checklist for the authors. Items marked [ ] must be answered before the Methods and the response are finalized.
+
+## F1. Vignette generation: PARTIAL
+
+**Established.**
+- **Batches.** The cases were produced as JSON batches from a zero-shot schema prompt, reproduced in the pre-R1 appendix Part XIV §14.2 and in `safe-guideline-tooling-eval/supplementary_appendix.md:1439-1530`. There are five 100-case batch objects; the fourth stops at CASE_335, and CASE_336–400 were never generated. A separate 75-case batch holds CASE_501–575.
+- **Merge and reduction.**
+  - The batches were merged on 2026-01-03 (510 cases).
+  - The set was reduced to 500 by dropping the **last 10 by ID (original CASE_566–575)** and renumbering CASE_501–565 as CASE_336–400.
+  - **No vignette text changed** in the merge, the reduction or the tool-pairing step.
+- **Timestamps.** The `generated_utc` values are written by the generator, not real generation times. Batch 1 was already in use on 2025-12-27.
+- **Interface clue.** The 75-case file begins with copied code-block toolbar labels ("content_copy", "expand_less"), consistent with a web chat interface.
+- **Domains.** No case carries a domain label. The pre-R1 appendix's domain and setting tables do not match the data (ED/inpatient 429/71 in the data versus 370/130 in the appendix).
+- **CASE_335 is truncated.** It has no labs, ECG, imaging, assessment or clinical question, and the models saw it that way.
+- **Do not use the "GPT-4 generated vignettes" text.** It comes from appendix-generator script literals and is not a provenance record.
+
+**Still needed from the authors.**
+- [ ] Generating model and version, the interface, and the parameters.
+- [ ] Real generation dates.
+- [ ] Whether the published prompt was used for every batch, including the 75-case batch and the truncated CASE_335.
+- [ ] How the "12 domains" were defined, or agreement to drop the claim.
+- [ ] Why CASE_566–575 were dropped. The data show truncation by ID.
+- [ ] Any rejection or regeneration before the batch files were saved.
+
+## F2. Citation: ESTABLISHED
+
+**Established.**
+- The correct citation is **Omar et al., Nat Med 2025 (current ref 16)**. It was the citation at this sentence in every version up to July 2026.
+- It became "ref 11" (Liu, prompt injection) during the 2026-07-15 reference renumbering. That callout was plain text, not superscript, so the renumbering pass missed it.
+- Ref 19 (Omar, Commun Med 2025) also describes LLM-assisted vignette drafting.
+- Ref 18 (Klang) used real MIMIC-IV data and is not appropriate here.
+- The citation documents the method lineage only. It does not replace reporting this study's procedure (F1).
+
+**Still needed from the authors.**
+- [ ] Confirm ref 16 alone, or ref 16 + ref 19.
+
+## F3. Plausibility review: PARTIAL
+
+**Established.**
+- No review record exists on disk: no form, checklist, sample list, dates or outcomes.
+- **The manuscript and the original appendix disagree.**
+  - The manuscript: "A.G. reviewed all; M.O. validated a random 20%".
+  - The pre-R1 appendix §14.3: "Two board-certified physicians independently reviewed a random 10% sample (50 cases) … Disagreements (<3%)".
+- No vignette was changed or replaced after generation.
+- The incomplete CASE_335 was not caught.
+
+**Still needed from the authors.**
+- [ ] Which description is true.
+- [ ] What was checked, any form, dates and the sample.
+- [ ] The source of "<3%".
+
+## F4. Sham review (Y.B., M.O.): NOT FOUND
+
+**Established.**
+- Only the 2026-10-05 author statement that the review examined raw JSON records.
+- No form, pair list, dates or source for "<2% disagreements" exists on disk.
+- The R1 response says that every sham modification was reviewed.
+
+**Still needed from the authors.**
+- [ ] Number of pairs and dates.
+- [ ] Any form.
+- [ ] Numerator and denominator for "<2%", or a statement that no record was retained.
+
+## F5. Model selection and dropped runs: PARTIAL
+
+**Established from run logs.** Every non-canonical API run failed for access or quota reasons:
+
+| Run | Rows | Usable decisions | Logged reason |
+|---|---|---|---|
+| GPT-5 | 146 and 125 | 0 | every request returned HTTP 400 "organization must be verified" |
+| GPT-5-mini | 369 | 0 | the same 400 error |
+| Qwen2.5-1.5B-Instruct | 500 | **0** | every request rejected as a non-serverless model, so this was **not** a complete run |
+| gemini-2.5-flash-lite-preview-06-17 | 181 and 171 | 0 | 404, model not found |
+| gemini-2.0-flash-lite | 59 and 116 | 31 and 42 | runs stopped amid 429 rate-limit errors |
+
+Runs not included in the 21:
+- a local gemma-3-270m pilot, with 500 valid decisions;
+- a 50-case Groq llama-3.1-8b-instant pilot.
+
+Every API model that produced 500 valid decisions is in the 21.
+
+**Still needed from the authors.**
+- [ ] The selection rationale or cutoff.
+- [ ] Confirm the access and quota reasons above.
+- [ ] Why the gemma-3-270m and Groq pilots were excluded.
+
+## F6. Case-file change between Jan 3 and Jan 7: PARTIAL
+
+**Established.**
+- In the Jan 3 file, **296 of 500 cases had no matched guideline**. Those cases got an identical "No matching guideline available" placeholder in both positions.
+- The guideline library was then expanded from 8 to 69 topics, with source PDFs added 2026-01-03 to 01-06 and extracts and `generate_tools.py` dated 2026-01-07.
+- The file was regenerated on 2026-01-07. Every case then had a matched pair and one modification type.
+- The three gpt-5-nano Jan 3 runs were development runs and were never analyzed.
+
+**Still needed from the authors.**
+- [ ] Confirm the reason: expanding the library so that every case had a matched authentic guideline.
+
+## F7. "Research-only; not medical advice": PARTIAL
+
+**Established.**
+- The phrase reached **7 of 21 models**:
+  - in the system prompt and a required output footer for the 4 OpenAI function-calling models;
+  - as a footer instruction only for Gemini-2.5-Flash-Lite, DeepSeek-Chat and DeepSeek-Reasoner.
+- **The 14 Together-hosted models never received it.**
+- It matches the project README disclaimer of 2025-12-27.
+- The repeated experiment omits it.
+
+**Still needed from the authors.**
+- [ ] The rationale, presumably a disclaimer on the free-text recommendation field.
+
+## F8. Budget and keys: NOT FOUND (projection provided)
+
+**Established.**
+- No budget approval is on disk.
+- `~/npj_r2/r2_repo/.env` does not exist yet.
+- The legacy `safe-guideline-tooling-eval/.env` (2025-12-27) defines only `OPENAI_API_KEY`.
+
+**Token projection.**
+- The projection for 21,000 calls is about **21.3M input and 12.7M output tokens**. It is built from the original logged usage, scaled to the 1.35× longer new prompt.
+
+| Provider | Input | Output |
+|---|---|---|
+| OpenAI | 4.0M | 3.5M |
+| Together | 14.2M | 7.4M |
+| DeepSeek | 2.0M | 1.5M |
+| Gemini | 1.0M | 0.3M |
+
+- Reasoning models dominate output.
+- The pilot replaces these estimates with measured values.
+- No prices are on disk, so there is no dollar figure.
+
+**Still needed from the authors.**
+- [ ] Budget approval and current prices.
+- [ ] Create `.env` with rotated `OPENAI_API_KEY`, `TOGETHER_API_KEY`, `DEEPSEEK_API_KEY` and `GEMINI_API_KEY`.
+- [ ] Treat the legacy keys in the local runner scripts and `safe-guideline-tooling-eval/.env` as compromised, and rotate them.
+
+## F9. Zenodo DOI: PARTIAL
+
+**Established.**
+- The DOI resolves: on 2026-10-05 it returned HTTP 302 to zenodo.org/doi/10.5281/zenodo.21209850.
+- No file records what was uploaded to the record.
+- It is not linked to a GitHub release; the repo had no release as of 2026-07-19.
+- The local deposit package `npj_R1_Zenodo_Deposit_2026-07-04/` **lacks the 10,500 per-evaluation records and the as-run case file**. Its README says the raw results "are not included".
+- **The R1 Data Availability statement says the 10,500 records are "archived at Zenodo". That claim may be false.**
+
+**Still needed from the authors.**
+- [ ] Open the Zenodo record and report its version, date and file list.
+- [ ] Correct the Data Availability statement if the records are not there.
+- [ ] For R2, deposit a new version tied to the r2 tag. It should include the as-run inputs, the original and repeated outputs and the audit files.
