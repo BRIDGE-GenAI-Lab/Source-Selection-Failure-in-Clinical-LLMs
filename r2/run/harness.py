@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,6 +24,8 @@ PROVIDERS = {
 RETRY_PROMPT = "Return only the JSON object described above, with no other text."
 TRANSIENT = {"RateLimitError", "APIConnectionError", "APITimeoutError", "InternalServerError"}
 THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
+TOKEN_PARAMS = ("max_tokens", "max_completion_tokens")
+INCIDENTS = "incidents.jsonl"
 
 
 class ModelMismatch(RuntimeError):
@@ -59,7 +62,14 @@ def _error_kind(exc):
 
 
 def load_specs(path=REPO / "r2" / "run" / "models_v2.json"):
-    return json.loads(Path(path).read_text())["models"]
+    specs = json.loads(Path(path).read_text())["models"]
+    keys = {"model_id": lambda s: s["model_id"], "safe_name(model_id)": lambda s: safe_name(s["model_id"]),
+            "original_name": lambda s: s["original_name"]}
+    for label, key in keys.items():
+        dup = sorted(k for k, n in Counter(key(s) for s in specs).items() if n > 1)
+        if dup:
+            raise ValueError(f"{path}: duplicate {label}: {dup}")
+    return specs
 
 
 def load_v2_cases(path=DATA_V2 / "pairs_v2.json"):
@@ -222,7 +232,42 @@ def execute_cell(client, spec, case, order, context, sleep=time.sleep):
     return rec
 
 
-def _done(path, cases, context):
+def _log_incident(out_dir, incident):
+    with open(Path(out_dir) / INCIDENTS, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({**incident, "logged_at": datetime.now(timezone.utc).isoformat()},
+                            ensure_ascii=False, default=str) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def _sha(text):
+    return hashlib.sha256(str(text).encode("utf-8")).hexdigest()
+
+
+def _spec_mismatches(r, spec, msgs):
+    """(field, recorded, current) for every way a stored record differs from the current prompt and
+    spec. Prompts are compared in full and reported by SHA-256."""
+    out = []
+    for field in ("system", "user"):
+        if r.get(field) != msgs[field]:
+            out.append((field, _sha(r.get(field)), _sha(msgs[field])))
+    for field in ("model_id", "original_name"):
+        if r.get(field) != spec[field]:
+            out.append((field, r.get(field), spec[field]))
+    if is_error_only(r):
+        return out
+    req = ((r.get("attempts") or [{}])[0] or {}).get("request") or {}
+    temp = spec.get("temperature")
+    if ("temperature" in req) != (temp is not None) or (temp is not None and req["temperature"] != temp):
+        out.append(("temperature", req.get("temperature", "<absent>"), "<absent>" if temp is None else temp))
+    token_param = spec.get("token_param", "max_tokens")
+    sent = {k: req[k] for k in TOKEN_PARAMS if k in req}
+    if sent != {token_param: spec["max_tokens"]}:
+        out.append(("token_param", sent, {token_param: spec["max_tokens"]}))
+    return out
+
+
+def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
     done = set()
     if not path.exists():
         return done
@@ -248,17 +293,27 @@ def _done(path, cases, context):
               and r.get("payload_sha256") == render_messages(cases[key[0]], key[1])["payload_sha256"])
         if not ok:
             raise StaleRecords(f"{path}: stale record for {key}")
+        mismatches = _spec_mismatches(r, spec, render_messages(cases[key[0]], key[1]))
+        if mismatches and not accept_spec_change:
+            raise StaleRecords(f"{path}: record for {key} differs from the current prompt or spec in "
+                               f"{[m[0] for m in mismatches]}; rerun with --accept-spec-change to keep it")
+        for field, recorded, current in mismatches:
+            print(f"ACCEPTED spec change {path.name} {key}: {field}: recorded {recorded!r}, "
+                  f"current {current!r}", flush=True)
+            _log_incident(out_dir, {"kind": "accepted_spec_change", "model_id": spec["model_id"],
+                                    "file": path.name, "case_id": key[0], "order": key[1], "field": field,
+                                    "recorded": recorded, "current": current})
         good.append(line)
         if not is_error_only(r):
             done.add(key)
     return done
 
 
-def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.sleep):
+def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.sleep, accept_spec_change=False):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = results_path(spec, out_dir)
-    done = _done(path, cases, context)
+    done = _done(path, cases, context, spec, out_dir, accept_spec_change)
     ids = sorted(cases)[:limit] if limit else sorted(cases)
     if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
         with open(path, "a") as fh:
@@ -301,13 +356,17 @@ def main():
     parser.add_argument("--models", default="all")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--out", default=str(RUNS_V2 / "main"))
+    parser.add_argument("--accept-spec-change", action="store_true",
+                        help="keep stored records whose prompt, model mapping or decoding differs from the "
+                             "current spec; each accepted mismatch is logged to <out>/incidents.jsonl")
     args = parser.parse_args()
     cases, stim_sha = load_v2_cases()
     context = {"harness_commit": _clean_commit(), "stimulus_sha256": stim_sha}
     for spec in _select(load_specs(), args.models):
         print(f"[{datetime.now():%H:%M:%S}] {spec['original_name']}", flush=True)
         try:
-            run_model(spec, cases, args.out, make_client(spec["provider"]), context, limit=args.limit)
+            run_model(spec, cases, args.out, make_client(spec["provider"]), context, limit=args.limit,
+                      accept_spec_change=args.accept_spec_change)
         except (ModelMismatch, ModelUnavailable) as exc:
             print(f"STOPPED {spec['original_name']}: {exc}", flush=True)
 

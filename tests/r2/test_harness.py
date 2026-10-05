@@ -299,3 +299,63 @@ def test_final_records_takes_last_record_per_cell(tmp_path):
     run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD]), CTX, sleep=lambda s: None)
     fin = final_records(results_path(SPEC, tmp_path))
     assert len(fin) == 4 and all(r["status"] == "ok" and "error" not in r for r in fin)
+
+
+# ---- I2: resume validates prompt, spec mapping and decoding ----
+def _rewrite(path, recs):
+    path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in recs))
+
+
+@pytest.mark.parametrize("field,value", [("system", "old system prompt"), ("user", "old user message"),
+                                         ("model_id", "prov/m-0"), ("original_name", "m-old")])
+def test_resume_rejects_changed_prompt_or_mapping(tmp_path, field, value):
+    path, recs = _first_record(tmp_path)
+    recs[0][field] = value
+    _rewrite(path, recs)
+    with pytest.raises(StaleRecords):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+@pytest.mark.parametrize("change", [{"temperature": 0.7}, {"temperature": None},
+                                    {"max_tokens": 128}, {"token_param": "max_completion_tokens"}])
+def test_resume_rejects_changed_decoding(tmp_path, change):
+    _first_record(tmp_path)
+    with pytest.raises(StaleRecords):
+        run_model({**SPEC, **change}, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+def test_decoding_check_skipped_for_error_only_records(tmp_path):
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), _bad("y")]), CTX, limit=1, sleep=lambda s: None)
+    client = FakeClient([GOOD] * 4)
+    run_model({**SPEC, "temperature": 0.7}, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(client.calls) == 4
+
+
+def test_accept_spec_change_keeps_records_and_logs_incidents(tmp_path, capsys):
+    _first_record(tmp_path)
+    client = FakeClient([GOOD] * 2)
+    run_model({**SPEC, "temperature": 0.7}, SUBSET, tmp_path, client, CTX, sleep=lambda s: None,
+              accept_spec_change=True)
+    assert len(client.calls) == 2
+    incidents = [json.loads(l) for l in (tmp_path / "incidents.jsonl").read_text().splitlines()]
+    assert len(incidents) == 2 and {i["field"] for i in incidents} == {"temperature"}
+    assert all(i["kind"] == "accepted_spec_change" for i in incidents)
+    assert "ACCEPTED" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("models", [
+    [{"original_name": "a", "model_id": "x"}, {"original_name": "b", "model_id": "x"}],
+    [{"original_name": "a", "model_id": "p/x"}, {"original_name": "b", "model_id": "p_x"}],
+    [{"original_name": "a", "model_id": "x"}, {"original_name": "a", "model_id": "y"}],
+])
+def test_load_specs_rejects_duplicates(tmp_path, models):
+    from r2.run.harness import load_specs
+    path = tmp_path / "models.json"
+    path.write_text(json.dumps({"models": models}))
+    with pytest.raises(ValueError):
+        load_specs(path)
+
+
+def test_load_specs_current_file_is_unique():
+    from r2.run.harness import load_specs
+    assert len(load_specs()) == 21
