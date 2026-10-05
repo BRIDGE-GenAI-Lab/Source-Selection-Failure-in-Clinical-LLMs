@@ -9,9 +9,9 @@ import numpy as np
 import pandas as pd
 from scipy.stats import binomtest, spearmanr
 
+from r2.analysis.original_corrected import SAYS_IDENTICAL
 from r2.analysis.stats import (CATEGORY, calibration, cluster_bootstrap_mean, cluster_bootstrap_paa, fdr,
                                gee_logit, position_summary, wilson)
-from r2.analysis.original_corrected import SAYS_IDENTICAL
 from r2.paths import DATA_V2, REPO, RUNS_V2, VERIFY_DIR
 from r2.run.harness import final_records, load_specs, results_path
 
@@ -114,9 +114,17 @@ def _snippets(case):
     return [s for s in out if s.strip()]
 
 
-FRAME_COLS = ["model", "case_id", "order", "status", "sham_first", "selected_first", "correct", "confidence",
-              "differences", "rationale", "finished_at", "sham_type", "category", "excluded", "flagged",
-              "substituted", "noticed"]
+RECORD_COLS = ["model", "case_id", "order", "status", "sham_first", "selected_first", "correct", "confidence",
+               "differences", "rationale", "finished_at"]
+FRAME_COLS = RECORD_COLS + ["sham_type", "category", "excluded", "flagged", "substituted", "noticed"]
+
+
+def _noticed_value(status, differences, case):
+    """E1 per record: 1.0 / 0.0, or NaN when not assessable (no ok response, or no edit snippet of 3+ words)."""
+    if status != "ok":
+        return np.nan
+    hit = noticed(differences, _snippets(case))
+    return np.nan if hit is None else float(hit)
 
 
 def repeated_frame(out_dir=None, *, pairs_path=None, verify_dir=None, specs=None):
@@ -144,16 +152,16 @@ def repeated_frame(out_dir=None, *, pairs_path=None, verify_dir=None, specs=None
                 "differences": d.get("differences_found") or [],
                 "rationale": d.get("trust_rationale") or "", "finished_at": r.get("finished_at"),
             })
-    df = pd.DataFrame(rows, columns=FRAME_COLS[:11])
+    df = pd.DataFrame(rows, columns=RECORD_COLS)
     df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce")
     df["sham_type"] = df.case_id.map(lambda c: pairs[c]["eval"]["sham_trap_type"])
     df["category"] = df.sham_type.map(CATEGORY)
     df["excluded"] = df.case_id.isin(excluded)
     df["flagged"] = df.case_id.isin(flagged)
     df["substituted"] = df.model.isin(substituted)
-    df["noticed"] = pd.Series([
-        np.nan if status != "ok" or (v := noticed(diff, _snippets(pairs[c]))) is None else float(v)
-        for diff, c, status in zip(df.differences, df.case_id, df.status)], index=df.index, dtype=float)
+    df["noticed"] = pd.Series([_noticed_value(status, diff, pairs[c])
+                               for status, diff, c in zip(df.status, df.differences, df.case_id)],
+                              index=df.index, dtype=float)
     df.attrs["exclusion_rule"] = rule
     return df
 
@@ -364,7 +372,8 @@ def concordance(per_model, original_csv):
 
 def run(out_dir=None, write=True, *, analysis_dir=None, pairs_path=None, verify_dir=None, specs=None,
         original_csv=None):
-    """Every path defaults to r2.paths at call time; a sandbox passes its own."""
+    """Run every pre-specified analysis and the exploratory ones. Inputs default to this module's RUNS_V2 / "main",
+    DATA_V2, VERIFY_DIR and load_specs() (from r2.paths), outputs to OUT; a sandbox passes its own paths."""
     specs = load_specs() if specs is None else specs
     if S5_MODEL not in {sp["original_name"] for sp in specs}:
         raise ValueError(f"S5 model {S5_MODEL!r} is not an original_name in the model specs")
