@@ -7,6 +7,7 @@
       "file": "run_together_Qwen_Qwen3_235B_A22B_Instruct_2507_tput_20260115_141139.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "60a4ae89c9fdc71592b38ca67ec600d63e8d815caed31032c192d46821cefdfc",
+      "exported_sha256": "c83647bb37e36d5b98a823e1d871a93d146a12b878bd1d9ac1aa42e311e44682",
       "config": {
         "model": "Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
         "seed": 42,
@@ -20,6 +21,7 @@
       "file": "run_together_Qwen_Qwen3_Next_80B_A3B_Thinking_20260115_095828.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "ed5e60f02db9977dd0b36c90e2c966599ea758e404371bc2a47f73654f807d08",
+      "exported_sha256": "4c5a2b775d3dd1990991a9386a4fdcba2d841d1f404b25b77015e80ce28209b7",
       "config": {
         "model": "Qwen/Qwen3-Next-80B-A3B-Thinking",
         "seed": 42,
@@ -33,6 +35,7 @@
       "file": "run_together_Qwen_Qwen3_VL_8B_Instruct_20260115_112325.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "0678e6aed57d58d74a168cfd6cf9b113da84eb792fc8834bb7dab61fad4c5648",
+      "exported_sha256": "03c75bd218c71cbd71fa07c06b80f68af2076b53b1b54f39066e78fee34431ba",
       "config": {
         "model": "Qwen/Qwen3-VL-8B-Instruct",
         "seed": 42,
@@ -46,6 +49,7 @@
       "file": "run_together_ServiceNow_AI_Apriel_1.6_15b_Thinker_20260115_114315.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "183576a76d61baa9798a6fcd3902b1ed33f2e7a681fbc3b22274caec24aa7e43",
+      "exported_sha256": "135dae13951911e43392da81c0c5db44bbf4a3d2aebd7b0e821851b1921fa370",
       "config": {
         "model": "ServiceNow-AI/Apriel-1.6-15b-Thinker",
         "seed": 42,
@@ -59,6 +63,7 @@
       "file": "run_20260107_183414.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "5f3be13a5ef98499ac0479c2b7f35737c2e7dbc312094bb699673d287be29ddc",
+      "exported_sha256": "cab687a49a07aa75d12e04d93deeb54a0729bf09307b443241acaab959d11eab",
       "config": {
         "model": "deepseek-chat",
         "seed": 42,
@@ -73,6 +78,7 @@
       "file": "run_deepseek_reasoner_20260114_111007.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "02de06cabdaef8597621370b2e359786638307193279a599b9191682adedb797",
+      "exported_sha256": "df320bd7acaddc66e90ff795025faedc8cd0abf9e242577aa008aae47d178ca3",
       "config": {
         "model": "deepseek-reasoner",
         "seed": 42,
@@ -87,6 +93,7 @@
       "file": "run_20260107_181625.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "75a26cf979f5cbd3bb79ddfee798b5f7845e084368fdae48ffbb9cabba23e8dd",
+      "exported_sha256": "2032f822584f9c31471ba93baa598c69769d094f937710c5848a7eed15c4503b",
       "config": {
         "model": "gemini-2.5-flash-lite",
         "seed": 42,
@@ -101,6 +108,7 @@
       "file": "run_together_google_gemma_3n_E4B_it_20260115_195126.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "d0d0b8f77326311582503738a3a644edd2951d4902dfc7da057d5227d59ef21c",
+      "exported_sha256": "2ee14d0346813768d867aefb9d6e357e38a77ef22428ce346316bd5a90bc43f4",
       "config": {
         "model": "google/gemma-3n-E4B-it",
         "seed": 42,
@@ -114,6 +122,7 @@
       "file": "run_20260107_215921.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "a454faf5bdc7efd9e5bb79bd9c9396f0c3b8f61d39da04b3a4edc4c185d44ecd",
+      "exported_sha256": "486d6bfcfce15cbb68fcba17461baa97bbebd1ccafd72a02a6947c355ceed60f",
       "config": {
         "model": "gpt-4.1-2025-04-14",
         "seed": 42,
@@ -132,6 +141,7 @@
       "file": "run_20260107_142701.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "e9fd5104716bdc885d863ff28b190f4ededbe4a588024a1b12ad22aa6d5a0783",
+      "exported_sha256": "7feb419f32c77804286c1ce1834395d01b433ba7db1e2d38efa68d41a5996101",
       "config": {
         "model": "gpt-4.1-nano-2025-04-14",
         "seed": 42,
@@ -150,6 +160,7 @@
       "file": "run_20260107_142734.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "eeabc06930d040075d0ffced12c30b0129ef2c62d8a7b25b52bb49807743bbc4",
+      "exported_sha256": "5bfdba77ffda0bf096b1bbe08a0d4cfe9333697fe544f25ed4b40c4b30e4592d",
       "config": {
         "model": "gpt-4o-mini-2024-07-18",
         "seed": 42,
@@ -168,6 +179,7 @@
       "file": "run_20260107_085822.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "eea674264fdd4aef63aed67314c383fb6ccbd9776f5cc81b9df8358778e4c712",
+      "exported_sha256": "db1466c34c065346d932cf965c32f0131b66689aba8b11430f60a0df4050f3ac",
       "config": {
         "model": "gpt-5-nano-2025-08-07",
         "seed": 42,
@@ -186,6 +198,7 @@
       "file": "run_together_meta_llama_Llama_3.2_3B_Instruct_Turbo_20260115_163706.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "6493f67a3e04cda27c5b846f76b1619d84f96a8b6c6970a0eb13e2d3ba31f91e",
+      "exported_sha256": "6887c608b86edb02646d5a2b3f1bd0e19c63de6220b17c8deb5d926d3fb705f8",
       "config": {
         "model": "meta-llama/Llama-3.2-3B-Instruct-Turbo",
         "seed": 42,
@@ -199,6 +212,7 @@
       "file": "run_together_meta_llama_Llama_3.3_70B_Instruct_Turbo_20260115_165724.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "ceaec40f604f3d63dd9b67f954dcfd90dee752661c87c02eeca76098c6d3faf9",
+      "exported_sha256": "fba40223243549d81a71e6e73e557333ce24b38995a80037e08c80903d9eaa8f",
       "config": {
         "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
         "seed": 42,
@@ -212,6 +226,7 @@
       "file": "run_together_meta_llama_Llama_4_Maverick_17B_128E_Instruct_FP8_20260115_175818.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "4ec2c3f66a02fed927f8c862164b9bf16699bdc293c81bd48df7cdfab4c0b7a9",
+      "exported_sha256": "cdf8dcd4b2dbaa99257184781607331540a72a74969121a00d9d9981a75f0e1e",
       "config": {
         "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
         "seed": 42,
@@ -225,6 +240,7 @@
       "file": "run_together_meta_llama_Llama_4_Scout_17B_16E_Instruct_20260115_132335.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "fe8d32f47e8b504e2242d6bffa9accaae957cea21274ce30f58b1ca8bcdf5b53",
+      "exported_sha256": "58c5e3e4975e78da242372293c354fae0ba6a6f31aff14fae4c609b88adfcd52",
       "config": {
         "model": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
         "seed": 42,
@@ -238,6 +254,7 @@
       "file": "run_together_mistralai_Mistral_Small_24B_Instruct_2501_20260115_145052.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "7b5b03456970c67a9e9da7a3b4ac608937d99a530deb00579a32b84b93d3341b",
+      "exported_sha256": "c645e544fb5037cd238e5eacd00b0a22a4ccdc06ab59948aed238a7f69e56e54",
       "config": {
         "model": "mistralai/Mistral-Small-24B-Instruct-2501",
         "seed": 42,
@@ -251,6 +268,7 @@
       "file": "run_together_mistralai_Mixtral_8x7B_Instruct_v0.1_20260115_201341.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "7803baf14d33b2cd1567cbe264d3b0ea4a2e709041ee0bd080ec8e2660deef9d",
+      "exported_sha256": "353e550ec2b17740a862ff1b9f0491e3d434cbd22eebe6d4b7dd28edddfc7f90",
       "config": {
         "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
         "seed": 42,
@@ -264,6 +282,7 @@
       "file": "run_together_nvidia_NVIDIA_Nemotron_Nano_9B_v2_20260115_151901.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "b6e45b30abc89b49279ad72f8a2086320bef8e2b5a9604512097b319eb4ba05a",
+      "exported_sha256": "89c452edde69778f4907e226058e92429e265c130937de61c977043e483bd27b",
       "config": {
         "model": "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
         "seed": 42,
@@ -277,6 +296,7 @@
       "file": "run_together_openai_gpt_oss_120b_20260115_093147.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "463ce0041fad9bd7e3d8a5b02d67fca3514faa3a9e760187447bf3d9b0de0c90",
+      "exported_sha256": "1df7c2cf22ee39a07f184e7c6474d43bec03472a5e1fc56b418a7901de175d1c",
       "config": {
         "model": "openai/gpt-oss-120b",
         "seed": 42,
@@ -290,6 +310,7 @@
       "file": "run_together_openai_gpt_oss_20b_20260115_125040.results.jsonl",
       "n_records": 500,
       "source_results_sha256": "14c2d91ed317ccf8576b762dada69581bfc37e4d2d64406a1832a3ae7a09593a",
+      "exported_sha256": "b4a7fad8be197974b1f53be2aac990dba0940f48f86cfaf6841a462b891fa1ff",
       "config": {
         "model": "openai/gpt-oss-20b",
         "seed": 42,
