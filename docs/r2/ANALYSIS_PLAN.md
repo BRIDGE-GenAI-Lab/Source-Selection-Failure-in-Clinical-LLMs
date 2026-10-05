@@ -47,8 +47,9 @@ No pooled two-proportion test across models is reported; pooled inference uses t
 7. Confidence: expected calibration error (10 bins), Brier score, AUROC of confidence for correctness, on
    ok responses with a confidence between 0 and 1.
 
-Table 1 (descriptive only, no inference) summarizes ok responses on pairs that are neither excluded nor
-flagged, so it excludes flagged pairs as well as excluded pairs; the primary outcome and items 1-7 exclude
+Table 1 (descriptive only, no inference) shows one seeded random example per (modification type, outcome)
+drawn from ok cells on pairs that are neither excluded nor flagged and have a non-empty rationale, so it
+excludes flagged pairs as well as excluded pairs; the primary outcome and items 1-7 exclude
 only the excluded pairs (flagged pairs are removed in S3).
 
 Sensitivity analyses (pre-specified):
@@ -67,7 +68,8 @@ All of S1-S5 report pooled position-averaged accuracy with a case-cluster bootst
 vignettes, seed 20261005), like the primary outcome.
 
 Exploratory (labeled as such in the paper):
-E1. differences_found: proportion of ok responses with a reported difference that shares a run of 3 consecutive
+E1. differences_found: among all assessable ok responses (an empty differences_found counts as not noticed),
+    the proportion with a reported difference that shares a run of 3 consecutive
     words with the edited content (case-insensitive, alphanumeric tokens). The edited content is the text that
     differs between the authentic and modified excerpt (symmetric difference of the before and after sides of
     each change). Edit snippets shorter than 3 words cannot meet the rule; if no snippet of a pair has 3 or more
@@ -95,13 +97,15 @@ inside a single request and do not count as a re-request; if they persist, the m
 later. Authentication, permission and model-not-found errors stop the model's run. A provider error that
 rejects the request (bad request or unprocessable) is not re-requested within the cell: it is recorded as a
 cell with the error text, status "non_response" and no choice. On resume, a cell whose last record is such an
-error is attempted once more. If that attempt fails with the same normalized error text (error_key: the text
+error-only record (an error and no attempts) is attempted once more; a record that has both attempts and an
+error is final and is analyzed as a non-response. If that attempt fails with the same normalized error text (error_key: the text
 with ids, timestamps and long digit or hex runs replaced, cut to 200 characters) as an earlier error record of
 the cell, the record is marked persistent_error and is final; a different error text leaves the cell open for
 another attempt. Persistent errors are final non-responses, compared by error_key, and are counted as
 incorrect in S1. A model run is also stopped by a circuit breaker after 3 consecutive cell errors or the same
-error text 3 times in a row.
-Analysis use. The final record of each cell is analyzed. Non-responses are excluded from the primary analysis
+error text 3 times in a row; the breaker counts only fresh cells, not re-attempted ones.
+Analysis use. The analysis runs only after the completeness check (r2/run/check_complete.py) passes: no missing,
+duplicate, unexpected or unresolved-error cells. The final record of each cell is analyzed. Non-responses are excluded from the primary analysis
 and counted as incorrect in S1.
 
 Implementation (for checking this plan against the code).
