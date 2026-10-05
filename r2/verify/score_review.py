@@ -1,5 +1,6 @@
 """Score two independent physician reviews, list disagreements, and apply the exclusion rule
 fixed in the analysis plan."""
+import hashlib
 import json
 import sys
 
@@ -70,12 +71,41 @@ def score(path_a, path_b):
     return rows, disagreements
 
 
+def _check_packets(forms):
+    """The forms must have been generated from the current data/v2/pairs_v2.json: the manifest written
+    with the forms carries the file's SHA-256, and every form row's packet_sha256 must equal the hash
+    recomputed from the current file. Returns the current file's SHA-256."""
+    from r2.verify import build_packets  # local import: build_packets imports QUESTIONS from here
+    raw = build_packets.pairs_path().read_bytes()
+    current = hashlib.sha256(raw).hexdigest()
+    manifest_path = VERIFY_DIR / build_packets.MANIFEST
+    if not manifest_path.exists():
+        raise ValueError(f"{manifest_path} is missing; the forms cannot be bound to pairs_v2.json")
+    recorded = json.loads(manifest_path.read_text()).get("pairs_v2_sha256")
+    if recorded != current:
+        raise ValueError(f"pairs_v2_sha256 in {manifest_path.name} ({recorded}) differs from the current "
+                         f"data/v2/pairs_v2.json ({current}); the reviewed packets are not the current stimuli")
+    packets = {r["case_id"]: r["packet_sha256"] for r in build_packets.packet_rows(json.loads(raw)["cases"])}
+    for name, form in forms.items():
+        if "packet_sha256" not in form.columns:
+            raise ValueError(f"{name}: no packet_sha256 column")
+        if set(form.index) != set(packets):
+            raise ValueError(f"{name}: form rows do not match the current packets "
+                             f"(missing {sorted(set(packets) - set(form.index))[:10]}, "
+                             f"extra {sorted(set(form.index) - set(packets))[:10]})")
+        bad = [cid for cid in form.index if form.loc[cid, "packet_sha256"] != packets[cid]]
+        if bad:
+            raise ValueError(f"{name}: packet_sha256 differs from the current render for {bad[:10]}")
+    return current
+
+
 def apply_consensus(path_a, path_b, consensus_path):
     """Consensus file lists only adjudicated items: case_id,item,consensus."""
     a = _load(path_a)
     b = _load(path_b)
     if list(a.index) != list(b.index):
         raise ValueError("the two forms cover different case_ids")
+    pairs_sha = _check_packets({str(path_a): a, str(path_b): b})
     qkeys = [q for q, _ in QUESTIONS]
     blanks = {q: int((a[q] == "").sum() + (b[q] == "").sum()) for q in qkeys}
     if any(blanks.values()):
@@ -105,7 +135,8 @@ def apply_consensus(path_a, path_b, consensus_path):
     excluded = {cid: exclusion_reasons(row) for cid, row in final.iterrows() if exclusion_reasons(row)}
     flags = {cid: flag_reasons(row) for cid, row in final.iterrows() if flag_reasons(row)}
     (VERIFY_DIR / "excluded_pairs.json").write_text(json.dumps(
-        {"rule": EXCLUSION_RULE, "excluded": sorted(excluded), "reasons": excluded}, indent=2))
+        {"rule": EXCLUSION_RULE, "excluded": sorted(excluded), "reasons": excluded,
+         "pairs_v2_sha256": pairs_sha}, indent=2))
     (VERIFY_DIR / "flags.json").write_text(json.dumps(flags, indent=2))
     final.reset_index().to_csv(VERIFY_DIR / "final_review.csv", index=False)
     return excluded, flags

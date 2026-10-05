@@ -60,13 +60,21 @@ import pandas as pd  # noqa: E402
 
 from r2.verify import score_review as sr  # noqa: E402
 
+from r2.verify import build_packets as bp  # noqa: E402
+
 QKEYS = [q for q, _ in sr.QUESTIONS]
 
 
+def _packets():
+    return {r["case_id"]: r["packet_sha256"] for r in bp.packet_rows()}
+
+
 def _form(path, overrides=None, cases=("C1", "C2", "C3")):
+    packets = _packets()
     rows = []
     for cid in cases:
-        row = {"case_id": cid, **{q: "Y" for q in QKEYS}, "q8_leakage": "N"}
+        row = {"case_id": cid, "packet_sha256": packets.get(cid, ""), **{q: "Y" for q in QKEYS},
+               "q8_leakage": "N", "notes": ""}
         row.update((overrides or {}).get(cid, {}))
         rows.append(row)
     pd.DataFrame(rows).to_csv(path, index=False)
@@ -78,9 +86,21 @@ def _cons(path, rows):
     return path
 
 
+def _sha_file(path):
+    import hashlib
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 @pytest.fixture
-def toy(tmp_path, monkeypatch):
+def toy(tmp_path, monkeypatch, make_pairs):
+    data = tmp_path / "data"
+    data.mkdir()
     monkeypatch.setattr(sr, "VERIFY_DIR", tmp_path)
+    monkeypatch.setattr(bp, "VERIFY_DIR", tmp_path)
+    monkeypatch.setattr(bp, "DATA_V2", data)
+    (data / "pairs_v2.json").write_text(json.dumps(make_pairs(["C1", "C2", "C3"]), indent=1))
+    (tmp_path / "packets_manifest.json").write_text(json.dumps(
+        {"pairs_v2_sha256": _sha_file(data / "pairs_v2.json"), "packets": _packets()}))
     a = _form(tmp_path / "a.csv", {"C1": {"q5_edit_visible": "N"}, "C2": {"q3_authentic_concordant": "P"}})
     b = _form(tmp_path / "b.csv", {"C1": {"q5_edit_visible": "N"}, "C3": {"q8_leakage": "Y"}})
     return tmp_path, a, b
@@ -107,7 +127,8 @@ def test_consensus_outputs_shapes(toy):
     c = _cons(d / "c.csv", [("C2", "q3_authentic_concordant", "P"), ("C3", "q8_leakage", "N")])
     sr.apply_consensus(a, b, c)
     ex = json.loads((d / "excluded_pairs.json").read_text())
-    assert set(ex) == {"rule", "excluded", "reasons"}
+    assert set(ex) == {"rule", "excluded", "reasons", "pairs_v2_sha256"}
+    assert ex["pairs_v2_sha256"] == _sha_file(d / "data" / "pairs_v2.json")
     assert ex["excluded"] == ["C1"] and ex["reasons"] == {"C1": ["q5_edit_visible"]}
     assert json.loads((d / "flags.json").read_text()) == {"C2": ["q3_authentic_concordant"]}
 
@@ -138,3 +159,80 @@ def test_consensus_p_allowed_only_for_q3(toy):
     d, a, b = toy
     c = _cons(d / "c.csv", [("C2", "q3_authentic_concordant", "P"), ("C3", "q8_leakage", "Y")])
     sr.apply_consensus(a, b, c)
+
+
+# ---- I4: bind physician verification to the stimulus file ----
+SEP = "\n\x1e\n"
+
+
+def test_packet_sha256_covers_the_four_model_facing_fields(toy):
+    import hashlib
+    for r in bp.packet_rows():
+        parts = [r["vignette_as_shown_to_model"], r["clinical_question"], r["authentic_as_shown_to_model"],
+                 r["modified_as_shown_to_model"]]
+        assert r["packet_sha256"] == hashlib.sha256(SEP.join(parts).encode("utf-8")).hexdigest()
+
+
+def test_consensus_refuses_packet_mismatch(toy):
+    d, a, b = toy
+    df = pd.read_csv(b, dtype=str).fillna("")
+    df.loc[df.case_id == "C2", "packet_sha256"] = "0" * 64
+    df.to_csv(b, index=False)
+    c = _cons(d / "c.csv", [("C2", "q3_authentic_concordant", "P"), ("C3", "q8_leakage", "N")])
+    with pytest.raises(ValueError, match="packet_sha256"):
+        sr.apply_consensus(a, b, c)
+    assert not (d / "excluded_pairs.json").exists()
+
+
+def test_consensus_refuses_edited_pair(toy):
+    d, a, b = toy
+    pairs = json.loads((d / "data" / "pairs_v2.json").read_text())
+    pairs["cases"][1]["tools"]["S"]["excerpt_text"] = "Give drug 1 at 100 mg daily."
+    (d / "data" / "pairs_v2.json").write_text(json.dumps(pairs, indent=1))
+    c = _cons(d / "c.csv", [("C2", "q3_authentic_concordant", "P"), ("C3", "q8_leakage", "N")])
+    with pytest.raises(ValueError):
+        sr.apply_consensus(a, b, c)
+    assert not (d / "excluded_pairs.json").exists()
+
+
+def test_consensus_refuses_pairs_file_changed_since_manifest(toy):
+    d, a, b = toy
+    path = d / "data" / "pairs_v2.json"
+    path.write_text(json.dumps(json.loads(path.read_text()), indent=2))  # same packets, different bytes
+    c = _cons(d / "c.csv", [("C2", "q3_authentic_concordant", "P"), ("C3", "q8_leakage", "N")])
+    with pytest.raises(ValueError, match="pairs_v2_sha256"):
+        sr.apply_consensus(a, b, c)
+    assert not (d / "excluded_pairs.json").exists()
+
+
+@pytest.fixture
+def complete(tmp_path, monkeypatch, make_pairs):
+    data, verify = tmp_path / "data", tmp_path / "verification"
+    data.mkdir()
+    monkeypatch.setattr(bp, "DATA_V2", data)
+    monkeypatch.setattr(bp, "VERIFY_DIR", verify)
+    (data / "pairs_v2.json").write_text(json.dumps(make_pairs([f"CASE_{i:03d}" for i in range(1, 501)])))
+    return data, verify
+
+
+def test_write_forms_writes_manifest(complete):
+    data, verify = complete
+    bp.write_forms()
+    m = json.loads((verify / "packets_manifest.json").read_text())
+    assert m["pairs_v2_sha256"] == _sha_file(data / "pairs_v2.json")
+    assert m["packets"] == {r["case_id"]: r["packet_sha256"] for r in bp.packet_rows()}
+    form = pd.read_csv(verify / "review_AG.csv", dtype=str)
+    assert len(form) == 500 and form.set_index("case_id").packet_sha256.to_dict() == m["packets"]
+
+
+def test_write_forms_refuses_to_overwrite_answered_forms(complete):
+    data, verify = complete
+    bp.write_forms()
+    bp.write_forms()  # unanswered forms may be regenerated
+    df = pd.read_csv(verify / "review_MO.csv", dtype=str).fillna("")
+    df.loc[0, "q1_vignette_consistent"] = "Y"
+    df.to_csv(verify / "review_MO.csv", index=False)
+    before = {p.name: p.read_bytes() for p in verify.iterdir()}
+    with pytest.raises(RuntimeError, match="review_MO.csv"):
+        bp.write_forms()
+    assert {p.name: p.read_bytes() for p in verify.iterdir()} == before

@@ -13,8 +13,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from r2.paths import DATA_V2, REPO, RUNS_V2
-from r2.stimuli.render import render_messages
+from r2.paths import DATA_V2, REPO, RUNS_V2, VERIFY_DIR
+from r2.stimuli.render import render_messages, visible_content
 
 ORDERS = ("TS", "ST")
 PROVIDERS = {
@@ -28,6 +28,8 @@ TRANSIENT = {"RateLimitError", "APIConnectionError", "APITimeoutError", "Interna
 THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
 TOKEN_PARAMS = ("max_tokens", "max_completion_tokens")
 INCIDENTS = "incidents.jsonl"
+N_PAIRS = 500
+FREEZE_TAG = "r2-analysis-plan-frozen"
 
 
 class ModelMismatch(RuntimeError):
@@ -81,8 +83,17 @@ def load_specs(path=REPO / "r2" / "run" / "models_v2.json"):
 def load_v2_cases(path=DATA_V2 / "pairs_v2.json"):
     raw = Path(path).read_bytes()
     data = json.loads(raw)
-    assert not data.get("unresolved"), "corrected stimulus set still has unresolved pairs"
-    return {c["case_id"]: c for c in data["cases"]}, hashlib.sha256(raw).hexdigest()
+    if data.get("unresolved"):
+        raise ValueError(f"{path}: corrected stimulus set still has {len(data['unresolved'])} unresolved pairs")
+    cases = {c["case_id"]: c for c in data["cases"]}
+    if len(cases) != N_PAIRS or len(data["cases"]) != N_PAIRS:
+        raise ValueError(f"{path}: expected {N_PAIRS} pairs, found {len(data['cases'])} "
+                         f"({len(cases)} distinct case_ids)")
+    same = sorted(cid for cid, c in cases.items()
+                  if visible_content(c["tools"]["T"]) == visible_content(c["tools"]["S"]))
+    if same:
+        raise ValueError(f"{path}: authentic and modified excerpts render identically for {same}")
+    return cases, hashlib.sha256(raw).hexdigest()
 
 
 def make_client(provider):
@@ -370,19 +381,50 @@ def _select(specs, selector):
     return [s for s in specs if s["original_name"] in names]
 
 
-def main():
-    from dotenv import load_dotenv
-    load_dotenv(REPO / ".env")
+def _tag_exists(tag):
+    res = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], cwd=REPO,
+                         capture_output=True, text=True)
+    return res.returncode == 0
+
+
+def _require_frozen(stim_sha):
+    """The main run needs the frozen analysis plan and exactly the physician-verified stimulus file."""
+    if not _tag_exists(FREEZE_TAG):
+        raise SystemExit(f"refusing the main run: git tag {FREEZE_TAG} does not exist "
+                         "(use --pilot for a pilot run)")
+    path = VERIFY_DIR / "excluded_pairs.json"
+    verified = json.loads(path.read_text()).get("pairs_v2_sha256") if path.exists() else None
+    if verified != stim_sha:
+        raise SystemExit(f"refusing the main run: data/v2/pairs_v2.json has sha256 {stim_sha}, but "
+                         f"{path} records pairs_v2_sha256 = {verified} (the physician-verified stimuli)")
+
+
+def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", default="all")
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--out", default=str(RUNS_V2 / "main"))
+    parser.add_argument("--out", default=None, help="default: RUNS_V2/main, or RUNS_V2/pilot with --pilot")
+    parser.add_argument("--pilot", action="store_true",
+                        help="pilot run: skip the freeze-tag and verified-stimulus checks")
     parser.add_argument("--accept-spec-change", action="store_true",
                         help="keep stored records whose prompt, model mapping or decoding differs from the "
                              "current spec; each accepted mismatch is logged to <out>/incidents.jsonl")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.out is None:
+        args.out = str(RUNS_V2 / ("pilot" if args.pilot else "main"))
+    return args
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    if args.pilot and Path(args.out).resolve() == (RUNS_V2 / "main").resolve():
+        raise SystemExit("refusing a --pilot run into the main out dir")
     cases, stim_sha = load_v2_cases()
+    if not args.pilot:
+        _require_frozen(stim_sha)
     context = {"harness_commit": _clean_commit(), "stimulus_sha256": stim_sha}
+    from dotenv import load_dotenv
+    load_dotenv(REPO / ".env")
     for spec in _select(load_specs(), args.models):
         print(f"[{datetime.now():%H:%M:%S}] {spec['original_name']}", flush=True)
         try:

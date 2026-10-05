@@ -405,3 +405,78 @@ def test_torn_multibyte_tail_is_handled_as_torn(tmp_path):
     run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 2), CTX, sleep=lambda s: None)
     assert path.read_bytes().startswith(before)
     assert all(json.loads(l) for l in path.read_text(encoding="utf-8").splitlines())
+
+
+# ---- I4: load_v2_cases checks; main run guarded by the freeze tag and the verified stimulus hash ----
+from r2.run import harness  # noqa: E402
+
+IDS500 = [f"CASE_{i:03d}" for i in range(1, 501)]
+
+
+@pytest.mark.parametrize("kw,ids", [({"unresolved": ["CASE_001"]}, IDS500), ({}, IDS500[:499]),
+                                    ({"identical": ["CASE_007"]}, IDS500)])
+def test_load_v2_cases_raises_value_error(tmp_path, make_pairs, kw, ids):
+    path = tmp_path / "pairs_v2.json"
+    path.write_text(json.dumps(make_pairs(ids, **kw)))
+    with pytest.raises(ValueError):
+        harness.load_v2_cases(path)
+
+
+def test_load_v2_cases_accepts_complete_set(tmp_path, make_pairs):
+    import hashlib
+    path = tmp_path / "pairs_v2.json"
+    path.write_text(json.dumps(make_pairs(IDS500)))
+    cases, sha = harness.load_v2_cases(path)
+    assert len(cases) == 500 and sha == hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_parse_args_out_defaults():
+    from r2.paths import RUNS_V2
+    assert harness.parse_args([]).out == str(RUNS_V2 / "main")
+    assert harness.parse_args(["--pilot"]).out == str(RUNS_V2 / "pilot")
+    assert harness.parse_args(["--pilot", "--out", "/x/y"]).out == "/x/y"
+    assert harness.parse_args(["--accept-spec-change"]).accept_spec_change
+
+
+@pytest.fixture
+def no_side_effects(monkeypatch):
+    monkeypatch.setattr(harness, "load_v2_cases", lambda *a, **k: ({}, "stim-sha"))
+    monkeypatch.setattr(harness, "_clean_commit", lambda: "0" * 40)
+    monkeypatch.setattr(harness, "load_specs", lambda *a, **k: [])
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: None)
+
+
+def test_main_refuses_without_freeze_tag(no_side_effects, monkeypatch):
+    monkeypatch.setattr(harness, "_tag_exists", lambda tag: False)
+    with pytest.raises(SystemExit, match="r2-analysis-plan-frozen"):
+        harness.main([])
+
+
+@pytest.mark.parametrize("excluded", [None, {"excluded": []}, {"excluded": [], "pairs_v2_sha256": "other"}])
+def test_main_refuses_unverified_stimulus(no_side_effects, monkeypatch, tmp_path, excluded):
+    monkeypatch.setattr(harness, "_tag_exists", lambda tag: True)
+    monkeypatch.setattr(harness, "VERIFY_DIR", tmp_path)
+    if excluded is not None:
+        (tmp_path / "excluded_pairs.json").write_text(json.dumps(excluded))
+    with pytest.raises(SystemExit, match="pairs_v2_sha256"):
+        harness.main([])
+
+
+def test_main_runs_when_frozen_and_verified(no_side_effects, monkeypatch, tmp_path):
+    monkeypatch.setattr(harness, "_tag_exists", lambda tag: True)
+    monkeypatch.setattr(harness, "VERIFY_DIR", tmp_path)
+    (tmp_path / "excluded_pairs.json").write_text(json.dumps({"excluded": [], "pairs_v2_sha256": "stim-sha"}))
+    harness.main([])
+
+
+def test_pilot_skips_freeze_checks(no_side_effects, monkeypatch):
+    def boom(tag):
+        raise AssertionError("pilot must not check the freeze tag")
+    monkeypatch.setattr(harness, "_tag_exists", boom)
+    harness.main(["--pilot"])
+
+
+def test_pilot_refuses_main_out_dir(no_side_effects):
+    from r2.paths import RUNS_V2
+    with pytest.raises(SystemExit, match="pilot"):
+        harness.main(["--pilot", "--out", str(RUNS_V2 / "main")])
