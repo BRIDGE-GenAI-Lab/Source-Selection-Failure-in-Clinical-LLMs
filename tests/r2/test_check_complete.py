@@ -105,22 +105,18 @@ def test_export_flat_tolerates_error_cells(tmp_path, monkeypatch):
         fh.write(json.dumps(ok_record) + "\n")
         fh.write(json.dumps(error_record) + "\n")
 
-    # Call export_flat
+    # Call export_flat and parse the CSV with csv.reader (fields may contain commas or newlines)
+    import csv
     dest = export_flat(results_dir)
-
-    # Verify the CSV exists and has the expected content
     assert dest.exists()
-    lines = dest.read_text().strip().split("\n")
-
-    # Should have header + 2 data rows
-    assert len(lines) == 3, f"Expected 3 lines (header + 2 data), got {len(lines)}"
-
-    # Check header includes error column at the end
-    header = lines[0]
-    assert "error" in header, f"Error column not found in header: {header}"
-
-    # Check that the error text appears in the second data row
-    assert "BadRequestError: x" in lines[2], f"Error text not found in row: {lines[2]}"
+    with open(dest, newline="") as fh:
+        header, *rows = list(csv.reader(fh))
+    assert len(rows) == 2, f"Expected 2 data rows, got {len(rows)}"
+    assert header[-1] == "error", f"error is not the last column: {header}"
+    by_col = [dict(zip(header, r)) for r in rows]
+    assert by_col[0]["error"] == "" and by_col[0]["model_served"] == "m-1"
+    assert by_col[1]["error"] == "BadRequestError: x"
+    assert by_col[1]["model_served"] == ""  # None on an error cell exports as empty
 
 
 def test_export_flat_uses_last_record_per_cell(tmp_path, monkeypatch):
@@ -220,3 +216,71 @@ def test_export_flat_reads_only_current_spec_files(tmp_path, monkeypatch):
     (results / "old-model.jsonl").write_text(json.dumps({**base, **_rec("C1", "TS", "ok"), "original_name": "m"}) + "\n")
     rows = list(csv.DictReader(open(export_flat(results))))
     assert len(rows) == 1
+
+
+# ---- Task 10b minor 9: blank lines, empty spec list; minor 10: model_served=None on error cells ----
+def _flat_rows(dest):
+    import csv
+    with open(dest, newline="") as fh:
+        header, *rows = list(csv.reader(fh))
+    return [dict(zip(header, r)) for r in rows]
+
+
+def _full(rec, **extra):
+    return {"original_name": "m", "model_id": "m-1", "finished_at": "t", "decision": None, **rec, **extra}
+
+
+def test_export_flat_and_check_skip_blank_lines(tmp_path, monkeypatch):
+    from r2.run import check_complete
+    monkeypatch.setattr(check_complete, "DATA_V2", tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    a, b = _full(_rec("C1", "TS", "ok")), _full(_rec("C1", "ST", "ok"))
+    (results / "m-1.jsonl").write_text("\n" + json.dumps(a) + "\n\n   \n" + json.dumps(b) + "\n\t\n")
+    rows = _flat_rows(export_flat(results, [SPEC]))
+    assert [(r["case_id"], r["order"]) for r in rows] == [("C1", "TS"), ("C1", "ST")]
+    (row,) = check(results, [SPEC], ["C1"])
+    assert (row["cells"], row["missing"], row["duplicates"]) == (2, 0, 0)
+
+
+def test_check_rejects_an_empty_spec_list(tmp_path):
+    with pytest.raises(ValueError, match="no model specs"):
+        check(tmp_path, [], ["C1"])
+
+
+def test_main_with_no_specs_fails_clearly(tmp_path, monkeypatch):
+    import sys
+
+    from r2.run import check_complete
+    monkeypatch.setattr(check_complete, "load_v2_cases", lambda *a, **k: ({"C1": {}}, "s1"))
+    monkeypatch.setattr(check_complete, "load_specs", lambda *a, **k: [])
+    monkeypatch.setattr(check_complete, "REPO", tmp_path)
+    monkeypatch.setattr(check_complete, "DATA_V2", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["check_complete", str(tmp_path)])
+    with pytest.raises(SystemExit, match="no model specs"):
+        check_complete.main()
+    assert not (tmp_path / "analysis_repeated" / "completeness.csv").exists()
+
+
+@pytest.mark.parametrize("served", ["none", "absent"])
+def test_loaders_tolerate_missing_model_served_on_error_cells(tmp_path, monkeypatch, served):
+    from r2.run import check_complete
+    from r2.run.harness import final_records
+    monkeypatch.setattr(check_complete, "DATA_V2", tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    err = _full(_rec("C1", "ST", "non_response", "BadRequestError: x"), system_fingerprint=None)
+    err["model_served"] = None
+    if served == "absent":
+        del err["model_served"], err["system_fingerprint"]
+    recs = [_full(_rec("C1", "TS", "ok")), err,
+            _full(_rec("C2", "TS", "non_response", "BadRequestError: y"), model_served=None),
+            _full(_rec("C2", "TS", "non_response", "BadRequestError: y"), model_served=None, persistent_error=True),
+            _full(_rec("C2", "ST", "ok"))]
+    (results / "m-1.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
+    assert len(final_records(results / "m-1.jsonl")) == 4
+    (row,) = check(results, [SPEC], ["C1", "C2"])
+    assert row["model_served"] == "m-1" and row["system_fingerprint"] == ""
+    assert (row["missing"], row["duplicates"], row["errors"], row["superseded_errors"]) == (0, 0, 2, 1)
+    rows = _flat_rows(export_flat(results, [SPEC]))
+    assert [r["model_served"] for r in rows] == ["m-1", "", "", "m-1"]

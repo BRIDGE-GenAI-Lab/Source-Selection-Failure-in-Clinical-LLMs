@@ -1126,3 +1126,13 @@ def test_stale_records_message_names_prompt_fields(tmp_path):
     _rewrite(path, recs)
     with pytest.raises(StaleRecords, match=r"\('CASE_001', 'ST'\) differs .* in \['system', 'user'\]"):
         run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+# ---- minor 10: an error cell's record has model_served None, and resume reads it ----
+def test_error_cell_record_has_model_served_none_and_resume_reads_it(tmp_path):
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), GOOD]), CTX, limit=1, sleep=lambda s: None)
+    first = _recs(results_path(SPEC, tmp_path))[0]
+    assert "error" in first and first["model_served"] is None and first["system_fingerprint"] is None
+    client = FakeClient([GOOD])
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=1, sleep=lambda s: None)
+    assert len(client.calls) == 1 and _recs(results_path(SPEC, tmp_path))[-1]["model_served"] == "prov/m-1"
