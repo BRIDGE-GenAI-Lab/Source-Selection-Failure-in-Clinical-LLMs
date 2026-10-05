@@ -29,6 +29,13 @@ def test_pure_positional_chooser():
 def test_perfect_content_chooser():
     s = position_summary(_frame(lambda sham_first: not sham_first))
     assert s["position_averaged_accuracy"] == 1.0 and s["primacy"] == 0.5
+    assert s["content_z"] > 0 and s["content_p"] < 0.05
+
+
+def test_content_z_sign_for_reverse_chooser():
+    s = position_summary(_frame(lambda sham_first: sham_first))
+    assert s["position_averaged_accuracy"] == 0.0
+    assert s["content_z"] < 0
 
 
 def test_calibration_perfect_and_auroc():
@@ -44,3 +51,9 @@ def test_cluster_bootstrap_brackets_point_estimate():
     lo, hi = cluster_bootstrap_paa(df, n_boot=300)
     point = position_summary(df)["position_averaged_accuracy"]
     assert lo <= point <= hi
+
+
+def test_cluster_bootstrap_one_arm_returns_nan():
+    df = _frame(lambda sham_first: not sham_first)
+    lo, hi = cluster_bootstrap_paa(df[df.sham_first], n_boot=50)
+    assert np.isnan(lo) and np.isnan(hi)

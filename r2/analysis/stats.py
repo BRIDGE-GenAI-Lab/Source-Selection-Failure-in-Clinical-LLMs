@@ -78,12 +78,19 @@ def calibration(conf, correct, bins=10):
 
 
 def cluster_bootstrap_paa(df, n_boot=2000, seed=20261005):
-    agg = df.groupby(["case_id", "sham_first"]).correct.agg(["sum", "count"]).unstack(fill_value=0)
+    if df.sham_first.nunique() < 2:
+        return float("nan"), float("nan")
+    agg = df.groupby(["case_id", "sham_first"]).correct.agg(["sum", "count"]).unstack()
+    cols = pd.MultiIndex.from_product([["sum", "count"], [True, False]])
+    agg = agg.reindex(columns=cols).fillna(0)
     k1, n1 = agg[("sum", True)].to_numpy(), agg[("count", True)].to_numpy()
     k2, n2 = agg[("sum", False)].to_numpy(), agg[("count", False)].to_numpy()
     m = len(agg)
     rng = np.random.default_rng(seed)
     draws = rng.integers(0, m, size=(n_boot, m))
     w = np.stack([np.bincount(d, minlength=m) for d in draws])
-    paa = ((w @ k1) / (w @ n1) + (w @ k2) / (w @ n2)) / 2
-    return float(np.percentile(paa, 2.5)), float(np.percentile(paa, 97.5))
+    d1, d2 = w @ n1, w @ n2
+    ok = (d1 > 0) & (d2 > 0)
+    paa = np.full(n_boot, np.nan)
+    paa[ok] = ((w @ k1)[ok] / d1[ok] + (w @ k2)[ok] / d2[ok]) / 2
+    return float(np.nanpercentile(paa, 2.5)), float(np.nanpercentile(paa, 97.5))
