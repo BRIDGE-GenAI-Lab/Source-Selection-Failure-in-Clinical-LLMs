@@ -172,3 +172,24 @@ def test_draft_plan_in_repo_has_slots_and_banner():
     assert text.count("<sha>") == 5 and "<YYYY-MM-DD>" in text
     assert "S5." in text and "Gemini-2.5-Flash-Lite" in text
     assert "Wilson 95%" in text and "not assessable" in text
+
+
+def test_tag_failure_rolls_back(env, monkeypatch):
+    repo, _ = env
+    head = git(repo, "rev-parse", "HEAD").strip()
+    plan_before = (repo / "docs/r2/ANALYSIS_PLAN.md").read_bytes()
+    real_git = freeze._git
+
+    def failing(r, *args, **kw):
+        if args and args[0] == "tag":
+            raise freeze.FreezeRefused("git tag failed: simulated")
+        return real_git(r, *args, **kw)
+
+    monkeypatch.setattr(freeze, "_git", failing)
+    with pytest.raises(freeze.FreezeRefused, match="rolled back"):
+        run(env)
+    assert git(repo, "rev-parse", "HEAD").strip() == head
+    assert git(repo, "tag", "-l").strip() == ""
+    assert (repo / "docs/r2/ANALYSIS_PLAN.md").read_bytes() == plan_before
+    assert not (repo / "docs/r2/FREEZE_RECORD.md").exists()
+    assert git(repo, "status", "--porcelain").strip() == ""

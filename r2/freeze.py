@@ -116,6 +116,26 @@ Changes after the freeze (each needs a dated entry here before any further main-
 """
 
 
+def _rollback(repo, base, before, cause):
+    """Undo the freeze commit after a failed tag: soft-reset it, restore the plan and record files from
+    their pre-freeze content, and report. Raises FreezeRefused in every case."""
+    try:
+        _git(repo, "reset", "--soft", "HEAD~1")
+        _git(repo, "reset", "-q", "HEAD", "--", PLAN, RECORD)
+        for rel, content in before.items():
+            target = Path(repo) / rel
+            if content is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.write_bytes(content)
+    except (FreezeRefused, OSError) as exc2:
+        raise FreezeRefused(f"tagging failed ({cause}) AND rollback failed ({exc2}); the freeze commit "
+                            f"may still be present on HEAD (base {base}): inspect `git status` and "
+                            f"`git log` before retrying") from exc2
+    raise FreezeRefused(f"tagging failed ({cause}); freeze commit rolled back to {base}, plan and record "
+                        f"restored; no tag was created") from cause
+
+
 def freeze(repo=None, runs_v2=None, dry_run=False, today=None):
     repo = Path(repo or paths.REPO)
     runs_v2 = Path(runs_v2 or paths.RUNS_V2)
@@ -131,11 +151,15 @@ def freeze(repo=None, runs_v2=None, dry_run=False, today=None):
         print(f"  would fill and de-banner {PLAN}, write {RECORD}, commit both, "
               f"and create local annotated tag {TAG} (no push)")
         return None
+    before = {rel: ((repo / rel).read_bytes() if (repo / rel).exists() else None) for rel in (PLAN, RECORD)}
     (repo / PLAN).write_text(plan_text, encoding="utf-8")
     (repo / RECORD).write_text(freeze_record(base, hashes, date), encoding="utf-8")
     _git(repo, "add", PLAN, RECORD)
     _git(repo, "commit", "-q", "-m", f"r2: freeze analysis plan for the repeated experiment\n\n{FOOTER}")
-    _git(repo, "tag", "-a", TAG, "-m", "Analysis plan frozen before repeated-experiment data collection")
+    try:
+        _git(repo, "tag", "-a", TAG, "-m", "Analysis plan frozen before repeated-experiment data collection")
+    except FreezeRefused as exc:
+        _rollback(repo, base, before, exc)
     commit = _git(repo, "rev-parse", "HEAD").stdout.strip()
     print(f"frozen: tag {TAG} -> {commit} (local only; not pushed)")
     return commit
