@@ -101,3 +101,25 @@ def test_per_model_table_nan_p_does_not_poison_fdr_and_calibration_drops_nan():
     assert pm.loc[["good", "bad", "nc", "an"], "content_p_fdr"].notna().all()
     assert abs(pm.loc["nc", "mean_conf"] - 0.8) < 1e-9
     assert pd.isna(pm.loc["an", "ece"]) and pd.isna(pm.loc["an", "mean_conf"])
+
+
+def test_repeated_frame_uses_last_record_per_cell(tmp_path, monkeypatch):
+    from r2.paths import DATA_V2
+    c1 = json.loads((DATA_V2 / "pairs_v2.json").read_text())["cases"][0]["case_id"]
+    results = tmp_path / "results"
+    results.mkdir()
+    err = {"original_name": "model_x", "case_id": c1, "order": "TS", "labels": {"A": "T", "B": "S"},
+           "status": "non_response", "selected_tool": None, "correct": None, "decision": None,
+           "error": "BadRequestError: boom", "attempts": [], "model_served": None}
+    ok = {**err, "status": "ok", "selected_tool": "A", "correct": 1, "attempts": [{}],
+          "decision": {"confidence": 0.9, "differences_found": []}}
+    del ok["error"]
+    (results / "model_x.jsonl").write_text(json.dumps(err) + "\n" + json.dumps(ok) + "\n")
+    verify = tmp_path / "verify"
+    verify.mkdir()
+    (verify / "excluded_pairs.json").write_text(json.dumps({"rule": "x", "excluded": [], "reasons": {}}))
+    (verify / "flags.json").write_text("{}")
+    monkeypatch.setattr(repeated, "VERIFY_DIR", verify)
+    monkeypatch.setattr(repeated, "load_specs", lambda *a, **k: [{"original_name": "model_x", "model_id": "model_x"}])
+    df = repeated_frame(results)
+    assert len(df) == 1 and df.iloc[0].status == "ok" and df.iloc[0].correct == 1

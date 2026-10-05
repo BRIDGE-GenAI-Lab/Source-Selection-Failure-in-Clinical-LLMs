@@ -9,7 +9,7 @@ from scipy.stats import spearmanr
 from r2.analysis.stats import (CATEGORY, calibration, cluster_bootstrap_paa, fdr, gee_logit,
                                position_summary, wilson)
 from r2.paths import DATA_V2, REPO, RUNS_V2, VERIFY_DIR
-from r2.run.harness import iter_result_files, load_specs
+from r2.run.harness import final_records, iter_result_files, load_specs
 
 OUT = REPO / "analysis_repeated"
 
@@ -58,8 +58,7 @@ def repeated_frame(out_dir=RUNS_V2 / "main"):
     substituted = {s["original_name"] for s in load_specs() if s.get("substituted_for")}
     rows = []
     for path in iter_result_files(out_dir):
-        for line in path.read_text().splitlines():
-            r = json.loads(line)
+        for r in final_records(path):
             d = r.get("decision") or {}
             sel = r.get("selected_tool")
             rows.append({

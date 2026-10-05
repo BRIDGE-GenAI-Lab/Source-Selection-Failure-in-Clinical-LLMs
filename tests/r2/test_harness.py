@@ -231,3 +231,71 @@ def test_create_non_transient_raises_immediately():
     with pytest.raises(Exception, match="bad"):
         _create(_Seq([_fake_exc("BadRequestError")("bad")]), {}, sleeps.append)
     assert sleeps == []
+
+
+# ---- I1: circuit breaker, error-only records retried on resume ----
+SUBSET3 = {k: CASES[k] for k in ("CASE_001", "CASE_002", "CASE_003")}
+
+
+class ScriptedClient(FakeClient):
+    """Each call pops one item: an exception instance is raised, a string is returned as content."""
+
+    def create(self, **kw):
+        self.calls.append(kw)
+        item = self.replies.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return _Resp(item, self.served or kw["model"])
+
+
+def _bad(text="boom"):
+    return _fake_exc("BadRequestError")(text)
+
+
+def _recs(path):
+    return [json.loads(l) for l in path.read_text().splitlines()]
+
+
+def test_breaker_trips_after_three_consecutive_cell_errors(tmp_path):
+    client = ScriptedClient([_bad("a"), _bad("b"), _bad("c"), GOOD])
+    with pytest.raises(ModelUnavailable):
+        run_model(SPEC, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
+    recs = _recs(results_path(SPEC, tmp_path))
+    assert len(recs) == 3 and all("error" in r for r in recs)
+    assert len(client.calls) == 3
+
+
+def test_breaker_trips_on_same_error_text_three_times_in_a_row(tmp_path):
+    client = ScriptedClient([_bad("same"), GOOD, _bad("same"), GOOD, _bad("same"), GOOD])
+    with pytest.raises(ModelUnavailable):
+        run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(_recs(results_path(SPEC, tmp_path))) == 5
+
+
+def test_breaker_not_tripped_by_distinct_interleaved_errors(tmp_path):
+    client = ScriptedClient([_bad("a"), GOOD, _bad("b"), GOOD, _bad("c"), GOOD])
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(_recs(results_path(SPEC, tmp_path))) == 6
+
+
+def test_error_only_record_is_reattempted_on_resume(tmp_path):
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad(), GOOD, GOOD, GOOD]), CTX, sleep=lambda s: None)
+    client2 = FakeClient([GOOD])
+    run_model(SPEC, SUBSET, tmp_path, client2, CTX, sleep=lambda s: None)
+    assert len(client2.calls) == 1
+    recs = _recs(results_path(SPEC, tmp_path))
+    assert len(recs) == 5
+    first, last = recs[0], recs[-1]
+    assert (first["case_id"], first["order"]) == (last["case_id"], last["order"])
+    assert "error" in first and first["attempts"] == [] and last["status"] == "ok"
+    client3 = FakeClient([])
+    run_model(SPEC, SUBSET, tmp_path, client3, CTX, sleep=lambda s: None)
+    assert client3.calls == []
+
+
+def test_final_records_takes_last_record_per_cell(tmp_path):
+    from r2.run.harness import final_records
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad(), GOOD, GOOD, GOOD]), CTX, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD]), CTX, sleep=lambda s: None)
+    fin = final_records(results_path(SPEC, tmp_path))
+    assert len(fin) == 4 and all(r["status"] == "ok" and "error" not in r for r in fin)

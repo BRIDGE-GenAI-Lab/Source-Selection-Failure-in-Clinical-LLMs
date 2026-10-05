@@ -43,6 +43,10 @@ class CorruptResults(RuntimeError):
 
 CELL_ERRORS = {"BadRequestError", "UnprocessableEntityError"}
 MODEL_ERRORS = {"AuthenticationError", "PermissionDeniedError", "NotFoundError"}
+# Circuit breaker: stop a model after this many consecutive cell-error records, or when the same
+# error text (first ERROR_TEXT_CHARS characters) repeats this many times in a row among error records.
+BREAKER_LIMIT = 3
+ERROR_TEXT_CHARS = 200
 
 
 def _error_kind(exc):
@@ -81,6 +85,41 @@ def results_path(spec, out_dir):
 
 def iter_result_files(out_dir):
     return [p for p in sorted(Path(out_dir).glob("*.jsonl")) if not p.name.startswith("._")]
+
+
+def is_error_only(r):
+    """An API error before any response was received: not a completed cell, re-attempted on resume."""
+    return "error" in r and not r.get("attempts")
+
+
+def read_records(path):
+    return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def final_records(path):
+    """The last record per (case_id, order); analysis and export use only these."""
+    last = {}
+    for r in read_records(path):
+        last[(r["case_id"], r["order"])] = r
+    return list(last.values())
+
+
+class _Breaker:
+    def __init__(self, spec):
+        self.spec, self.consecutive, self.text, self.same = spec, 0, None, 0
+
+    def observe(self, rec):
+        if "error" not in rec:
+            self.consecutive = 0
+            return
+        self.consecutive += 1
+        text = rec["error"][:ERROR_TEXT_CHARS]
+        self.same = self.same + 1 if text == self.text else 1
+        self.text = text
+        if self.consecutive >= BREAKER_LIMIT or self.same >= BREAKER_LIMIT:
+            raise ModelUnavailable(
+                f"{self.spec['model_id']}: circuit breaker ({self.consecutive} consecutive cell errors, "
+                f"same error text {self.same}x in a row): {text}")
 
 
 def parse_decision(text):
@@ -210,7 +249,8 @@ def _done(path, cases, context):
         if not ok:
             raise StaleRecords(f"{path}: stale record for {key}")
         good.append(line)
-        done.add(key)
+        if not is_error_only(r):
+            done.add(key)
     return done
 
 
@@ -223,6 +263,7 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
     if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
         with open(path, "a") as fh:
             fh.write("\n")
+    breaker = _Breaker(spec)
     with open(path, "a") as fh:
         for cid in ids:
             for order in ORDERS:
@@ -232,6 +273,7 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
                 fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
                 fh.flush()
                 os.fsync(fh.fileno())
+                breaker.observe(rec)
     return path
 
 
