@@ -5,8 +5,8 @@ from collections import Counter
 from pathlib import Path
 
 from r2.paths import DATA_V2, REPO, RUNS_V2
-from r2.run.harness import (INCIDENTS, ORDERS, final_records, is_error_only, iter_result_files,
-                            load_specs, load_v2_cases, read_records, results_path)
+from r2.run.harness import (ORDERS, final_records, is_error_only, iter_result_files, load_specs,
+                            load_v2_cases, read_records, results_path)
 
 
 def _cell_counts(records):
@@ -52,9 +52,10 @@ def _distinct(final, field):
 
 
 def orphan_files(out_dir, specs):
-    """Result files in out_dir that belong to no current spec (e.g. a dropped or substituted model)."""
+    """Result files in out_dir that belong to no current spec (e.g. a dropped or substituted model).
+    Incident files (incidents.jsonl, *.incidents.jsonl) are evidence, not results, and are ignored."""
     expected = {results_path(s, out_dir).name for s in specs}
-    return [p.name for p in iter_result_files(out_dir) if p.name not in expected and p.name != INCIDENTS]
+    return [p.name for p in iter_result_files(out_dir) if p.name not in expected]
 
 
 def check(out_dir, specs, case_ids):

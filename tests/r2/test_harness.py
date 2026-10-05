@@ -452,7 +452,8 @@ def test_accept_spec_change_keeps_records_and_logs_incidents(tmp_path, capsys):
     run_model({**SPEC, "temperature": 0.7}, SUBSET, tmp_path, client, CTX, sleep=lambda s: None,
               accept_spec_change=True)
     assert len(client.calls) == 2
-    incidents = [json.loads(l) for l in (tmp_path / "incidents.jsonl").read_text().splitlines()]
+    incidents = [json.loads(l) for l in (tmp_path / "prov_m-1.incidents.jsonl").read_text().splitlines()]
+    assert not (tmp_path / "incidents.jsonl").exists()
     assert len(incidents) == 2 and {i["field"] for i in incidents} == {"temperature"}
     assert all(i["kind"] == "accepted_spec_change" for i in incidents)
     assert "ACCEPTED" in capsys.readouterr().out
@@ -703,7 +704,7 @@ def test_check_served_prefix_opt_in():
 def test_model_mismatch_response_logged_to_incidents(tmp_path):
     with pytest.raises(ModelMismatch):
         run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD], served="prov/m-1-preview"), CTX, sleep=lambda s: None)
-    (inc,) = [json.loads(l) for l in (tmp_path / "incidents.jsonl").read_text().splitlines()]
+    (inc,) = [json.loads(l) for l in (tmp_path / "prov_m-1.incidents.jsonl").read_text().splitlines()]
     assert inc["kind"] == "model_mismatch" and inc["response"]["model"] == "prov/m-1-preview"
     assert inc["case_id"] == "CASE_001" and inc["request"]["model"] == "prov/m-1"
     assert not results_path(SPEC, tmp_path).read_text()
@@ -764,3 +765,43 @@ def test_select_known_names_and_providers():
 def test_select_rejects_unknown(selector, name):
     with pytest.raises(SystemExit, match=name):
         harness._select(SPECS, selector)
+
+
+# ---- Step 4b N5: per-model incident files, written under the model lock ----
+def test_incidents_are_per_model_files(tmp_path):
+    other = {**SPEC, "original_name": "n", "model_id": "prov/n-1"}
+    with pytest.raises(ModelMismatch):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD], served="prov/m-1-preview"), CTX, sleep=lambda s: None)
+    with pytest.raises(ModelMismatch):
+        run_model(other, SUBSET, tmp_path, FakeClient([GOOD], served="prov/n-2"), CTX, sleep=lambda s: None)
+    from r2.run.harness import incidents_path
+    assert incidents_path(SPEC, tmp_path).name == "prov_m-1.incidents.jsonl"
+    m = [json.loads(l) for l in incidents_path(SPEC, tmp_path).read_text().splitlines()]
+    n = [json.loads(l) for l in incidents_path(other, tmp_path).read_text().splitlines()]
+    assert [i["model_id"] for i in m] == ["prov/m-1"] and [i["model_id"] for i in n] == ["prov/n-1"]
+    assert not (tmp_path / "incidents.jsonl").exists()
+    assert [p.name for p in iter_result_files(tmp_path)] == ["prov_m-1.jsonl", "prov_n-1.jsonl"]
+
+
+def test_incidents_are_written_under_the_model_lock(tmp_path, monkeypatch):
+    import fcntl
+
+    from r2.run.harness import safe_name
+    real, held = harness._log_incident, []
+
+    def probe(out_dir, spec, incident):
+        with open(tmp_path / f"{safe_name(spec['model_id'])}.lock", "a") as fh:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                held.append(False)
+            except BlockingIOError:
+                held.append(True)
+        real(out_dir, spec, incident)
+    monkeypatch.setattr(harness, "_log_incident", probe)
+    _first_record(tmp_path)
+    run_model({**SPEC, "temperature": 0.7}, SUBSET, tmp_path, FakeClient([GOOD] * 2), CTX, sleep=lambda s: None,
+              accept_spec_change=True)  # accepted_spec_change incidents, from _done
+    with pytest.raises(ModelMismatch):  # model_mismatch incident, from execute_cell
+        run_model({**SPEC, "original_name": "z", "model_id": "prov/z-1"}, SUBSET, tmp_path,
+                  FakeClient([GOOD], served="prov/x"), CTX, sleep=lambda s: None)
+    assert held == [True, True, True]

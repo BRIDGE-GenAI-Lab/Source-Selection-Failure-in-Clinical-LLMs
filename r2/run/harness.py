@@ -29,7 +29,8 @@ RETRY_PROMPT = "Return only the JSON object described above, with no other text.
 TRANSIENT = {"RateLimitError", "APIConnectionError", "APITimeoutError", "InternalServerError"}
 THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
 TOKEN_PARAMS = ("max_tokens", "max_completion_tokens")
-INCIDENTS = "incidents.jsonl"
+INCIDENTS = "incidents.jsonl"  # the former shared incident file; still never treated as a result file
+INCIDENTS_SUFFIX = ".incidents.jsonl"  # per model: <safe_name>.incidents.jsonl, written under the model lock
 N_PAIRS = 500
 RETRY_TRIES = 10
 RETRY_AFTER_CAP = 900  # seconds; a longer Retry-After is slept as this, then retried
@@ -117,8 +118,18 @@ def results_path(spec, out_dir):
     return Path(out_dir) / f"{safe_name(spec['model_id'])}.jsonl"
 
 
+def incidents_path(spec, out_dir):
+    return Path(out_dir) / f"{safe_name(spec['model_id'])}{INCIDENTS_SUFFIX}"
+
+
+def is_incident_file(name):
+    return name == INCIDENTS or name.endswith(INCIDENTS_SUFFIX)
+
+
 def iter_result_files(out_dir):
-    return [p for p in sorted(Path(out_dir).glob("*.jsonl")) if not p.name.startswith("._")]
+    """Result files in out_dir: *.jsonl except AppleDouble (._*) and incident files."""
+    return [p for p in sorted(Path(out_dir).glob("*.jsonl"))
+            if not p.name.startswith("._") and not is_incident_file(p.name)]
 
 
 def is_error_only(r):
@@ -283,7 +294,7 @@ def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=N
             check_served(spec, resp.get("model"))
         except ModelMismatch as exc:
             if out_dir is not None:  # the paid response is the drift evidence: keep it before stopping
-                _log_incident(out_dir, {"kind": "model_mismatch", "model_id": spec["model_id"],
+                _log_incident(out_dir, spec, {"kind": "model_mismatch", "model_id": spec["model_id"],
                                         "original_name": spec["original_name"], "case_id": case["case_id"],
                                         "order": order, "error": str(exc), "request": kwargs, "response": resp,
                                         "latency_ms": latency_ms, **context})
@@ -316,8 +327,9 @@ def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=N
     return rec
 
 
-def _log_incident(out_dir, incident):
-    with open(Path(out_dir) / INCIDENTS, "a", encoding="utf-8") as fh:
+def _log_incident(out_dir, spec, incident):
+    """Append one incident to the model's own incident file. Callers hold the model lock (run_model)."""
+    with open(incidents_path(spec, out_dir), "a", encoding="utf-8") as fh:
         fh.write(json.dumps({**incident, "logged_at": datetime.now(timezone.utc).isoformat()},
                             ensure_ascii=False, default=str) + "\n")
         fh.flush()
@@ -386,7 +398,7 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
         for field, recorded, current in mismatches:
             print(f"ACCEPTED spec change {path.name} {key}: {field}: recorded {recorded!r}, "
                   f"current {current!r}", flush=True)
-            _log_incident(out_dir, {"kind": "accepted_spec_change", "model_id": spec["model_id"],
+            _log_incident(out_dir, spec, {"kind": "accepted_spec_change", "model_id": spec["model_id"],
                                     "file": path.name, "case_id": key[0], "order": key[1], "field": field,
                                     "recorded": recorded, "current": current})
         if is_done(r):
@@ -511,7 +523,8 @@ def parse_args(argv=None):
                         help="pilot run: skip the freeze-tag and verified-stimulus checks")
     parser.add_argument("--accept-spec-change", action="store_true",
                         help="keep stored records whose prompt, model mapping or decoding differs from the "
-                             "current spec; each accepted mismatch is logged to <out>/incidents.jsonl")
+                             "current spec; each accepted mismatch is logged to "
+                             "<out>/<safe_name>.incidents.jsonl")
     args = parser.parse_args(argv)
     if args.out is None:
         args.out = str(RUNS_V2 / ("pilot" if args.pilot else "main"))

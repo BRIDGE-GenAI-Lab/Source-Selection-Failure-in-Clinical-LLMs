@@ -152,6 +152,8 @@ from r2.run.check_complete import OrphanResults  # noqa: E402
 def test_orphan_result_file_fails_check(tmp_path):
     _write(tmp_path / "m-1.jsonl", [("C1", "TS", "ok"), ("C1", "ST", "ok")])
     (tmp_path / "incidents.jsonl").write_text("{}\n")
+    (tmp_path / "m-1.incidents.jsonl").write_text("{}\n")
+    (tmp_path / "superseded-model.incidents.jsonl").write_text("{}\n")
     (tmp_path / "._m-1.jsonl").write_bytes(b"\x00\x05")
     (tmp_path / "m-1.lock").write_text("")
     (row,) = check(tmp_path, [SPEC], ["C1"])
