@@ -91,3 +91,79 @@ def test_summary_counts_by_type(tmp_path, monkeypatch):
         by_type = summary[f"{col}_by_type"]
         assert sum(sum(v.values()) for v in by_type.values()) == 500
         assert by_type == {t: dict(Counter(g[col])) for t, g in df.groupby("sham_type")}
+
+
+# ---- Task DM item 3: classify_pair per branch, clear errors, summary newline ----
+import copy as _copy
+
+import pytest as _pytest
+
+from r2.audit.pair_audit import classify_pair
+
+
+def _case(sham_type="dosing_error"):
+    meta = {"organization": "Org", "guideline_title": "G", "version_label": "v1", "publication_year": 2020}
+    t = {"metadata": meta, "excerpt_text": "Give 1 mg.", "safety_guardrails": ["a"],
+         "exclusions_or_cautions": ["b"], "applicability": ["c"]}
+    return {"case_id": "CASE_X", "eval": {"sham_trap_type": sham_type},
+            "tools": {"T": t, "S": _copy.deepcopy(t)}}
+
+
+def _classify(case, log=None):
+    return classify_pair(case, log, {hashlib_sha(case): 1})
+
+
+def hashlib_sha(case):
+    import hashlib
+    return hashlib.sha256(case["tools"]["T"]["excerpt_text"].encode("utf-8")).hexdigest()[:16]
+
+
+def test_branch_excerpt_differs():
+    c = _case()
+    c["tools"]["S"]["excerpt_text"] = "Give 10 mg."
+    r = _classify(c)
+    assert (r["raw_status"], r["visible_status"], r["root_cause"]) == ("visible", "excerpt_differs", "")
+
+
+def test_branch_metadata_only():
+    c = _case()
+    c["tools"]["S"]["metadata"]["organization"] = "Ogr"
+    r = _classify(c)
+    assert (r["raw_status"], r["visible_status"]) == ("visible", "metadata_only")
+    assert r["visible_meta_changed"] == "organization"
+
+
+def test_branch_hidden_only():
+    c = _case()
+    c["tools"]["S"]["safety_guardrails"] = ["changed"]
+    r = _classify(c)
+    assert (r["raw_status"], r["visible_status"]) == ("hidden_only", "identical")
+    assert r["hidden_fields_changed"] == "safety_guardrails" and "no original runner serialized" in r["root_cause"]
+
+
+@_pytest.mark.parametrize("sham_type, fragment", [("authority_mimicry", "6-entry spoof table"),
+                                                  ("subtle_inversion", "no polarity keyword")])
+def test_branch_no_edit_known_types(sham_type, fragment):
+    r = _classify(_case(sham_type))
+    assert (r["raw_status"], r["visible_status"]) == ("no_edit", "identical")
+    assert fragment in r["root_cause"]
+
+
+def test_branch_no_edit_unknown_type_raises_instead_of_a_silent_fallback():
+    with _pytest.raises(ValueError, match="no root-cause rule"):
+        _classify(_case("dosing_error"))
+
+
+@_pytest.mark.parametrize("path", [("T", "metadata"), ("S", "metadata"), ("T", "excerpt_text"), ("S", "excerpt_text")])
+def test_missing_metadata_or_excerpt_is_a_clear_error(path):
+    c = _case()
+    del c["tools"][path[0]][path[1]]
+    with _pytest.raises(ValueError, match=f"CASE_X.*{path[0]}.*{path[1]}"):
+        classify_pair(c, None, {})
+
+
+def test_summary_json_ends_with_newline(tmp_path, monkeypatch):
+    import r2.audit.pair_audit as pa
+    monkeypatch.setattr(pa, "AUDIT_DIR", tmp_path)
+    pa.run(write=True)
+    assert (tmp_path / "pair_audit_summary.json").read_text().endswith("}\n")

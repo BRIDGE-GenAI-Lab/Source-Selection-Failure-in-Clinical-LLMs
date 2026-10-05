@@ -96,8 +96,16 @@ def unclaimed_changes(claimed, observed):
     return "content"
 
 
+def _require_fields(case, t, s):
+    for label, tool in (("T", t), ("S", s)):
+        for key in ("metadata", "excerpt_text"):
+            if key not in tool:
+                raise ValueError(f"{case.get('case_id')}: tool {label} has no '{key}' field; cannot classify the pair")
+
+
 def classify_pair(case, log_row, shared_by):
     t, s = case["tools"]["T"], case["tools"]["S"]
+    _require_fields(case, t, s)
     content = [f for f in VISIBLE_CONTENT + HIDDEN_CONTENT if t.get(f) != s.get(f)]
     meta = [f for f in VISIBLE_META if t["metadata"].get(f) != s["metadata"].get(f)]
     hidden = [f for f in HIDDEN_CONTENT if f in content]
@@ -119,7 +127,11 @@ def classify_pair(case, log_row, shared_by):
     if raw == "hidden_only":
         cause = ROOT_CAUSE["hidden_only"]
     elif raw == "no_edit":
-        cause = ROOT_CAUSE.get(("no_edit", sham_type), "no change found")
+        try:
+            cause = ROOT_CAUSE[("no_edit", sham_type)]
+        except KeyError:
+            raise ValueError(f"{case['case_id']}: no_edit pair of type {sham_type!r} has no root-cause rule; "
+                             "add one to ROOT_CAUSE") from None
     t_hash = hashlib.sha256(t["excerpt_text"].encode("utf-8")).hexdigest()[:16]
 
     # Reconciliation: compare logged fields with observed fields
@@ -179,7 +191,7 @@ def run(write=True):
             "claimed_not_observed_by_type": claimed_not_obs_by_type,
             "case_022": df.set_index("case_id").loc["CASE_022"].to_dict(),
         }
-        (AUDIT_DIR / "pair_audit_summary.json").write_text(json.dumps(summary, indent=2, default=str))
+        (AUDIT_DIR / "pair_audit_summary.json").write_text(json.dumps(summary, indent=2, default=str) + "\n")
     return df
 
 
