@@ -28,7 +28,7 @@ F9. Zenodo DOI 10.5281/zenodo.21209850: was it minted, and for which repository 
 
 Full evidence (file paths, quotes and computations) is in `docs/r2/AUTHOR_FACTS_EVIDENCE.md`. Each item gives a status and the facts the files establish, then the open items as a checklist for the authors. Items marked [ ] must be answered before the Methods and the response are finalized.
 
-## F1. Vignette generation: PARTIAL
+## F1. Vignette generation: MODEL CONFIRMED; other items open
 
 **Established.**
 - **Batches.** The cases were produced as JSON batches from a zero-shot schema prompt, reproduced in the pre-R1 appendix Part XIV §14.2 and in `safe-guideline-tooling-eval/supplementary_appendix.md:1439-1530`. There are five 100-case batch objects; the fourth stops at CASE_335, and CASE_336–400 were never generated. A separate 75-case batch holds CASE_501–575.
@@ -42,16 +42,23 @@ Full evidence (file paths, quotes and computations) is in `docs/r2/AUTHOR_FACTS_
 - **CASE_335 is truncated.** It has no labs, ECG, imaging, assessment or clinical question, and the models saw it that way.
 - **Do not use the "GPT-4 generated vignettes" text.** It comes from appendix-generator script literals and is not a provenance record.
 
-**Update (2026-10-05, follow-up search): interface identified, model version pending.**
+**Update (2026-10-05): model and interface confirmed.**
+- **Model: Gemini 3 Pro (Google). Interface: Google AI Studio web chat.** The corresponding author confirmed the model on 2026-10-05, after the file evidence below identified AI Studio. The chat's `runSettings` have not been read, so the exact model string and temperature are not yet verified from the record.
 - **The user's Google Drive holds a Google AI Studio chat that matches the vignettes.** It is `My Drive/Google AI Studio/EHR Synthetic Data Generation.`, 1.99 MB, last saved 2026-01-03 13:23. That is 5 minutes before `75cases.json` was saved (13:28) and about an hour after `500cases.json` (12:20). The title matches the generation prompt ("synthetic dataset of EHR-like cases") and the dataset name `Synthetic_EHR_Tool_Safety_Dataset`. AI Studio saves each chat to this Drive folder automatically.
 - **`75cases.json` begins with Google AI Studio's code-block header labels**, copied along with the JSON: `"code", "JSON", "download", "content_copy", "expand_less"`. These are Material-icon labels. Copying from Claude.ai or ChatGPT does not produce them.
 - **Conclusion:** the vignettes were generated in Google AI Studio, so with a Gemini model. This is consistent with the Feb 2026 AI Studio note in the same folder ("…we will run it through gemini internally…").
-- **The exact model version** is stored in the chat file's `runSettings.model`. The file is online-only and this Mac has no Google Drive client, so it could not be read yet. Read it via the Google Drive connector, or open the chat in AI Studio (Library → "EHR Synthetic Data Generation." → Run settings).
+- **Optional record check:** the chat file's `runSettings` hold the exact model string and temperature. The file is online-only and this Mac has no Google Drive client. Read it via the Google Drive connector, or in AI Studio (Library → "EHR Synthetic Data Generation." → Run settings).
+- **Dates established from files:** batch 1 was in use by 2025-12-27 (pilot runs on that date), and the 75-case batch was saved on 2026-01-03. The `generated_utc` values (2025-05-15) predate the model's release, which confirms they were written by the generator.
+- **Same-vendor note for Limitations:** the generator (Gemini 3 Pro) is not among the 21 evaluated models, but a same-family model, Gemini-2.5-Flash-Lite, is. Omar et al. (ref 16) excluded their generator model from evaluation to avoid this bias. A sensitivity check without Gemini-2.5-Flash-Lite answers the point.
+
+**Suggested Methods text.**
+> Vignettes were generated with Gemini 3 Pro (Google) through the Google AI Studio web interface, using a zero-shot JSON-schema prompt (Supplementary Methods), in batches completed by 3 January 2026. The generator model was not among the evaluated models.
 - **No evidence supports Claude Opus.**
 
 **Still needed from the authors.**
-- [ ] Generating model and version (read `runSettings.model` from the AI Studio chat above), the interface (Google AI Studio, see above) and the parameters (temperature, from the same `runSettings`).
-- [ ] Real generation dates.
+- [x] Generating model: Gemini 3 Pro (author, 2026-10-05). Interface: Google AI Studio (files).
+- [ ] Temperature and exact model string (optional; from the chat's `runSettings`).
+- [x] Real generation dates: completed by 2026-01-03; batch 1 by 2025-12-27 (files).
 - [ ] Whether the published prompt was used for every batch, including the 75-case batch and the truncated CASE_335.
 - [ ] How the "12 domains" were defined, or agreement to drop the claim.
 - [ ] Why CASE_566–575 were dropped. The data show truncation by ID.
