@@ -428,7 +428,7 @@ def test_headline_aliases_and_counts(monkeypatch):
     assert head["n_cells"] == len(kept) and head["primary"]["n"] == int((kept.status == "ok").sum())
     assert head["n_types"] == 2 and head["n_flagged_pairs"] == 1 and head["n_excluded_pairs"] == 1
     assert head["n_pair_units"] == 2 * 29
-    assert head["rep_call_dates"] == {"first": "2026-11-01T10:00:00+00:00", "last": "2026-11-09T10:00:00+00:00"}
+    assert head["rep_call_dates"]["basis"] == repeated.CALL_DATES_BASIS  # from the logs, not the frame (I1)
 
 
 def test_exploratory_rationale_and_noticed_summaries(tmp_path, monkeypatch):
@@ -445,3 +445,36 @@ def test_exploratory_rationale_and_noticed_summaries(tmp_path, monkeypatch):
     assert noti["n_assessable"] + noti["n_not_assessable"] == len(ana)
     assert abs(noti["noticed"] - ana.noticed.mean()) < 1e-12
     assert noti["noticed_lo"] <= noti["noticed"] <= noti["noticed_hi"]
+
+
+# ---- fix round 1, I1: run dates from every logged record ----
+def test_rep_call_dates_use_every_logged_record_including_superseded_errors(tmp_path):
+    out = tmp_path / "main"
+    out.mkdir()
+    specs = [{"original_name": "m1", "model_id": "m1"}, {"original_name": "m2", "model_id": "m2"}]
+    base = {"case_id": "C1", "order": "TS", "labels": {"A": "T", "B": "S"}}
+    err = {**base, "original_name": "m1", "status": "non_response", "attempts": [], "error": "RateLimit",
+           "finished_at": "2026-11-01T09:00:00+00:00"}
+    retry = {**base, "original_name": "m1", "status": "ok", "attempts": [{}], "selected_tool": "A", "correct": 1,
+             "finished_at": "2026-11-09T09:00:00+00:00"}
+    m2 = {**base, "original_name": "m2", "status": "ok", "attempts": [{}], "selected_tool": "A", "correct": 1,
+          "finished_at": "2026-11-05T12:00:00+00:00"}
+    (out / "m1.jsonl").write_text(json.dumps(err) + "\n" + json.dumps(retry) + "\n")
+    (out / "m2.jsonl").write_text(json.dumps(m2) + "\n")
+    (out / "dropped.jsonl").write_text(json.dumps({**m2, "finished_at": "2026-10-01T00:00:00+00:00"}) + "\n")
+    (out / "incidents.jsonl").write_text(json.dumps({"kind": "model_mismatch", "original_name": "m2",
+                                                     "logged_at": "2026-11-10T08:00:00+00:00"}) + "\n")
+    dates = repeated.call_dates(out, specs)
+    assert dates["first"] == "2026-11-01T09:00:00+00:00"   # the superseded error, not its retry
+    assert dates["last"] == "2026-11-10T08:00:00+00:00"    # the incident's paid call
+    assert dates["per_model"] == {"m1": {"first": "2026-11-01T09:00:00+00:00", "last": "2026-11-09T09:00:00+00:00"},
+                                  "m2": {"first": "2026-11-05T12:00:00+00:00", "last": "2026-11-10T08:00:00+00:00"}}
+    # the final-record frame alone would have reported 2026-11-05 as the first call
+    from r2.run.harness import final_records
+    assert min(r["finished_at"] for p in (out / "m1.jsonl", out / "m2.jsonl") for r in final_records(p)) \
+        == "2026-11-05T12:00:00+00:00"
+
+
+def test_rep_call_dates_without_logs_are_null(tmp_path):
+    assert repeated.call_dates(tmp_path / "nothing", [{"original_name": "m", "model_id": "m"}]) == \
+        {"first": None, "last": None, "per_model": {}, "basis": repeated.CALL_DATES_BASIS}

@@ -13,7 +13,7 @@ from r2.analysis.original_corrected import SAYS_IDENTICAL
 from r2.analysis.stats import (CATEGORY, calibration, cluster_bootstrap_mean, cluster_bootstrap_paa, fdr,
                                gee_logit, position_summary, wilson)
 from r2.paths import DATA_V2, REPO, RUNS_V2, VERIFY_DIR
-from r2.run.harness import final_records, load_specs, results_path
+from r2.run.harness import INCIDENTS, final_records, load_specs, read_records, results_path
 
 OUT = REPO / "analysis_repeated"
 # Items for which r2.verify.score_review.flag_reasons flags a pair (flags.json values).
@@ -351,11 +351,38 @@ def noticed_summary(analysis):
             "noticed": float(analysis.noticed.mean()) if n_ass else float("nan"), "noticed_lo": lo, "noticed_hi": hi}
 
 
-def _call_dates(df):
-    ts = pd.to_datetime(df.get("finished_at", pd.Series(dtype=object)), utc=True, errors="coerce").dropna()
+CALL_DATES_BASIS = ("finished_at of every logged record in each current model's result file, including "
+                    "superseded error attempts, and logged_at of every incidents.jsonl entry")
+
+
+def _iso_range(stamps):
+    ts = pd.to_datetime(pd.Series(stamps, dtype=object), utc=True, errors="coerce").dropna()
     if ts.empty:
         return {"first": None, "last": None}
     return {"first": ts.min().isoformat(), "last": ts.max().isoformat()}
+
+
+def call_dates(out_dir, specs):
+    """First and last call of the main run, overall and per model, from EVERY logged record (not only the
+    final record per cell: an early API error that was retried later still dates the first request) and
+    from the incidents log (a model-mismatch response is a paid call too)."""
+    out_dir = Path(out_dir)
+    stamps = {}
+    for spec in specs:
+        path = results_path(spec, out_dir)
+        if path.exists():
+            for r in read_records(path):
+                stamps.setdefault(r.get("original_name", spec["original_name"]), []).append(r.get("finished_at"))
+    incidents = out_dir / INCIDENTS
+    current = {s["original_name"] for s in specs}
+    if incidents.exists():
+        for r in read_records(incidents):
+            if r.get("original_name") in current:
+                stamps.setdefault(r["original_name"], []).append(r.get("logged_at"))
+    per_model = {m: _iso_range(v) for m, v in sorted(stamps.items())}
+    per_model = {m: d for m, d in per_model.items() if d["first"]}
+    overall = _iso_range([d[k] for d in per_model.values() for k in ("first", "last")])
+    return {**overall, "per_model": per_model, "basis": CALL_DATES_BASIS}
 
 
 def concordance(per_model, original_csv):
@@ -391,7 +418,7 @@ def run(out_dir=None, write=True, *, analysis_dir=None, pairs_path=None, verify_
         "models_without_ok_cells": sorted(set(df.model) - set(analysis.model)),
         "non_response": int((kept.status == "non_response").sum()),
         "n_pair_units": int(len(pairs)),
-        "rep_call_dates": _call_dates(df),
+        "rep_call_dates": call_dates(RUNS_V2 / "main" if out_dir is None else out_dir, specs),
         "exclusion_rule": df.attrs.get("exclusion_rule"),
     }
     for k in ("invariant_correct", "position_driven", "wrong_both"):

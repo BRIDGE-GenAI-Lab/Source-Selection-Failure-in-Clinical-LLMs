@@ -125,3 +125,13 @@ def test_synthetic_run_writes_nothing_outside_its_root(run):
     root = Path(world["root"]).resolve()
     for d in dirs.values():
         assert root in Path(d).resolve().parents or Path(d).resolve() == root
+
+
+def test_call_dates_include_the_superseded_early_error(run):
+    from r2.run.harness import read_records, results_path
+    world, dirs = run
+    head = json.loads((Path(dirs["analysis_repeated"]) / "headline.json").read_text())
+    every = [r["finished_at"] for spec in world["specs"] for r in read_records(results_path(spec, world["runs_main"]))]
+    assert head["rep_call_dates"]["first"] == min(every) == "2026-11-01T08:00:00+00:00"
+    assert head["rep_call_dates"]["last"] == max(every)
+    assert set(head["rep_call_dates"]["per_model"]) == {s["original_name"] for s in world["specs"]}

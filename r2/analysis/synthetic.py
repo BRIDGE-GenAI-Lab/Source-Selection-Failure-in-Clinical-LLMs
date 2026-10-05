@@ -138,9 +138,10 @@ def synthetic_records(pairs, specs, stimulus_sha256, seed=SEED, non_response_rat
                         "system_fingerprint": None, "case_id": case["case_id"], "order": order, "labels": labels,
                         "payload_sha256": "synthetic", "system": "", "user": "",
                         "finished_at": (t0 + timedelta(seconds=37 * tick)).isoformat()}
-                if j == 0 and not recs:  # an API error later superseded by a completed record
+                if j == 0 and not recs:  # an API error a day before the run, superseded by a later record
                     recs.append({**base, "attempts": [], "decision": None, "status": "non_response",
-                                 "selected_tool": None, "correct": None, "error": "BadRequestError: synthetic"})
+                                 "selected_tool": None, "correct": None, "error": "BadRequestError: synthetic",
+                                 "finished_at": (t0 - timedelta(days=1)).isoformat()})
                 request = {"model": spec["model_id"], spec.get("token_param", "max_tokens"): spec["max_tokens"]}
                 if spec.get("temperature") is not None:
                     request["temperature"] = spec["temperature"]
