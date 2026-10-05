@@ -1032,3 +1032,26 @@ def test_selected_form_flows_into_the_record():
     client = FakeClient(['{"selected_tool": "Neither"}', '{"selected_tool": "A or B"}'])
     rec = execute_cell(client, SPEC, CASES["CASE_001"], "ST", CTX, sleep=lambda s: None)
     assert rec["status"] == "non_response" and rec["selected_tool"] is None and len(rec["attempts"]) == 2
+
+
+# ---- minor 1: the mismatched served response, and any earlier attempt of the cell, are logged first ----
+class ServedSeq(FakeClient):
+    """Each call pops (content, served model)."""
+
+    def create(self, **kw):
+        self.calls.append(kw)
+        text, served = self.replies.pop(0)
+        return _Resp(text, served)
+
+
+def test_model_mismatch_on_retry_logs_the_earlier_attempt_too(tmp_path):
+    from r2.run.harness import incidents_path
+    client = ServedSeq([("nope", "prov/m-1"), (GOOD, "prov/m-2")])
+    with pytest.raises(ModelMismatch):
+        run_model(SPEC, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
+    (inc,) = [json.loads(l) for l in incidents_path(SPEC, tmp_path).read_text().splitlines()]
+    assert inc["kind"] == "model_mismatch" and inc["response"]["model"] == "prov/m-2"
+    assert inc["request"] == client.calls[1]
+    assert [a["response"]["model"] for a in inc["attempts"]] == ["prov/m-1"]
+    assert inc["attempts"][0]["response"]["choices"][0]["message"]["content"] == "nope"
+    assert results_path(SPEC, tmp_path).read_text() == ""

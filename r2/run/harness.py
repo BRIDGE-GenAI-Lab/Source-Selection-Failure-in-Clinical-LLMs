@@ -330,11 +330,12 @@ def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=N
         try:
             check_served(spec, resp.get("model"))
         except ModelMismatch as exc:
-            if out_dir is not None:  # the paid response is the drift evidence: keep it before stopping
+            if out_dir is not None:  # the paid responses are the drift evidence: keep them before stopping
+                # (no cell record is written, so earlier attempts of this cell are logged here too)
                 _log_incident(out_dir, spec, {"kind": "model_mismatch", "model_id": spec["model_id"],
                                         "original_name": spec["original_name"], "case_id": case["case_id"],
                                         "order": order, "error": str(exc), "request": kwargs, "response": resp,
-                                        "latency_ms": latency_ms, **context})
+                                        "latency_ms": latency_ms, "attempts": attempts, **context})
             raise
         message = ((resp.get("choices") or [{}])[0].get("message")) or {}
         content = message.get("content") or ""
