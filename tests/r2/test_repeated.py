@@ -271,7 +271,7 @@ def test_non_response_sensitivity_emits_no_warning():
 
 def _verify_dir(tmp_path, excluded="{\"rule\": \"x\", \"excluded\": [], \"reasons\": {}}", flags="{}"):
     verify = tmp_path / "verify"
-    verify.mkdir(exist_ok=True)
+    verify.mkdir(parents=True, exist_ok=True)
     (verify / "excluded_pairs.json").write_text(excluded)
     (verify / "flags.json").write_text(flags)
     return verify
@@ -478,3 +478,39 @@ def test_rep_call_dates_use_every_logged_record_including_superseded_errors(tmp_
 def test_rep_call_dates_without_logs_are_null(tmp_path):
     assert repeated.call_dates(tmp_path / "nothing", [{"original_name": "m", "model_id": "m"}]) == \
         {"first": None, "last": None, "per_model": {}, "basis": repeated.CALL_DATES_BASIS}
+
+
+def _tiny_world(tmp_path, synthetic_pairs=False):
+    from r2.paths import DATA_V2
+    doc = json.loads((DATA_V2 / "pairs_v2.json").read_text())
+    doc = {"cases": doc["cases"][:1], **({"synthetic": True} if synthetic_pairs else {})}
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    pairs = tmp_path / "pairs_v2.json"
+    pairs.write_text(json.dumps(doc))
+    c1 = doc["cases"][0]["case_id"]
+    results = tmp_path / "results"
+    results.mkdir()
+    ok = {"original_name": "model_x", "case_id": c1, "order": "TS", "labels": {"A": "T", "B": "S"},
+          "status": "ok", "selected_tool": "A", "correct": 1, "attempts": [{}],
+          "decision": {"confidence": 0.9, "differences_found": []}, "model_served": "m"}
+    (results / "model_x.jsonl").write_text(json.dumps(ok) + "\n")
+    verify = _verify_dir(tmp_path)
+    return pairs, results, verify
+
+
+def test_real_shaped_frame_is_not_synthetic_and_a_synthetic_pairs_file_is(tmp_path):
+    specs = [{"original_name": "model_x", "model_id": "model_x"}]
+    pairs, results, verify = _tiny_world(tmp_path / "real")
+    assert repeated.repeated_frame(results, pairs_path=pairs, verify_dir=verify, specs=specs).attrs["synthetic"] is False
+    pairs, results, verify = _tiny_world(tmp_path / "syn", synthetic_pairs=True)
+    assert repeated.repeated_frame(results, pairs_path=pairs, verify_dir=verify, specs=specs).attrs["synthetic"] is True
+
+
+def test_flags_json_may_carry_only_a_true_synthetic_marker(tmp_path):
+    from r2.paths import DATA_V2
+    pairs = {c["case_id"] for c in json.loads((DATA_V2 / "pairs_v2.json").read_text())["cases"]}
+    ver = repeated.load_verification(_verify_dir(tmp_path, flags='{"synthetic": true, "CASE_001": ["q8_leakage"]}'),
+                                     pairs)
+    assert ver.flagged == {"CASE_001"} and ver.synthetic is True
+    with pytest.raises(ValueError, match="flags.json"):
+        repeated.load_verification(_verify_dir(tmp_path / "b", flags='{"synthetic": "yes"}'), pairs)

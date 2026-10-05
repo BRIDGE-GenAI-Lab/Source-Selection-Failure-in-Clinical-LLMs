@@ -101,8 +101,11 @@ def test_paths_come_from_r2_paths_at_call_time(world, monkeypatch):
 def test_write_table1(world, tmp_path):
     rows = table1.write_table1(tmp_path, **_kw(world))
     with open(tmp_path / "Table1.csv", newline="") as fh:
-        assert list(csv.DictReader(fh)) == rows
+        written = list(csv.DictReader(fh))
+    assert {r.pop("synthetic") for r in written} == {"True"}  # the synthetic world marks its rows
+    assert written == rows
     note = (tmp_path / "Table1_note.txt").read_text()
+    assert note.startswith(synthetic.SYNTHETIC_BANNER)
     assert "20261005" in note and "excluded" in note and "TS" in note and "ST" in note
 
 

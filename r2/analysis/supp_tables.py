@@ -465,7 +465,7 @@ def physician_verification(root=None):
                                          ver / "final_review.csv")
     kappa = {r["item"]: r for r in _read_csv(kappa_p)}
     excluded = json.loads(ex_p.read_text())
-    flags = json.loads(fl_p.read_text())
+    flags = {k: v for k, v in json.loads(fl_p.read_text()).items() if k != "synthetic"}  # synthetic-world marker
     ex_by = Counter(i for items in excluded.get("reasons", {}).values() for i in items)
     fl_by = Counter(i for items in flags.values() for i in items)
     out = []
@@ -631,9 +631,29 @@ Repeated-experiment tables (written once analysis_repeated/ and the verification
 """
 
 
+def _root_synthetic(root):
+    """True when the inputs under `root` come from r2.analysis.synthetic (headline.json or excluded_pairs.json
+    carries "synthetic": true)."""
+    ana, ver = _dirs(root)
+    for path in (ana / "headline.json", ver / "excluded_pairs.json"):
+        if path.exists() and json.loads(path.read_text()).get("synthetic") is True:
+            return True
+    return False
+
+
+def _guard(out_dir, root):
+    synthetic = _root_synthetic(root)
+    if synthetic:  # synthetic tables never land in a real output location
+        from r2.analysis.synthetic import assert_sandbox
+        assert_sandbox(out_dir)
+    return synthetic
+
+
 def write_repeated(out_dir=None, root=None):
-    """Write each repeated-experiment table whose inputs exist; report the others as pending."""
+    """Write each repeated-experiment table whose inputs exist; report the others as pending. Tables built from
+    a synthetic world carry a `synthetic` column and may only be written into a sandbox."""
     out_dir = Path(out_dir) if out_dir else OUT_DIR
+    synthetic = _guard(out_dir, root)
     out_dir.mkdir(parents=True, exist_ok=True)
     written, pending = {}, {}
     for name, fn in REPEATED_TABLES.items():
@@ -642,13 +662,14 @@ def write_repeated(out_dir=None, root=None):
         except PendingData as exc:
             pending[name] = str(exc)
             continue
-        write_csv(out_dir / f"{name}.csv", rows)
+        write_csv(out_dir / f"{name}.csv", [{**r, "synthetic": True} for r in rows] if synthetic else rows)
         written[name] = len(rows)
     return {"written": written, "pending": pending, "out_dir": str(out_dir)}
 
 
 def write_all(out_dir=None, root=None):
     out_dir = Path(out_dir) if out_dir else OUT_DIR
+    _guard(out_dir, root)  # refuse before writing anything
     out_dir.mkdir(parents=True, exist_ok=True)
     written = {}
     (out_dir / "README.txt").write_text(README_TEXT)

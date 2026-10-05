@@ -93,22 +93,27 @@ def patient(case):
     return f"{who}: {case.get('chief_complaint') or 'chief complaint not recorded'}"
 
 
-def table1_rows(seed=SEED, *, pairs_path=None, verify_dir=None, runs_dir=None, specs=None):
+def _table1(seed=SEED, *, pairs_path=None, verify_dir=None, runs_dir=None, specs=None):
+    """(rows, synthetic): synthetic is True when the pairs file, the verification files or a run record carries
+    the marker that r2.analysis.synthetic writes."""
     pairs_path = paths.DATA_V2 / "pairs_v2.json" if pairs_path is None else Path(pairs_path)
     verify_dir = paths.VERIFY_DIR if verify_dir is None else Path(verify_dir)
     runs_dir = paths.RUNS_V2 / "main" if runs_dir is None else Path(runs_dir)
     specs = harness.load_specs() if specs is None else specs
-    pairs = {c["case_id"]: c for c in json.loads(pairs_path.read_text())["cases"]}
-    excluded, flagged, _ = load_verification(verify_dir, set(pairs))
+    doc = json.loads(pairs_path.read_text())
+    pairs = {c["case_id"]: c for c in doc["cases"]}
+    ver = load_verification(verify_dir, set(pairs))
+    synthetic = doc.get("synthetic") is True or ver.synthetic
     pools = {}
     for spec in specs:
         path = harness.results_path(spec, runs_dir)
         if not path.exists():
             continue
         for r in harness.final_records(path):
+            synthetic = synthetic or r.get("synthetic") is True
             rationale = (r.get("decision") or {}).get("trust_rationale")
-            if r.get("status") != "ok" or r["case_id"] in excluded | flagged or not isinstance(rationale, str) \
-                    or not rationale.strip():
+            if r.get("status") != "ok" or r["case_id"] in ver.excluded | ver.flagged \
+                    or not isinstance(rationale, str) or not rationale.strip():
                 continue
             sham_type = pairs[r["case_id"]]["eval"]["sham_trap_type"]
             outcome = "Success" if r["correct"] == 1 else "Failure"
@@ -124,18 +129,30 @@ def table1_rows(seed=SEED, *, pairs_path=None, verify_dir=None, runs_dir=None, s
             case = pairs[cid]
             rows.append(dict(zip(KEYS, (sham_type, outcome, cid, model, order, patient(case),
                                         modification(case["edit_record"]), quote(rationale)))))
-    return rows
+    return rows, synthetic
+
+
+def table1_rows(seed=SEED, *, pairs_path=None, verify_dir=None, runs_dir=None, specs=None):
+    return _table1(seed, pairs_path=pairs_path, verify_dir=verify_dir, runs_dir=runs_dir, specs=specs)[0]
 
 
 def write_table1(out_dir, **kwargs):
+    """Table1.csv and Table1_note.txt. Rows from a synthetic world carry a `synthetic` column, the note opens
+    with the synthetic banner, and the output directory must then be a sandbox."""
+    rows, synthetic = _table1(**kwargs)
     out_dir = Path(out_dir)
+    note = TABLE1_NOTE
+    if synthetic:
+        from r2.analysis.synthetic import SYNTHETIC_BANNER, assert_sandbox
+        assert_sandbox(out_dir)
+        note = SYNTHETIC_BANNER + note
     out_dir.mkdir(parents=True, exist_ok=True)
-    rows = table1_rows(**kwargs)
+    fields = list(KEYS) + (["synthetic"] if synthetic else [])
     with open(out_dir / "Table1.csv", "w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=list(KEYS))
+        w = csv.DictWriter(fh, fieldnames=fields)
         w.writeheader()
-        w.writerows(rows)
-    (out_dir / "Table1_note.txt").write_text(TABLE1_NOTE + "\n", encoding="utf-8")
+        w.writerows([{**r, "synthetic": True} if synthetic else r for r in rows])
+    (out_dir / "Table1_note.txt").write_text(note + "\n", encoding="utf-8")
     return rows
 
 

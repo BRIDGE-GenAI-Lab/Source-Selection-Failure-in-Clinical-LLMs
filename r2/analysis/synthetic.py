@@ -1,6 +1,11 @@
 """A synthetic repeated experiment, for tests and dry runs of the post-results pipeline. NOTHING HERE IS DATA.
 
-`build_world(root)` writes, under `root` only, files in the shapes the real writers produce:
+`build_world(root)` writes, under `root` only, files in the shapes the real writers produce. `root` must be an
+empty sandbox directory: `assert_sandbox` refuses the repository checkout (any directory holding r2/paths.py,
+and everything inside it), the legacy root, RUNS_V2, and any ancestor of those. Every file is marked: a
+"synthetic": true key in each JSON document and run record, a `synthetic` column in each CSV. The analysis code
+carries the flag into its outputs (headline.json "synthetic") and refuses to write a synthetic result outside a
+sandbox.
 - data/v2/pairs_v2.json: pairs of the 10 modification types, edit_record from r2.stimuli.build_v2.edit_record;
 - verification/: excluded_pairs.json, flags.json, kappa.csv, final_review.csv (as r2.verify.score_review writes);
 - runs/main/<safe_name>.jsonl: one harness record per model, pair and order (r2.run.harness.execute_cell shape),
@@ -27,6 +32,7 @@ from r2.stimuli.build_v2 import edit_record
 from r2.verify.score_review import EXCLUSION_RULE, QUESTIONS
 
 SEED = 20261005
+SYNTHETIC_BANNER = "[SYNTHETIC DATA, NOT FOR PUBLICATION] "
 TYPES = sorted(CATEGORY)
 EXCERPT = ["• Drug X is recommended as first-line therapy for adults with confirmed infection",
            "• Drug Y is preferred when renal function is impaired",
@@ -44,6 +50,26 @@ APPENDED = {
 EASE = {"clinical_safety": 1.0, "semantic": 0.8, "injection": 0.9, "metadata": 0.45}
 COMPLAINTS = ["Fever and productive cough", "Chest pain at rest", "Acute confusion", "Shortness of breath",
               "Abdominal pain and vomiting", "Right-sided weakness"]
+
+
+def _protected_roots():
+    from r2 import paths
+    return [Path(paths.REPO), Path(paths.LEGACY_ROOT), Path(paths.RUNS_V2)]
+
+
+def assert_sandbox(path):
+    """Resolve `path` and refuse it (ValueError) unless it is a sandbox: not inside a repository checkout (an
+    ancestor holding r2/paths.py), not the legacy root or RUNS_V2 or anything inside them, and not an ancestor
+    of any of them. Writes nothing."""
+    p = Path(path).expanduser().resolve()
+    for root in _protected_roots():
+        r = root.expanduser().resolve()
+        if p == r or r in p.parents or p in r.parents:
+            raise ValueError(f"{p} is not a sandbox: it is, contains or sits inside the protected {r}")
+    for a in (p, *p.parents):
+        if (a / "r2" / "paths.py").exists():
+            raise ValueError(f"{p} is not a sandbox: it lies inside the repository checkout {a}")
+    return p
 
 
 def _tool(i):
@@ -93,7 +119,8 @@ def synthetic_pairs(n_per_type=6):
                           "eval": {"preferred_tool": "T", "sham_trap_type": sham_type},
                           "tools": {"T": t, "S": s},
                           "edit_record": edit_record(t, s, "original_transform")})
-    return {"derived_from_sha256": "synthetic", "n_pairs": len(cases), "unresolved": [], "cases": cases}
+    return {"synthetic": True, "derived_from_sha256": "synthetic", "n_pairs": len(cases), "unresolved": [],
+            "cases": cases}
 
 
 def _behaviour(j, n):
@@ -132,7 +159,7 @@ def synthetic_records(pairs, specs, stimulus_sha256, seed=SEED, non_response_rat
             for order in ORDERS:
                 labels = {"A": "T", "B": "S"} if order == "TS" else {"A": "S", "B": "T"}
                 tick += 1
-                base = {"harness_commit": "0" * 40, "stimulus_sha256": stimulus_sha256,
+                base = {"synthetic": True, "harness_commit": "0" * 40, "stimulus_sha256": stimulus_sha256,
                         "model_id": spec["model_id"], "provider": spec["provider"],
                         "original_name": spec["original_name"], "model_served": spec["model_id"],
                         "system_fingerprint": None, "case_id": case["case_id"], "order": order, "labels": labels,
@@ -163,6 +190,7 @@ def synthetic_records(pairs, specs, stimulus_sha256, seed=SEED, non_response_rat
 
 
 def _write_csv(path, rows):
+    rows = [{**r, "synthetic": True} for r in rows]
     with open(path, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]))
         w.writeheader()
@@ -170,7 +198,9 @@ def _write_csv(path, rows):
 
 
 def build_world(root, n_per_type=6, specs=None, seed=SEED, n_excluded=2, n_flagged=3):
-    root = Path(root)
+    root = assert_sandbox(root)
+    if root.exists() and any(root.iterdir()):
+        raise ValueError(f"{root} is not empty; build_world needs an empty sandbox directory")
     specs = load_specs() if specs is None else specs
     data, verify, runs_main, analysis = (root / "data" / "v2", root / "verification", root / "runs" / "main",
                                          root / "analysis_repeated")
@@ -185,8 +215,9 @@ def build_world(root, n_per_type=6, specs=None, seed=SEED, n_excluded=2, n_flagg
     excluded = {cid: ["q5_edit_visible"] for cid in ids[:n_excluded]}
     flags = {cid: ["q8_leakage"] for cid in ids[n_excluded:n_excluded + n_flagged]}
     (verify / "excluded_pairs.json").write_text(json.dumps(
-        {"rule": EXCLUSION_RULE, "excluded": sorted(excluded), "reasons": excluded, "pairs_v2_sha256": sha}, indent=2))
-    (verify / "flags.json").write_text(json.dumps(flags, indent=2))
+        {"synthetic": True, "rule": EXCLUSION_RULE, "excluded": sorted(excluded), "reasons": excluded,
+         "pairs_v2_sha256": sha}, indent=2))
+    (verify / "flags.json").write_text(json.dumps({"synthetic": True, **flags}, indent=2))
     _write_csv(verify / "kappa.csv", [{"item": q, "agreement": round(0.9 + 0.01 * i, 3), "kappa": round(0.7 + 0.03 * i, 3)}
                                       for i, (q, _) in enumerate(QUESTIONS)])
     final = []
@@ -220,9 +251,11 @@ def build_world(root, n_per_type=6, specs=None, seed=SEED, n_excluded=2, n_flagg
 def run_pipeline(world, figures_dir=None, tables_dir=None):
     """Run every post-results step on a synthetic world; returns the output directories."""
     from r2.analysis import figures, repeated, supp_tables, table1
-    root = Path(world["root"])
-    figures_dir = Path(figures_dir) if figures_dir else root / "figures"
-    tables_dir = Path(tables_dir) if tables_dir else root / "tables"
+    root = assert_sandbox(world["root"])
+    figures_dir = assert_sandbox(figures_dir if figures_dir else root / "figures")
+    tables_dir = assert_sandbox(tables_dir if tables_dir else root / "tables")
+    for key in ("analysis_dir", "runs_main", "verify_dir", "pairs_path"):
+        assert_sandbox(world[key])
     repeated.run(world["runs_main"], analysis_dir=world["analysis_dir"], pairs_path=world["pairs_path"],
                  verify_dir=world["verify_dir"], specs=world["specs"])
     figures.make_figures(world["analysis_dir"], figures_dir, specs=world["specs"])

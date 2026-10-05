@@ -29,7 +29,8 @@ def test_png_pdf_and_legend_for_each_figure(made):
         for ext in (".png", ".pdf"):
             p = out / f"{name}{ext}"
             assert p.exists() and p.stat().st_size > 10_000, p
-        assert (out / f"{name}_legend.txt").read_text().startswith(f"Figure {name[-1]}.")
+        legend = (out / f"{name}_legend.md").read_text()
+        assert legend.startswith(synthetic.SYNTHETIC_BANNER + f"**Figure {name[-1]} | ")  # synthetic fixture
         assert set(paths[name]) == {"png", "pdf", "legend"}
     assert (out / "Figure2.pdf").read_bytes()[:4] == b"%PDF"
 
@@ -49,14 +50,14 @@ def test_legends_state_n_and_the_exclusion_rule(made):
     world, out, _ = made
     head = json.loads((world["analysis_dir"] / "headline.json").read_text())
     for name in NAMES:
-        text = (out / f"{name}_legend.txt").read_text()
+        text = (out / f"{name}_legend.md").read_text()
         assert _fmt(head["primary"]["n"]) in text, name
         assert f"{head['n_pairs']} pairs" in text and f"{head['n_models']} models" in text, name
         assert f"{head['n_excluded_pairs']} pairs excluded" in text, name
         for q in ("Q3", "Q4", "Q5", "Q6", "Q7"):
             assert q in text, (name, q)
         assert "bootstrap" in text and "2,000" in text, name
-    fig2 = (out / "Figure2_legend.txt").read_text()
+    fig2 = (out / "Figure2_legend.md").read_text()
     assert _fmt(head["n_pair_units"]) in fig2 and _fmt(head["non_response"]) in fig2
 
 
@@ -65,7 +66,7 @@ def test_figure3_legend_and_labels_use_n_after_exclusions(made):
     world, out, _ = made
     with open(world["analysis_dir"] / "per_type.csv", newline="") as fh:
         per_type = list(csv.DictReader(fh))
-    text = (out / "Figure3_legend.txt").read_text()
+    text = (out / "Figure3_legend.md").read_text()
     assert "after exclusions" in text
     labels = figures.type_labels(per_type)
     for r in per_type:
@@ -104,3 +105,9 @@ def test_missing_input_raises_a_clear_error(tmp_path):
 def test_figures_do_not_write_into_the_analysis_dir(made):
     world, _, _ = made
     assert not list(Path(world["analysis_dir"]).glob("Figure*"))
+
+
+def test_real_headline_gives_an_unmarked_legend():
+    head = {"primary": {"n": 10}, "n_models": 1, "n_pairs": 5, "n_excluded_pairs": 0, "n_pair_units": 5,
+            "non_response": 0, "n_api_errors": 0, "exclusion_rule": "x", "synthetic": False}
+    assert figures.legend3(head).startswith("**Figure 3 | ")

@@ -375,7 +375,7 @@ def test_models_repeated_matches_specs_and_completeness(synth):
 def test_physician_verification_counts(synth):
     rows = st.PENDING_TABLES["S_physician_verification"](root=synth["root"])
     excluded = json.loads((synth["verify_dir"] / "excluded_pairs.json").read_text())
-    flags = json.loads((synth["verify_dir"] / "flags.json").read_text())
+    flags = {k: v for k, v in json.loads((synth["verify_dir"] / "flags.json").read_text()).items() if k != "synthetic"}
     by = {r["item"]: r for r in rows}
     assert by["any item"]["pairs_excluded"] == len(excluded["excluded"])
     assert by["any item"]["pairs_flagged"] == len(flags)

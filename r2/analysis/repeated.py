@@ -3,6 +3,7 @@ Exploratory outputs are written with an 'exploratory_' prefix."""
 import json
 import math
 import re
+from collections import namedtuple
 from pathlib import Path
 
 import numpy as np
@@ -53,10 +54,14 @@ def write_json(path, obj):
     Path(path).write_text(json.dumps(_plain(obj), indent=2, allow_nan=False) + "\n")
 
 
+Verification = namedtuple("Verification", "excluded flagged rule pairs_v2_sha256 synthetic")
+
+
 def load_verification(verify_dir, case_ids):
     """Read and validate the physician-verification outputs that r2.verify.score_review.apply_consensus
-    writes: excluded_pairs.json {"rule": str, "excluded": [case_id], ...} and flags.json
-    {case_id: [flag item, ...]}. Returns (excluded, flagged, rule)."""
+    writes: excluded_pairs.json {"rule": str, "excluded": [case_id], "pairs_v2_sha256": ...} and flags.json
+    {case_id: [flag item, ...]}. A synthetic world (r2.analysis.synthetic) adds "synthetic": true to both;
+    no other extra key is accepted in flags.json."""
     verify_dir = Path(verify_dir)
     ex = json.loads((verify_dir / "excluded_pairs.json").read_text())
     if not isinstance(ex, dict) or not isinstance(ex.get("rule"), str) or not isinstance(ex.get("excluded"), list) \
@@ -68,13 +73,18 @@ def load_verification(verify_dir, case_ids):
     flags = json.loads((verify_dir / "flags.json").read_text())
     if not isinstance(flags, dict):
         raise ValueError(f"{verify_dir}/flags.json: expected an object {{case_id: [flag item]}}")
+    flags = dict(flags)
+    marker = flags.pop("synthetic", None)
+    if marker not in (None, True):
+        raise ValueError(f"{verify_dir}/flags.json: 'synthetic' may only be true, got {marker!r}")
     for cid, items in flags.items():
         if cid not in case_ids:
             raise ValueError(f"{verify_dir}/flags.json: {cid} is not in pairs_v2.json")
         if not isinstance(items, list) or not items or not set(items) <= set(FLAG_ITEMS):
             raise ValueError(f"{verify_dir}/flags.json: {cid} must map to a non-empty list of {FLAG_ITEMS}, "
                              f"got {items!r}")
-    return set(ex["excluded"]), set(flags), ex["rule"]
+    return Verification(set(ex["excluded"]), set(flags), ex["rule"], ex.get("pairs_v2_sha256"),
+                        ex.get("synthetic") is True or marker is True)
 
 
 def _tokens(text):
@@ -132,8 +142,11 @@ def repeated_frame(out_dir=None, *, pairs_path=None, verify_dir=None, specs=None
     `noticed` (E1) is 1.0 / 0.0, or NaN when not assessable (no ok response, or no edit snippet of 3+ words)."""
     out_dir = RUNS_V2 / "main" if out_dir is None else out_dir
     pairs_path = DATA_V2 / "pairs_v2.json" if pairs_path is None else pairs_path
-    pairs = {c["case_id"]: c for c in json.loads(Path(pairs_path).read_text())["cases"]}
-    excluded, flagged, rule = load_verification(VERIFY_DIR if verify_dir is None else verify_dir, set(pairs))
+    doc = json.loads(Path(pairs_path).read_text())
+    pairs = {c["case_id"]: c for c in doc["cases"]}
+    ver = load_verification(VERIFY_DIR if verify_dir is None else verify_dir, set(pairs))
+    excluded, flagged = ver.excluded, ver.flagged
+    synthetic = doc.get("synthetic") is True or ver.synthetic
     specs = load_specs() if specs is None else specs
     substituted = {s["original_name"] for s in specs if s.get("substituted_for")}
     rows = []
@@ -142,6 +155,7 @@ def repeated_frame(out_dir=None, *, pairs_path=None, verify_dir=None, specs=None
         if not path.exists():
             continue
         for r in final_records(path):
+            synthetic = synthetic or r.get("synthetic") is True
             d = r.get("decision") or {}
             sel = r.get("selected_tool")
             rows.append({
@@ -162,7 +176,7 @@ def repeated_frame(out_dir=None, *, pairs_path=None, verify_dir=None, specs=None
     df["noticed"] = pd.Series([_noticed_value(status, diff, pairs[c])
                                for status, diff, c in zip(df.status, df.differences, df.case_id)],
                               index=df.index, dtype=float)
-    df.attrs["exclusion_rule"] = rule
+    df.attrs.update({"exclusion_rule": ver.rule, "verification": ver, "synthetic": synthetic})
     return df
 
 
@@ -424,28 +438,37 @@ def run(out_dir=None, write=True, *, analysis_dir=None, pairs_path=None, verify_
     for k in ("invariant_correct", "position_driven", "wrong_both"):
         head[k] = float(pairs[k].mean()) if len(pairs) else float("nan")
         head[f"{k}_lo"], head[f"{k}_hi"] = cluster_bootstrap_mean(pairs, k)
+    synthetic = bool(df.attrs.get("synthetic", False))
+    head["synthetic"] = synthetic
     sens = sensitivity_summaries(df)
     if write:
         out = Path(OUT if analysis_dir is None else analysis_dir)
+        if synthetic:  # synthetic numbers never land in a real output location
+            from r2.analysis.synthetic import assert_sandbox
+            assert_sandbox(out)
         out.mkdir(parents=True, exist_ok=True)
+
+        def to_csv(frame, name, **kw):
+            (frame.assign(synthetic=True) if synthetic else frame).to_csv(out / name, **kw)
+
+        def to_json(name, obj):
+            write_json(out / name, {**obj, "synthetic": synthetic})
         pm = per_model_table(analysis)
-        pm.sort_values("position_averaged_accuracy", ascending=False).to_csv(out / "per_model.csv", index=False)
+        to_csv(pm.sort_values("position_averaged_accuracy", ascending=False), "per_model.csv", index=False)
         for col, name in (("sham_type", "per_type"), ("category", "per_category")):
-            rate_table(analysis, col).to_csv(out / f"{name}.csv", index=False)
-        gee_logit(analysis, "correct ~ sham_first + C(category, Treatment('metadata')) + C(model)"
-                  ).to_csv(out / "gee.csv")
-        calibration_table(analysis).to_csv(out / "calibration_overall.csv", index=False)
-        calibration_table(analysis, "model").to_csv(out / "calibration_per_model.csv", index=False)
-        pairs.to_csv(out / "pair_level.csv", index=False)
-        write_json(out / "sensitivity.json", sens)
-        (analysis.groupby(["model", "sham_type"]).noticed.mean().unstack()
-                 .to_csv(out / "exploratory_noticed.csv"))
+            to_csv(rate_table(analysis, col), f"{name}.csv", index=False)
+        to_csv(gee_logit(analysis, "correct ~ sham_first + C(category, Treatment('metadata')) + C(model)"), "gee.csv")
+        to_csv(calibration_table(analysis), "calibration_overall.csv", index=False)
+        to_csv(calibration_table(analysis, "model"), "calibration_per_model.csv", index=False)
+        to_csv(pairs, "pair_level.csv", index=False)
+        to_json("sensitivity.json", sens)
+        to_csv(analysis.groupby(["model", "sham_type"]).noticed.mean().unstack(), "exploratory_noticed.csv")
         original_csv = REPO / "analysis_original" / "per_model_discriminable.csv" if original_csv is None \
             else original_csv
-        write_json(out / "exploratory_concordance_original.json", concordance(pm, original_csv))
-        write_json(out / "exploratory_noticed_summary.json", noticed_summary(analysis))
-        write_json(out / "exploratory_rationale.json", rationale_summary(analysis))
-        write_json(out / "headline.json", head)
+        to_json("exploratory_concordance_original.json", concordance(pm, original_csv))
+        to_json("exploratory_noticed_summary.json", noticed_summary(analysis))
+        to_json("exploratory_rationale.json", rationale_summary(analysis))
+        to_json("headline.json", head)
     return head
 
 

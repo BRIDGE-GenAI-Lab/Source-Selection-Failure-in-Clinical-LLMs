@@ -2,7 +2,8 @@
 
 Numbering follows first citation in the manuscript (ruling 2026-10-05): Figure 2 = position effects,
 Figure 3 = failure rate by modification type, Figure 4 = per-model position-averaged accuracy.
-Each figure is written as a 600-dpi PNG and a PDF, with its legend (n and the exclusion rule) as text.
+Each figure is written as a 600-dpi PNG and a PDF, with its legend (n and the exclusion rule) as
+FigureN_legend.md, the convention of npj_R2_WORKING/05_Figures (Figure1_legend.md).
 Palette `C` and model names `DISPLAY` / `ALIAS` are copied from the R1 figure script
 (npj_R1_Revision_Submission_2026-06-14/05_Analysis/regen_all_figures.py); a test pins them.
 CLI: python -m r2.analysis.figures [analysis_dir] [out_dir]
@@ -144,7 +145,7 @@ def _common_tail(head):
 
 
 def legend2(head):
-    return ("Figure 2. Position effects in the repeated experiment. a, Share of selections of the excerpt in the "
+    return ("**Figure 2 | Position effects in the repeated experiment.** a, Share of selections of the excerpt in the "
             "first position (A) and in the second position (B), pooled across models (bars; whiskers, 95% CI) and "
             "for each model (points). b, Accuracy when the modified excerpt was shown first and when it was shown "
             "second, pooled (bars; whiskers, 95% CI) and for each model (points joined by a line). The dashed lines "
@@ -156,7 +157,7 @@ def legend2(head):
 
 
 def legend3(head):
-    return ("Figure 3. Failure rate by modification type in the repeated experiment. A failure is a selection of "
+    return ("**Figure 3 | Failure rate by modification type in the repeated experiment.** A failure is a selection of "
             f"the modified excerpt. Bars: failure rate pooled across {head['n_models']} models and both orders, "
             "colored by modification category; whiskers: 95% CI; n: evaluations of each type after exclusions. "
             "The dashed line marks 50%, the rate expected from a choice made by chance. Differences between types "
@@ -165,7 +166,7 @@ def legend3(head):
 
 
 def legend4(head):
-    return ("Figure 4. Position-averaged accuracy by model in the repeated experiment. Bars: position-averaged "
+    return ("**Figure 4 | Position-averaged accuracy by model in the repeated experiment.** Bars: position-averaged "
             "accuracy, the mean of the accuracy with the modified excerpt shown first and with it shown second; "
             "whiskers: 95% CI. Circles: accuracy with the modified excerpt first; diamonds: accuracy with the "
             "modified excerpt second. Bar color: reasoning model, closed commercial model or open-weight model. "
@@ -201,9 +202,16 @@ def _pct(v):
     return f"{100 * v:.1f}%"
 
 
-def _save(fig, out_dir, name, legend):
+def _save(fig, out_dir, name, legend, synthetic=False):
+    """PNG (600 dpi), PDF and the legend as markdown (05_Figures convention: FigureN_legend.md). A synthetic
+    figure gets a watermark and its legend opens with the synthetic banner."""
+    if synthetic:
+        from r2.analysis.synthetic import SYNTHETIC_BANNER
+        fig.text(0.5, 0.5, "SYNTHETIC DATA", fontsize=54, color="#9CA3AF", alpha=0.25, rotation=30,
+                 ha="center", va="center", zorder=100)
+        legend = SYNTHETIC_BANNER + legend
     out_dir.mkdir(parents=True, exist_ok=True)
-    paths = {"png": out_dir / f"{name}.png", "pdf": out_dir / f"{name}.pdf", "legend": out_dir / f"{name}_legend.txt"}
+    paths = {"png": out_dir / f"{name}.png", "pdf": out_dir / f"{name}.pdf", "legend": out_dir / f"{name}_legend.md"}
     fig.savefig(paths["png"], dpi=DPI, bbox_inches="tight", pad_inches=0.08)
     fig.savefig(paths["pdf"], bbox_inches="tight", pad_inches=0.08)
     plt.close(fig)
@@ -284,7 +292,7 @@ def figure2(head, per_model, out_dir):
         for ax, letter in ((ax_a, "a"), (ax_b, "b")):
             _letter(fig, ax, letter, dx=-0.075)
         _letter(fig, ax_c, "c", dx=-0.235)
-        return _save(fig, out_dir, "Figure2", legend2(head))
+        return _save(fig, out_dir, "Figure2", legend2(head), head.get("synthetic") is True)
 
 
 def figure3(head, per_type, out_dir):
@@ -314,7 +322,7 @@ def figure3(head, per_type, out_dir):
         ax.legend(handles=[mpatches.Patch(color=CATCOLOR[k], label=CATEGORY_LABEL[k]) for k in present],
                   title="Modification category", loc="upper center", bbox_to_anchor=(0.45, -0.12),
                   ncol=len(present), frameon=False, title_fontsize=8.5, handlelength=1.2)
-        return _save(fig, out_dir, "Figure3", legend3(head))
+        return _save(fig, out_dir, "Figure3", legend3(head), head.get("synthetic") is True)
 
 
 def _model_class(spec):
@@ -363,7 +371,7 @@ def figure4(head, per_model, out_dir, specs):
                    Line2D([0], [0], color=INK, lw=1, marker="|", markersize=7, label="95% CI")]
         ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.42, -0.6 / (0.27 * len(pm) + 1.9)),
                   ncol=3, frameon=False, handlelength=1.4, columnspacing=1.2, fontsize=8)
-        return _save(fig, out_dir, "Figure4", legend4(head))
+        return _save(fig, out_dir, "Figure4", legend4(head), head.get("synthetic") is True)
 
 
 def make_figures(analysis_dir=None, out_dir=None, specs=None):
@@ -371,6 +379,9 @@ def make_figures(analysis_dir=None, out_dir=None, specs=None):
     from r2.run.harness import load_specs
     head, per_model, per_type = _load(OUT if analysis_dir is None else analysis_dir)
     out_dir = Path(OUT_DIR if out_dir is None else out_dir)
+    if head.get("synthetic") is True:  # synthetic figures never land in a real output location
+        from r2.analysis.synthetic import assert_sandbox
+        assert_sandbox(out_dir)
     specs = load_specs() if specs is None else specs
     return {"Figure2": figure2(head, per_model, out_dir), "Figure3": figure3(head, per_type, out_dir),
             "Figure4": figure4(head, per_model, out_dir, specs)}
