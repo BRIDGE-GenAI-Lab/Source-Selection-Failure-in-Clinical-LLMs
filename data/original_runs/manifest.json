@@ -1,0 +1,301 @@
+{
+  "selection_rule": "Canonical data loader -- single source of truth for the npj R1 re-analysis.\n\nThe results/ directory holds duplicate and partial runs per model. This loader\nreconstructs the published canonical set used in the manuscript:\n\n  * one canonical run per model (the run with the most valid records;\n    ties -> later directory name, which sorts lexically by timestamp),\n  * only models with a *complete* run (>= 500 valid records) are retained --\n    partial/abandoned runs (e.g. crashed mid-experiment) are dropped,\n  * one non-canonical model (Qwen/Qwen2.5-1.5B-Instruct) that was run but never\n    entered the published 21-model table (appendix_stats_10500.json / table_s1)\n    is excluded,\n  * within the chosen run, records are deduplicated by case_id (some runs append\n    a few retry rows with repeated case_ids, e.g. Qwen3-VL-8B at 503 rows),\n    yielding exactly 500 unique cases per model.\n\nResult: 21 models x 500 = 10,500 records, reproducing the published aggregates\n(overall accuracy ~= 59.4%, sham-in-A ~= 5,29x, sham-in-B ~= 5,21x). This is the\nGATE asserted in __main__.",
+  "runs": [
+    {
+      "model": "Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
+      "run_dir": "run_together_Qwen_Qwen3_235B_A22B_Instruct_2507_tput_20260115_141139",
+      "file": "run_together_Qwen_Qwen3_235B_A22B_Instruct_2507_tput_20260115_141139.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "60a4ae89c9fdc71592b38ca67ec600d63e8d815caed31032c192d46821cefdfc",
+      "config": {
+        "model": "Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T14:11:39.865106"
+      }
+    },
+    {
+      "model": "Qwen/Qwen3-Next-80B-A3B-Thinking",
+      "run_dir": "run_together_Qwen_Qwen3_Next_80B_A3B_Thinking_20260115_095828",
+      "file": "run_together_Qwen_Qwen3_Next_80B_A3B_Thinking_20260115_095828.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "ed5e60f02db9977dd0b36c90e2c966599ea758e404371bc2a47f73654f807d08",
+      "config": {
+        "model": "Qwen/Qwen3-Next-80B-A3B-Thinking",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T09:58:28.087910"
+      }
+    },
+    {
+      "model": "Qwen/Qwen3-VL-8B-Instruct",
+      "run_dir": "run_together_Qwen_Qwen3_VL_8B_Instruct_20260115_112325",
+      "file": "run_together_Qwen_Qwen3_VL_8B_Instruct_20260115_112325.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "0678e6aed57d58d74a168cfd6cf9b113da84eb792fc8834bb7dab61fad4c5648",
+      "config": {
+        "model": "Qwen/Qwen3-VL-8B-Instruct",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T11:23:25.846909"
+      }
+    },
+    {
+      "model": "ServiceNow-AI/Apriel-1.6-15b-Thinker",
+      "run_dir": "run_together_ServiceNow_AI_Apriel_1.6_15b_Thinker_20260115_114315",
+      "file": "run_together_ServiceNow_AI_Apriel_1.6_15b_Thinker_20260115_114315.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "183576a76d61baa9798a6fcd3902b1ed33f2e7a681fbc3b22274caec24aa7e43",
+      "config": {
+        "model": "ServiceNow-AI/Apriel-1.6-15b-Thinker",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T11:43:15.068308"
+      }
+    },
+    {
+      "model": "deepseek-chat",
+      "run_dir": "run_20260107_183414",
+      "file": "run_20260107_183414.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "5f3be13a5ef98499ac0479c2b7f35737c2e7dbc312094bb699673d287be29ddc",
+      "config": {
+        "model": "deepseek-chat",
+        "seed": 42,
+        "prompt_variant": "baseline",
+        "total_cases": 500,
+        "timestamp": "2026-01-07T18:34:14.098597"
+      }
+    },
+    {
+      "model": "deepseek-reasoner",
+      "run_dir": "run_deepseek_reasoner_20260114_111007",
+      "file": "run_deepseek_reasoner_20260114_111007.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "02de06cabdaef8597621370b2e359786638307193279a599b9191682adedb797",
+      "config": {
+        "model": "deepseek-reasoner",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-14T11:10:07.796705",
+        "note": "DeepSeek Reasoner (Thinking Mode) experiment"
+      }
+    },
+    {
+      "model": "gemini-2.5-flash-lite",
+      "run_dir": "run_20260107_181625",
+      "file": "run_20260107_181625.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "75a26cf979f5cbd3bb79ddfee798b5f7845e084368fdae48ffbb9cabba23e8dd",
+      "config": {
+        "model": "gemini-2.5-flash-lite",
+        "seed": 42,
+        "prompt_variant": "baseline",
+        "total_cases": 500,
+        "timestamp": "2026-01-07T18:16:25.649249"
+      }
+    },
+    {
+      "model": "google/gemma-3n-E4B-it",
+      "run_dir": "run_together_google_gemma_3n_E4B_it_20260115_195126",
+      "file": "run_together_google_gemma_3n_E4B_it_20260115_195126.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "d0d0b8f77326311582503738a3a644edd2951d4902dfc7da057d5227d59ef21c",
+      "config": {
+        "model": "google/gemma-3n-E4B-it",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T19:51:26.203465"
+      }
+    },
+    {
+      "model": "gpt-4.1-2025-04-14",
+      "run_dir": "run_20260107_215921",
+      "file": "run_20260107_215921.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "a454faf5bdc7efd9e5bb79bd9c9396f0c3b8f61d39da04b3a4edc4c185d44ecd",
+      "config": {
+        "model": "gpt-4.1-2025-04-14",
+        "seed": 42,
+        "input_file": "/Volumes/Lexar/LLM_Tool_use/500cases_with_real_tools.json",
+        "input_file_hash": "58651ef5425278f1fbc661367d6a704482a8b5ddfb8850160c1c1a0e4d194436",
+        "prompt_variant": "baseline",
+        "require_both_tools": true,
+        "max_cases": 500,
+        "timestamp": "2026-01-07T19:59:21.484155+00:00",
+        "git_commit": null
+      }
+    },
+    {
+      "model": "gpt-4.1-nano-2025-04-14",
+      "run_dir": "run_20260107_142701",
+      "file": "run_20260107_142701.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "e9fd5104716bdc885d863ff28b190f4ededbe4a588024a1b12ad22aa6d5a0783",
+      "config": {
+        "model": "gpt-4.1-nano-2025-04-14",
+        "seed": 42,
+        "input_file": "/Volumes/Lexar/LLM_Tool_use/500cases_with_real_tools.json",
+        "input_file_hash": "58651ef5425278f1fbc661367d6a704482a8b5ddfb8850160c1c1a0e4d194436",
+        "prompt_variant": "baseline",
+        "require_both_tools": true,
+        "max_cases": 500,
+        "timestamp": "2026-01-07T12:27:01.974910+00:00",
+        "git_commit": null
+      }
+    },
+    {
+      "model": "gpt-4o-mini-2024-07-18",
+      "run_dir": "run_20260107_142734",
+      "file": "run_20260107_142734.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "eeabc06930d040075d0ffced12c30b0129ef2c62d8a7b25b52bb49807743bbc4",
+      "config": {
+        "model": "gpt-4o-mini-2024-07-18",
+        "seed": 42,
+        "input_file": "/Volumes/Lexar/LLM_Tool_use/500cases_with_real_tools.json",
+        "input_file_hash": "58651ef5425278f1fbc661367d6a704482a8b5ddfb8850160c1c1a0e4d194436",
+        "prompt_variant": "baseline",
+        "require_both_tools": true,
+        "max_cases": 500,
+        "timestamp": "2026-01-07T12:27:34.762075+00:00",
+        "git_commit": null
+      }
+    },
+    {
+      "model": "gpt-5-nano-2025-08-07",
+      "run_dir": "run_20260107_085822",
+      "file": "run_20260107_085822.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "eea674264fdd4aef63aed67314c383fb6ccbd9776f5cc81b9df8358778e4c712",
+      "config": {
+        "model": "gpt-5-nano-2025-08-07",
+        "seed": 42,
+        "input_file": "/Volumes/Lexar/LLM_Tool_use/500cases_with_real_tools.json",
+        "input_file_hash": "58651ef5425278f1fbc661367d6a704482a8b5ddfb8850160c1c1a0e4d194436",
+        "prompt_variant": "baseline",
+        "require_both_tools": true,
+        "max_cases": 500,
+        "timestamp": "2026-01-07T06:58:22.556187+00:00",
+        "git_commit": null
+      }
+    },
+    {
+      "model": "meta-llama/Llama-3.2-3B-Instruct-Turbo",
+      "run_dir": "run_together_meta_llama_Llama_3.2_3B_Instruct_Turbo_20260115_163706",
+      "file": "run_together_meta_llama_Llama_3.2_3B_Instruct_Turbo_20260115_163706.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "6493f67a3e04cda27c5b846f76b1619d84f96a8b6c6970a0eb13e2d3ba31f91e",
+      "config": {
+        "model": "meta-llama/Llama-3.2-3B-Instruct-Turbo",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T16:37:06.225971"
+      }
+    },
+    {
+      "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+      "run_dir": "run_together_meta_llama_Llama_3.3_70B_Instruct_Turbo_20260115_165724",
+      "file": "run_together_meta_llama_Llama_3.3_70B_Instruct_Turbo_20260115_165724.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "ceaec40f604f3d63dd9b67f954dcfd90dee752661c87c02eeca76098c6d3faf9",
+      "config": {
+        "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T16:57:24.305960"
+      }
+    },
+    {
+      "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+      "run_dir": "run_together_meta_llama_Llama_4_Maverick_17B_128E_Instruct_FP8_20260115_175818",
+      "file": "run_together_meta_llama_Llama_4_Maverick_17B_128E_Instruct_FP8_20260115_175818.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "4ec2c3f66a02fed927f8c862164b9bf16699bdc293c81bd48df7cdfab4c0b7a9",
+      "config": {
+        "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T17:58:18.355251"
+      }
+    },
+    {
+      "model": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+      "run_dir": "run_together_meta_llama_Llama_4_Scout_17B_16E_Instruct_20260115_132335",
+      "file": "run_together_meta_llama_Llama_4_Scout_17B_16E_Instruct_20260115_132335.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "fe8d32f47e8b504e2242d6bffa9accaae957cea21274ce30f58b1ca8bcdf5b53",
+      "config": {
+        "model": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T13:23:35.369015"
+      }
+    },
+    {
+      "model": "mistralai/Mistral-Small-24B-Instruct-2501",
+      "run_dir": "run_together_mistralai_Mistral_Small_24B_Instruct_2501_20260115_145052",
+      "file": "run_together_mistralai_Mistral_Small_24B_Instruct_2501_20260115_145052.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "7b5b03456970c67a9e9da7a3b4ac608937d99a530deb00579a32b84b93d3341b",
+      "config": {
+        "model": "mistralai/Mistral-Small-24B-Instruct-2501",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T14:50:52.958281"
+      }
+    },
+    {
+      "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      "run_dir": "run_together_mistralai_Mixtral_8x7B_Instruct_v0.1_20260115_201341",
+      "file": "run_together_mistralai_Mixtral_8x7B_Instruct_v0.1_20260115_201341.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "7803baf14d33b2cd1567cbe264d3b0ea4a2e709041ee0bd080ec8e2660deef9d",
+      "config": {
+        "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T20:13:41.381134"
+      }
+    },
+    {
+      "model": "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
+      "run_dir": "run_together_nvidia_NVIDIA_Nemotron_Nano_9B_v2_20260115_151901",
+      "file": "run_together_nvidia_NVIDIA_Nemotron_Nano_9B_v2_20260115_151901.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "b6e45b30abc89b49279ad72f8a2086320bef8e2b5a9604512097b319eb4ba05a",
+      "config": {
+        "model": "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T15:19:01.436311"
+      }
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "run_dir": "run_together_openai_gpt_oss_120b_20260115_093147",
+      "file": "run_together_openai_gpt_oss_120b_20260115_093147.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "463ce0041fad9bd7e3d8a5b02d67fca3514faa3a9e760187447bf3d9b0de0c90",
+      "config": {
+        "model": "openai/gpt-oss-120b",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T09:31:47.643851"
+      }
+    },
+    {
+      "model": "openai/gpt-oss-20b",
+      "run_dir": "run_together_openai_gpt_oss_20b_20260115_125040",
+      "file": "run_together_openai_gpt_oss_20b_20260115_125040.results.jsonl",
+      "n_records": 500,
+      "source_results_sha256": "14c2d91ed317ccf8576b762dada69581bfc37e4d2d64406a1832a3ae7a09593a",
+      "config": {
+        "model": "openai/gpt-oss-20b",
+        "seed": 42,
+        "total_cases": 500,
+        "timestamp": "2026-01-15T12:50:40.925913"
+      }
+    }
+  ]
+}
