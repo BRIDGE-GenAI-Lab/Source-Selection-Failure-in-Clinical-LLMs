@@ -77,8 +77,12 @@ def run(write=True):
             gee_logit(sub, formula).to_csv(OUT / f"gee_{name}.csv")
             by_profile = pd.DataFrame({p: position_summary(g) for p, g in sub.groupby("profile")}).T
             by_profile.to_csv(OUT / f"by_profile_{name}.csv")
-            sub = sub.assign(inline=(sub.profile != "openai_fc").astype(int))
-            gee_logit(sub, "correct ~ sham_first + sham_first:inline + C(category, Treatment('metadata')) + C(model)"
+            sub = sub.assign(inline=(sub.profile != "openai_fc").astype(int),
+                             sham_first_int=sub.sham_first.astype(int))
+            sub = sub.assign(sham_first_x_inline=sub.sham_first_int * sub.inline)
+            # inline main effect is absorbed by C(model) by design
+            gee_logit(sub, "correct ~ sham_first_int + sham_first_x_inline + "
+                           "C(category, Treatment('metadata')) + C(model)"
                       ).to_csv(OUT / f"gee_profile_interaction_{name}.csv")
         (df.groupby("raw_status")[["correct", "selected_first", "says_identical"]].mean()
            .assign(n=df.groupby("raw_status").size())

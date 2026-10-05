@@ -11,3 +11,16 @@ def test_headline_numbers():
     assert h["all"]["n"] == 10500
     assert abs(h["all"]["primacy"] - 0.7274) < 0.0005
     assert set(h["types_without_valid_pairs"]) == {"contraindication_violation", "missing_warning"}
+
+
+def test_profile_interaction_is_estimable():
+    import numpy as np
+    import pandas as pd
+
+    from r2.analysis.original_corrected import OUT
+
+    run(write=True)
+    for name in ("all", "discriminable"):
+        g = pd.read_csv(OUT / f"gee_profile_interaction_{name}.csv", index_col=0)
+        row = g.loc["sham_first_x_inline"]
+        assert np.isfinite([row["OR"], row["lo"], row["hi"]]).all()
