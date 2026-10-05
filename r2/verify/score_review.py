@@ -48,18 +48,38 @@ def flag_reasons(row):
     return flags
 
 
+def allowed_answers(item):
+    return ("Y", "N", "P") if item == "q3_authentic_concordant" else ("Y", "N")
+
+
 def _load(path):
+    """Read one physician form. Every question cell must be Y or N (Q3 also P), after stripping and
+    upper-casing; only the notes column may be blank."""
     df = pd.read_csv(path, dtype=str).fillna("")
+    problems = []
     for q, _ in QUESTIONS:
+        if q not in df.columns:
+            raise ValueError(f"{path}: missing answer column {q}")
         df[q] = df[q].str.strip().str.upper()
+        blank = df.case_id[df[q] == ""].tolist()
+        if blank:
+            problems.append(f"{q}: blank answers for {blank[:10]}")
+        bad = df[(df[q] != "") & ~df[q].isin(allowed_answers(q))]
+        if len(bad):
+            problems.append(f"{q}: invalid answers {sorted(set(bad[q]))} for {bad.case_id.tolist()[:10]} "
+                            f"(allowed {allowed_answers(q)})")
+    if problems:
+        raise ValueError(f"{path}: " + "; ".join(problems))
     return df.set_index("case_id").sort_index()
 
 
 def score(path_a, path_b):
     a, b = _load(path_a), _load(path_b)
-    assert list(a.index) == list(b.index), "the two forms cover different pairs"
+    if list(a.index) != list(b.index):
+        raise ValueError("the two forms cover different pairs")
     blanks = [(q, int((a[q] == "").sum() + (b[q] == "").sum())) for q, _ in QUESTIONS]
-    assert all(n == 0 for _, n in blanks), f"unanswered items: {blanks}"
+    if any(n for _, n in blanks):
+        raise ValueError(f"unanswered items: {blanks}")
     rows, disagreements = [], []
     for q, _ in QUESTIONS:
         agree = float((a[q] == b[q]).mean())
@@ -117,7 +137,7 @@ def apply_consensus(path_a, path_b, consensus_path):
             raise ValueError(f"consensus row for unknown case_id {cid}")
         if item not in qkeys:
             raise ValueError(f"consensus row for unknown item {item} ({cid})")
-        allowed = ("Y", "N", "P") if item == "q3_authentic_concordant" else ("Y", "N")
+        allowed = allowed_answers(item)
         if val not in allowed:
             raise ValueError(f"consensus value {val!r} not allowed for {item} ({cid}); allowed {allowed}")
         if a.loc[cid, item] == b.loc[cid, item]:

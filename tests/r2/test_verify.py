@@ -236,3 +236,32 @@ def test_write_forms_refuses_to_overwrite_answered_forms(complete):
     with pytest.raises(RuntimeError, match="review_MO.csv"):
         bp.write_forms()
     assert {p.name: p.read_bytes() for p in verify.iterdir()} == before
+
+
+# ---- I5: answer validation ----
+@pytest.mark.parametrize("item,value", [("q5_edit_visible", "No"), ("q4_authentic_relevant", "n/a"),
+                                        ("q6_edit_matches_type", "P"), ("q8_leakage", "maybe"),
+                                        ("q1_vignette_consistent", ""), ("q3_authentic_concordant", "partial")])
+def test_load_rejects_invalid_answers(toy, item, value):
+    d, a, b = toy
+    bad = _form(d / "bad.csv", {"C2": {item: value}})
+    with pytest.raises(ValueError, match=item):
+        sr._load(bad)
+    with pytest.raises(ValueError):
+        sr.score(bad, b)
+    with pytest.raises(ValueError):
+        sr.apply_consensus(a, bad, _cons(d / "c.csv", []))
+
+
+def test_load_normalizes_case_and_allows_blank_notes(toy):
+    d, a, b = toy
+    ok = _form(d / "ok.csv", {"C1": {"q3_authentic_concordant": " p ", "q2_question_answerable": "y", "notes": ""}})
+    df = sr._load(ok)
+    assert df.loc["C1", "q3_authentic_concordant"] == "P" and df.loc["C1", "q2_question_answerable"] == "Y"
+
+
+def test_score_raises_value_error_on_different_pairs(toy):
+    d, a, b = toy
+    other = _form(d / "other.csv", cases=("C1", "C2"))
+    with pytest.raises(ValueError, match="different"):
+        sr.score(a, other)
