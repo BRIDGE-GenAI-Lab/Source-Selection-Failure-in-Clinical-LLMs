@@ -208,3 +208,61 @@ def test_inventory_quotes_logged_errors_whole_or_at_a_word_boundary(written):
         else:
             assert quoted == full, r["run_dir"]
     assert seen >= 10
+
+
+# ---------------------------------------------------------------- invalid-reply handling and coerced choices
+
+def test_original_pipelines_state_invalid_reply_handling(written):
+    out, _ = written
+    by = {r["profile"]: r for r in read(out, "S_original_pipelines")}
+    assert all(by[p]["invalid_reply_handling"] for p in profiles.PROFILES)
+    assert "unclear" in by["openai_fc"]["invalid_reply_handling"]
+    for p in profiles.PROFILES:
+        if p != "openai_fc":
+            assert "records A" in by[p]["invalid_reply_handling"], p
+    assert by["deepseek_reasoner_inline7"]["decoding"] == "max_tokens 8192; no temperature parameter (provider default)"
+
+
+def test_invalid_reply_cites_point_at_the_fallback_code():
+    import re
+    for r in st.original_pipelines():
+        text = r["invalid_reply_handling"]
+        if r["profile"] == "openai_fc":
+            lines = (st.REPO / "src/runner.py").read_text().splitlines()
+            assert "raise ValueError" in lines[435 - 1]
+            assert 'setdefault("selected_tool", "unclear")' in lines[448 - 1]
+            continue
+        path, lo, hi = re.search(r"(scripts/\S+\.py):(\d+)-(\d+)", text).groups()
+        lines = (st.REPO / path).read_text().splitlines()
+        assert 'json_start = response_text.find("{")' in lines[int(lo) - 1], r["profile"]
+        assert 'decision["selected_tool"] = selected' in lines[int(hi) - 1], r["profile"]
+        block = "\n".join(lines[int(lo) - 1:int(hi)])
+        assert '"selected_tool": "A"' in block and 'selected = "A"' in block, r["profile"]
+
+
+def test_coerced_choices_table_matches_the_audit_summary(written):
+    out, _ = written
+    rows = read(out, "S_coerced_choices")
+    summary = json.loads((AUDIT_DIR / "coerced_choices_summary.json").read_text())
+    assert len(rows) == 21 and sum(int(r["records"]) for r in rows) == summary["n_records"]
+    tot = lambda col: sum(int(r[col]) for r in rows)
+    assert tot("coerced_total") == summary["coerced_total"]
+    assert tot("coerced_no_json") + tot("coerced_json_decode_error") == summary["class_counts"]["coerced_parse_failure"]
+    assert tot("coerced_invalid_choice") == summary["class_counts"]["coerced_invalid_choice"]
+    ident = summary["by_visible_status"]["identical"]
+    assert tot("coerced_on_identical_pairs") == ident.get("coerced_parse_failure", 0) + ident.get("coerced_invalid_choice", 0)
+    assert all(int(r["coerced_total"]) == 0 for r in rows if r["profile"] != "together_inline6")
+    for r in rows:
+        assert int(r["coerced_total"]) + int(r["not_coerced"]) == int(r["records"])
+        assert int(r["parse_failures_at_token_limit"]) <= int(r["coerced_no_json"]) + int(r["coerced_json_decode_error"])
+
+
+@pytest.mark.skipif(not all(t.exists() for t in RESULT_TREES), reason="legacy results tree not mounted")
+def test_coerced_parse_failures_at_the_token_limit(written):
+    out, _ = written
+    rows = {r["model"]: r for r in read(out, "S_coerced_choices")}
+    assert sum(int(r["parse_failures_at_token_limit"]) for r in rows.values()) == 381
+    q = rows["Qwen/Qwen3-Next-80B-A3B-Thinking"]
+    assert int(q["parse_failures_at_token_limit"]) == int(q["coerced_no_json"]) + int(q["coerced_json_decode_error"]) == 329
+    assert rows["Qwen/Qwen3-Next-80B-A3B-Thinking"]["runner_max_tokens"] == "2048"
+    assert rows["gpt-4.1-2025-04-14"]["runner_max_tokens"] == "not set"

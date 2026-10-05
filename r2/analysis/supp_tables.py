@@ -90,6 +90,10 @@ def hash_verification():
 _INLINE_FIELDS = ("reduced: setting, age/sex, chief complaint, HPI, PMH, medications, allergies, question "
                   "(no weight, vitals, labs, imaging or ECG)")
 
+# How each runner handled a reply without a usable A/B choice (cites hold for scripts/ and the legacy originals).
+_INLINE_FALLBACK = ("the runner records A (confidence 0.5) when the reply has no JSON object or the JSON does not "
+                    "parse, and records A when the choice is missing or not A/B (")
+
 PIPELINE_FACTS = {
     "openai_fc": {
         "runner": "src/runner.py (OpenAI Responses API)",
@@ -99,6 +103,9 @@ PIPELINE_FACTS = {
                             "vitals, labs, imaging, ECG, question"),
         "system_prompt_source": "src/prompts.py:12-25 (SYSTEM_PROMPT_BASELINE, selected at src/prompts.py:59-61)",
         "decoding": "provider default (raw logs show temperature 1.0)",
+        "invalid_reply_handling": ("no fallback choice: an unparseable reply raises an error and leaves no decision "
+                                   "(src/runner.py:435); a reply without a choice is set to 'unclear', not A "
+                                   "(src/runner.py:448)"),
     },
     "gemini_inline7": {
         "runner": "scripts/run_gemini_experiment.py",
@@ -107,6 +114,8 @@ PIPELINE_FACTS = {
         "vignette_fields": _INLINE_FIELDS,
         "system_prompt_source": "scripts/run_gemini_experiment.py:48-54 (get_system_prompt, baseline branch)",
         "decoding": "provider default",
+        "invalid_reply_handling": (_INLINE_FALLBACK + "scripts/run_gemini_experiment.py:234-270); a null choice "
+                                   "raises an error instead"),
     },
     "deepseek_chat_inline7": {
         "runner": "scripts/run_deepseek_experiment.py",
@@ -114,13 +123,15 @@ PIPELINE_FACTS = {
         "vignette_fields": _INLINE_FIELDS,
         "system_prompt_source": "scripts/run_deepseek_experiment.py:47-53 (get_system_prompt, baseline branch)",
         "decoding": "temperature 0.7, max_tokens 2048",
+        "invalid_reply_handling": _INLINE_FALLBACK + "scripts/run_deepseek_experiment.py:245-281)",
     },
     "deepseek_reasoner_inline7": {
         "runner": "scripts/run_deepseek_reasoner.py",
         "tool_presentation": "inline JSON in the user message, 7 tool fields",
         "vignette_fields": _INLINE_FIELDS,
         "system_prompt_source": "scripts/run_deepseek_reasoner.py:31-38 (get_system_prompt)",
-        "decoding": "max_tokens 8192; temperature not recorded",
+        "decoding": "max_tokens 8192; no temperature parameter (provider default)",
+        "invalid_reply_handling": _INLINE_FALLBACK + "scripts/run_deepseek_reasoner.py:241-277)",
     },
     "together_inline6": {
         "runner": "scripts/run_together_experiment.py",
@@ -128,6 +139,7 @@ PIPELINE_FACTS = {
         "vignette_fields": _INLINE_FIELDS,
         "system_prompt_source": "scripts/run_together_experiment.py:31-38 (get_system_prompt)",
         "decoding": "temperature 0.7, max_tokens 2048",
+        "invalid_reply_handling": _INLINE_FALLBACK + "scripts/run_together_experiment.py:212-227)",
     },
 }
 
@@ -142,7 +154,54 @@ def original_pipelines():
         out.append({"profile": prof, "runner": f["runner"], "n_models": len(models[prof]),
                     "models": "; ".join(sorted(models[prof])),
                     "tool_presentation": f["tool_presentation"], "vignette_fields": f["vignette_fields"],
-                    "system_prompt_source": f["system_prompt_source"], "decoding": f["decoding"]})
+                    "system_prompt_source": f["system_prompt_source"], "decoding": f["decoding"],
+                    "invalid_reply_handling": f["invalid_reply_handling"]})
+    return out
+
+
+# ---------------------------------------------------------------- S_coerced_choices
+
+COERCED_CLASSES = ("coerced_parse_failure", "coerced_invalid_choice")
+
+
+def _runner_max_tokens(profile):
+    """max_tokens set in the runner's request, or None when the runner sets none."""
+    import re
+    src = (REPO / profiles.PROFILES[profile]).read_text()
+    m = re.findall(r"max_tokens=(\d+)", src)
+    return int(m[0]) if len(set(m)) == 1 else None
+
+
+def coerced_choices(eval_root=None):
+    """Per model: original records whose A/B choice was written by the runner, not the model
+    (audit/coerced_choices.csv), and how many parse failures stopped at the runner's token limit."""
+    eval_root = Path(eval_root) if eval_root else LEGACY_EVAL
+    rows = _read_csv(AUDIT_DIR / "coerced_choices.csv")
+    run_dir = {r["model"]: r["run_dir"]
+               for r in json.loads((ORIGINAL_RUNS_DIR / "manifest.json").read_text())["runs"]}
+    out = []
+    for prof in profiles.PROFILES:
+        limit = _runner_max_tokens(prof)
+        for model in sorted({r["model"] for r in rows if r["profile"] == prof}):
+            mine = [r for r in rows if r["model"] == model]
+            reasons = Counter(r["reason"] for r in mine if r["class"] in COERCED_CLASSES)
+            coerced = [r for r in mine if r["class"] in COERCED_CLASSES]
+            at_limit = 0
+            for r in mine:
+                if r["class"] != "coerced_parse_failure":
+                    continue
+                raw = eval_root / "results" / run_dir[model] / "raw" / f"{r['case_id']}_response.json"
+                usage = json.loads(raw.read_text()).get("usage") or {}
+                at_limit += limit is not None and usage.get("completion_tokens") == limit
+            out.append({"profile": prof, "model": model, "records": len(mine),
+                        "coerced_no_json": reasons["no_json"],
+                        "coerced_json_decode_error": reasons["json_decode_error"],
+                        "coerced_invalid_choice": reasons["invalid_choice"] + reasons["missing_choice"],
+                        "coerced_total": len(coerced),
+                        "coerced_on_identical_pairs": sum(r["visible_status"] == "identical" for r in coerced),
+                        "parse_failures_at_token_limit": at_limit,
+                        "runner_max_tokens": limit if limit is not None else "not set",
+                        "not_coerced": len(mine) - len(coerced)})
     return out
 
 
@@ -357,6 +416,7 @@ AVAILABLE_TABLES = {
     "S_run_inventory": run_inventory,
     "S_original_reanalysis": original_reanalysis,
     "S_modifications_by_type": modifications_by_type,
+    "S_coerced_choices": coerced_choices,
 }
 
 
@@ -377,6 +437,15 @@ S_run_inventory.csv
   authors' own files, e.g. the canonical loader load_canonical.py).
 - Logged error messages are quoted whole. A message longer than 160 characters is cut at a word
   boundary and marked with an ellipsis.
+
+S_original_pipelines.csv
+- invalid_reply_handling: what the runner recorded when a reply had no usable A/B choice, with file:line.
+
+S_coerced_choices.csv
+- One row per model, from audit/coerced_choices.csv: records whose A/B choice the original runner wrote
+  (no JSON object, JSON that did not parse, or a choice missing or not A/B), and how many of them were on
+  pairs identical at the model input. parse_failures_at_token_limit counts parse failures whose raw reply
+  used exactly the runner's max_tokens (usage.completion_tokens in results/<run>/raw/<case>_response.json).
 """
 
 
