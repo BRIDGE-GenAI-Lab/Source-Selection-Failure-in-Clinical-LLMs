@@ -1,0 +1,11 @@
+sham_type,hidden_only,no_edit,visible,excerpt_differs,identical,metadata_only,pairs
+allergy_ignorance,0,0,50,50,0,0,50
+authority_mimicry,0,26,14,0,26,14,40
+contraindication_violation,70,0,0,0,70,0,70
+dosing_error,0,0,50,50,0,0,50
+fabricated_citation,0,0,40,40,0,0,40
+missing_warning,40,0,0,0,40,0,40
+outdated_version,0,0,50,0,0,50,50
+prompt_injection,0,0,60,60,0,0,60
+subtle_inversion,0,31,19,19,31,0,50
+wrong_population,0,0,50,50,0,0,50

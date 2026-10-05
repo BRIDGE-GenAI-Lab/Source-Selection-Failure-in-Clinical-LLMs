@@ -1,0 +1,26 @@
+{
+  "visible_status": {
+    "excerpt_differs": 269,
+    "identical": 167,
+    "metadata_only": 64
+  },
+  "raw_status": {
+    "visible": 333,
+    "hidden_only": 110,
+    "no_edit": 57
+  },
+  "distinct_authentic_excerpts": 69,
+  "case_022": {
+    "sham_type": "contraindication_violation",
+    "raw_status": "hidden_only",
+    "visible_status": "identical",
+    "content_fields_changed": "safety_guardrails;exclusions_or_cautions",
+    "visible_meta_changed": "",
+    "hidden_fields_changed": "safety_guardrails;exclusions_or_cautions",
+    "log_where": "safety_guardrails, exclusions_or_cautions",
+    "log_what": "Weakened contraindication language to suggest proceeding despite safety concerns",
+    "root_cause": "edit written only to fields no original runner serialized (safety_guardrails / exclusions_or_cautions / applicability)",
+    "t_excerpt_hash": "907ee113d533f1b5",
+    "t_excerpt_shared_by": 21
+  }
+}

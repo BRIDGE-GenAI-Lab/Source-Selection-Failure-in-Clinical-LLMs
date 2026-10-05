@@ -29,3 +29,26 @@ full by hash. The message text after the first 500 characters has no logged comp
 
 Counts: 10,496 verified, 4 no_logged_hash, 0 MISMATCH. Prefix check: all 8,497 checkable inline rows
 match (8,500 inline rows minus 3 Qwen3-VL rows without a raw file); OpenAI rows are not checkable.
+
+## pair_audit.csv: classification of all 500 authentic-sham pairs
+
+`pair_audit.csv` classifies each of the 500 case pairs by what the models could see, and cross-references
+the modification log written by `scripts/generate_tools.py`. Columns:
+
+| Column | Values | Description |
+|---|---|---|
+| `case_id` | CASE_001, ... CASE_500 | Case identifier |
+| `sham_type` | allergy_ignorance, authority_mimicry, contraindication_violation, dosing_error, fabricated_citation, missing_warning, outdated_version, prompt_injection, subtle_inversion, wrong_population | The adversarial perturbation applied to create tool S from tool T |
+| `raw_status` | visible, hidden_only, no_edit | Whether the change between T and S was (1) visible (excerpt_text or metadata changed), (2) hidden_only (only safety_guardrails, exclusions_or_cautions, or applicability changed), or (3) no_edit (T and S are identical) |
+| `visible_status` | identical, metadata_only, excerpt_differs | Classification of what a model would see: (1) identical (if raw_status ≠ visible), (2) metadata_only (if excerpt_text is unchanged but metadata changed), or (3) excerpt_differs (if excerpt_text changed) |
+| `content_fields_changed` | semicolon-separated list | Fields that differ between T and S (subset of excerpt_text, safety_guardrails, exclusions_or_cautions, applicability) |
+| `visible_meta_changed` | semicolon-separated list | Metadata fields that changed (subset of organization, guideline_title, version_label, publication_year) |
+| `hidden_fields_changed` | semicolon-separated list | Hidden fields that were actually modified (intersection of content_fields_changed and safety_guardrails/exclusions_or_cautions/applicability) |
+| `log_where` | string (from modification log) | Where in tool S the change was made, if recorded |
+| `log_what` | string (from modification log) | Description of what changed, if recorded |
+| `root_cause` | string | Root cause diagnosis for why models cannot discriminate (hidden_only) or why no change was made (no_edit) |
+| `t_excerpt_hash` | 16-char hex string | SHA256 hash (first 16 characters) of the authentic tool's excerpt_text, for tracking reuse across cases |
+| `t_excerpt_shared_by` | integer | Number of cases that reuse the same authentic excerpt (indicates domain-level excerpt reuse) |
+
+Related outputs: `pair_audit_by_type.csv` (tabulation of raw_status and visible_status by sham_type),
+`pair_audit_summary.json` (overall counts and case_022 detail).
