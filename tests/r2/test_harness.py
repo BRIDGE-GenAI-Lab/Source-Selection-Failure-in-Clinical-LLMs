@@ -935,3 +935,43 @@ def test_negative_limit_is_rejected(tmp_path):
         harness.parse_args(["--limit", "-1"])
     assert harness.parse_args(["--limit", "0"]).limit == 0
     assert harness.parse_args([]).limit is None
+
+
+# ---- minor 2: _clean_commit checks git's return codes and treats r2/, data/v2/ and tests/ as code ----
+def _git(repo, *args):
+    import subprocess
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false",
+                    *args], cwd=repo, check=True, capture_output=True)
+
+
+@pytest.fixture
+def tiny_repo(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    for rel in ("r2/run/harness.py", "data/v2/pairs_v2.json", "tests/r2/test_harness.py", "docs/notes.md"):
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text("x\n")
+    _git(repo, "init", "-q")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "init")
+    monkeypatch.setattr(harness, "REPO", repo)
+    return repo
+
+
+@pytest.mark.parametrize("rel,dirty", [("tests/r2/test_harness.py", True), ("tests/r2/test_new.py", True),
+                                       ("r2/run/harness.py", True), ("data/v2/pairs_v2.json", True),
+                                       ("docs/notes.md", False)])
+def test_clean_commit_dirty_check_covers_r2_data_v2_and_tests(tiny_repo, rel, dirty):
+    import re
+    (tiny_repo / rel).write_text("changed\n")
+    if dirty:
+        with pytest.raises(SystemExit, match=rel):
+            harness._clean_commit()
+    else:
+        assert re.fullmatch(r"[0-9a-f]{40}", harness._clean_commit())
+
+
+def test_clean_commit_fails_outside_a_git_repo(tmp_path, monkeypatch):
+    monkeypatch.setattr(harness, "REPO", tmp_path)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
+    with pytest.raises(SystemExit, match="git status failed"):
+        harness._clean_commit()

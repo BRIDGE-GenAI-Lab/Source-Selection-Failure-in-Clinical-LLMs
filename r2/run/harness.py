@@ -477,13 +477,16 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
     return path
 
 
+CODE_PATHS = ("r2", "data/v2", "tests")  # must be committed: harness_commit identifies all of them
+
+
 def _clean_commit():
-    status = subprocess.run(["git", "status", "--porcelain", "r2", "data/v2"], cwd=REPO,
+    status = subprocess.run(["git", "status", "--porcelain", *CODE_PATHS], cwd=REPO,
                             capture_output=True, text=True)
     if status.returncode != 0:
         raise SystemExit(f"git status failed (rc {status.returncode}); cannot record harness_commit")
     if status.stdout.strip():
-        raise SystemExit(f"commit r2/ and data/v2/ before running:\n{status.stdout.strip()}")
+        raise SystemExit(f"commit r2/, data/v2/ and tests/ before running:\n{status.stdout.strip()}")
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True)
     sha = head.stdout.strip()
     if head.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", sha):
