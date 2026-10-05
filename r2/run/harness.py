@@ -1,13 +1,16 @@
 """Unified runner for the repeated experiment: one prompt (r2.stimuli.render), both orders,
 one code path for every provider (OpenAI-compatible endpoints), full request/response logs."""
 import argparse
+import base64
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
 import time
+import traceback
 from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -27,9 +30,15 @@ PROVIDERS = {
 RETRY_PROMPT = "Return only the JSON object described above, with no other text."
 TRANSIENT = {"RateLimitError", "APIConnectionError", "APITimeoutError", "InternalServerError"}
 THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
+# Accepted selected_tool values (after strip, any case): "A"/"B", or "Excerpt|Option|Tool|Source A|B".
+# Anything else is not a decision (non_response). The value as sent is kept in selected_raw.
+SELECTED = re.compile(r"(?:(?:excerpt|option|tool|source)\s+)?([ab])", re.I)
 TOKEN_PARAMS = ("max_tokens", "max_completion_tokens")
-INCIDENTS = "incidents.jsonl"
+INCIDENTS = "incidents.jsonl"  # the former shared incident file; still never treated as a result file
+INCIDENTS_SUFFIX = ".incidents.jsonl"  # per model: <safe_name>.incidents.jsonl, written under the model lock
 N_PAIRS = 500
+RETRY_TRIES = 10
+RETRY_AFTER_CAP = 900  # seconds; a longer Retry-After is slept as this, then retried
 FREEZE_TAG = "r2-analysis-plan-frozen"
 
 
@@ -56,9 +65,37 @@ class RunLocked(RuntimeError):
 CELL_ERRORS = {"BadRequestError", "UnprocessableEntityError"}
 MODEL_ERRORS = {"AuthenticationError", "PermissionDeniedError", "NotFoundError"}
 # Circuit breaker: stop a model after this many consecutive cell-error records, or when the same
-# error text (first ERROR_TEXT_CHARS characters) repeats this many times in a row among error records.
+# error text (first ERROR_TEXT_CHARS characters) repeats this many times among error records with no ok
+# record in between. Only fresh cells count; a re-attempted cell (one that already has an error-only
+# record) is invisible to the breaker. A re-attempt that fails with the error text of an earlier
+# error-only record for the same cell is final: it is written with "persistent_error": true.
 BREAKER_LIMIT = 3
 ERROR_TEXT_CHARS = 200
+# Error texts are compared by error_key: the text with volatile tokens replaced (normalize_error), cut to
+# ERROR_TEXT_CHARS. The raw text is stored unchanged in "error"; the key is stored as "error_key".
+_HEX = "0-9a-fA-F"
+ERROR_NORMALIZERS = (
+    (re.compile(rf"(?<![{_HEX}])[{_HEX}]{{8}}-[{_HEX}]{{4}}-[{_HEX}]{{4}}-[{_HEX}]{{4}}-[{_HEX}]{{12}}(?![{_HEX}])"),
+     "<uuid>"),
+    (re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?"), "<ts>"),
+    (re.compile(r"\breq_[A-Za-z0-9]+"), "<req>"),
+    (re.compile(r"""(\brequest[ _-]?id["']?\s*[:=]?\s*["']?)(?!<)(?=[A-Za-z_-]*\d)[A-Za-z0-9_-]+""", re.I),
+     r"\1<id>"),  # a value with at least one digit, so "request ID in your message" is left alone
+    (re.compile(rf"(?<![0-9A-Za-z])[{_HEX}]{{8,}}(?![0-9A-Za-z])"), "<hex>"),
+    (re.compile(r"\d{6,}"), "<n>"),
+)
+
+
+def normalize_error(text):
+    """The error text with UUIDs, ISO timestamps, req_ ids, request_id / request id values, hex runs of 8 or
+    more characters and digit runs of 6 or more replaced by fixed tokens."""
+    for pattern, token in ERROR_NORMALIZERS:
+        text = pattern.sub(token, text)
+    return text
+
+
+def error_key(text):
+    return normalize_error(text)[:ERROR_TEXT_CHARS]
 
 
 def _error_kind(exc):
@@ -67,6 +104,8 @@ def _error_kind(exc):
         return "cell"
     if name in MODEL_ERRORS:
         return "model"
+    if name in TRANSIENT:
+        return "transient"  # reaches execute_cell only after _create has used all its tries
     return None
 
 
@@ -82,8 +121,16 @@ def load_specs(path=REPO / "r2" / "run" / "models_v2.json"):
 
 
 def load_v2_cases(path=DATA_V2 / "pairs_v2.json"):
+    """(cases by case_id, sha256 of the file bytes). Raises ValueError, never assert, on any defect."""
     raw = Path(path).read_bytes()
     data = json.loads(raw)
+    if not isinstance(data, dict) or not isinstance(data.get("cases"), list):
+        raise ValueError(f"{path}: expected an object with a 'cases' list")
+    bad = [i for i, c in enumerate(data["cases"])
+           if not (isinstance(c, dict) and isinstance(c.get("case_id"), str) and isinstance(c.get("tools"), dict)
+                   and isinstance(c["tools"].get("T"), dict) and isinstance(c["tools"].get("S"), dict))]
+    if bad:
+        raise ValueError(f"{path}: cases at positions {bad[:10]} lack a case_id or tools T and S")
     if data.get("unresolved"):
         raise ValueError(f"{path}: corrected stimulus set still has {len(data['unresolved'])} unresolved pairs")
     cases = {c["case_id"]: c for c in data["cases"]}
@@ -111,17 +158,59 @@ def results_path(spec, out_dir):
     return Path(out_dir) / f"{safe_name(spec['model_id'])}.jsonl"
 
 
+def incidents_path(spec, out_dir):
+    return Path(out_dir) / f"{safe_name(spec['model_id'])}{INCIDENTS_SUFFIX}"
+
+
+def is_incident_file(name):
+    return name == INCIDENTS or name.endswith(INCIDENTS_SUFFIX)
+
+
 def iter_result_files(out_dir):
-    return [p for p in sorted(Path(out_dir).glob("*.jsonl")) if not p.name.startswith("._")]
+    """Result files in out_dir: *.jsonl except AppleDouble (._*) and incident files."""
+    return [p for p in sorted(Path(out_dir).glob("*.jsonl"))
+            if not p.name.startswith("._") and not is_incident_file(p.name)]
 
 
 def is_error_only(r):
-    """An API error before any response was received: not a completed cell, re-attempted on resume."""
+    """An API error before any response was received. Not a completed cell unless it is marked
+    persistent_error (see is_done); otherwise re-attempted on resume."""
     return "error" in r and not r.get("attempts")
 
 
+def is_done(r):
+    """A record that completes its cell: it carries a response, or it is a final persistent error."""
+    return not is_error_only(r) or r.get("persistent_error") is True
+
+
+def is_unresolved(r):
+    """A cell's last record that is an error-only record not yet re-attempted to finality: the cell needs a
+    resume (one re-attempt) before it is complete."""
+    return is_error_only(r) and r.get("persistent_error") is not True
+
+
+def unresolved_cells(path):
+    return sorted((r["case_id"], r["order"]) for r in final_records(path) if is_unresolved(r))
+
+
+def _error_key(r):
+    """The comparison key of a record's error, recomputed from the raw text (the stored error_key is for audit)."""
+    return error_key(r["error"])
+
+
 def read_records(path):
-    return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()]
+    """Every record of a results file. Lines are split on b"\\n" only: str.splitlines() would also split
+    on U+2028, U+2029 and NEL, which json.dumps(ensure_ascii=False) writes raw inside model text."""
+    out = []
+    for i, line in enumerate(Path(path).read_bytes().split(b"\n"), 1):
+        if not line.strip():
+            continue
+        try:
+            out.append(json.loads(line.decode("utf-8")))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise CorruptResults(f"{path}: line {i} is unparseable ({type(exc).__name__}); a torn final line is "
+                                 "repaired when the harness resumes the model: resume the model first") from exc
+    return out
 
 
 def final_records(path):
@@ -137,17 +226,29 @@ class _Breaker:
         self.spec, self.consecutive, self.text, self.same = spec, 0, None, 0
 
     def observe(self, rec):
+        """Called for fresh cells only. Any record without an error resets the consecutive count; an ok
+        record also resets the same-text count."""
+        if rec.get("status") == "ok":
+            self.text, self.same = None, 0
         if "error" not in rec:
             self.consecutive = 0
             return
         self.consecutive += 1
-        text = rec["error"][:ERROR_TEXT_CHARS]
-        self.same = self.same + 1 if text == self.text else 1
-        self.text = text
+        key = _error_key(rec)
+        self.same = self.same + 1 if key == self.text else 1
+        self.text = key
         if self.consecutive >= BREAKER_LIMIT or self.same >= BREAKER_LIMIT:
             raise ModelUnavailable(
                 f"{self.spec['model_id']}: circuit breaker ({self.consecutive} consecutive cell errors, "
-                f"same error text {self.same}x in a row): {text}")
+                f"same error text {self.same}x in a row): {rec['error'][:ERROR_TEXT_CHARS]}")
+
+
+def normalize_selected(value):
+    """'A' or 'B' for an accepted selected_tool value (see SELECTED), else None."""
+    if not isinstance(value, str):
+        return None
+    m = SELECTED.fullmatch(value.strip())
+    return m.group(1).upper() if m else None
 
 
 def parse_decision(text):
@@ -166,8 +267,9 @@ def parse_decision(text):
         except json.JSONDecodeError:
             start = text.find("{", start + 1)
             continue
-        sel = str(obj.get("selected_tool", "")).strip().upper() if isinstance(obj, dict) else ""
-        if sel in ("A", "B"):
+        sel = normalize_selected(obj.get("selected_tool")) if isinstance(obj, dict) else None
+        if sel is not None:
+            obj["selected_raw"] = obj["selected_tool"]
             obj["selected_tool"] = sel
             obj["confidence_raw"] = obj.get("confidence")
             try:
@@ -198,7 +300,8 @@ def check_served(spec, served):
 
 
 def _retry_after(exc):
-    """Seconds requested by a Retry-After header on the exception's HTTP response, if any."""
+    """Seconds requested by a Retry-After header (delta-seconds or HTTP-date) on the exception's HTTP
+    response; None when absent, unparseable, non-finite or negative (the caller then uses its backoff)."""
     headers = getattr(getattr(exc, "response", None), "headers", None)
     if not headers:
         return None
@@ -206,19 +309,21 @@ def _retry_after(exc):
     if value is None:
         return None
     try:
-        return max(0.0, float(value))
+        seconds = float(value)
     except (TypeError, ValueError):
-        pass
-    try:
-        when = parsedate_to_datetime(str(value))
-    except (TypeError, ValueError):
-        return None
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
+        try:
+            when = parsedate_to_datetime(str(value))
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        seconds = (when - datetime.now(timezone.utc)).total_seconds()
+    return seconds if math.isfinite(seconds) and seconds >= 0 else None
 
 
-def _create(client, kwargs, sleep, tries=10):
+def _create(client, kwargs, sleep, tries=RETRY_TRIES):
+    """One API call with retries on transient errors: exponential backoff, or the server's Retry-After
+    when longer, capped at RETRY_AFTER_CAP. Every sleep is announced on stdout first."""
     for i in range(tries):
         try:
             return client.chat.completions.create(**kwargs)
@@ -227,48 +332,40 @@ def _create(client, kwargs, sleep, tries=10):
                 raise
             backoff = min(300, 2 * 2 ** i)
             requested = _retry_after(exc)
-            sleep(backoff if requested is None else max(requested, backoff))
+            delay = backoff if requested is None else min(RETRY_AFTER_CAP, max(requested, backoff))
+            note = ("none" if requested is None else
+                    f"{requested:g} s" + (f", capped at {RETRY_AFTER_CAP} s" if requested > RETRY_AFTER_CAP else ""))
+            print(f"RETRY {kwargs.get('model')} try {i + 1}/{tries}: {type(exc).__name__}: {str(exc)[:200]}; "
+                  f"sleeping {delay:g} s (backoff {backoff} s, Retry-After {note})", flush=True)
+            sleep(delay)
+
+
+def first_messages(rendered):
+    """The messages of a cell's first attempt, from render_messages output."""
+    return [{"role": "system", "content": rendered["system"]}, {"role": "user", "content": rendered["user"]}]
+
+
+def request_kwargs(spec, messages):
+    """The chat.completions.create arguments for a spec: the only builder (harness and probe)."""
+    kwargs = {"model": spec["model_id"], "messages": messages,
+              spec.get("token_param", "max_tokens"): spec["max_tokens"]}
+    if spec.get("temperature") is not None:
+        kwargs["temperature"] = spec["temperature"]
+    return kwargs
 
 
 def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=None):
     msgs = render_messages(case, order)
-    messages = [{"role": "system", "content": msgs["system"]}, {"role": "user", "content": msgs["user"]}]
-    attempts, decision, error = [], None, None
-    for _ in range(2):
-        kwargs = {"model": spec["model_id"], "messages": messages,
-                  spec.get("token_param", "max_tokens"): spec["max_tokens"]}
-        if spec.get("temperature") is not None:
-            kwargs["temperature"] = spec["temperature"]
-        t0 = time.time()
+    attempts = []
+    try:
+        decision, error, failed_request = _attempt_cell(client, spec, case, order, context, sleep, out_dir, msgs,
+                                                        attempts)
+    except Exception as exc:  # a stop after a paid attempt: hand the attempts to the stop incident
         try:
-            resp = _create(client, kwargs, sleep).model_dump()
-        except Exception as exc:
-            kind = _error_kind(exc)
-            if kind == "model":
-                raise ModelUnavailable(f"{spec['model_id']}: {type(exc).__name__}: {exc}"[:500]) from exc
-            if kind == "cell":
-                error = f"{type(exc).__name__}: {exc}"[:500]
-                break
-            raise
-        latency_ms = (time.time() - t0) * 1000
-        try:
-            check_served(spec, resp.get("model"))
-        except ModelMismatch as exc:
-            if out_dir is not None:  # the paid response is the drift evidence: keep it before stopping
-                _log_incident(out_dir, {"kind": "model_mismatch", "model_id": spec["model_id"],
-                                        "original_name": spec["original_name"], "case_id": case["case_id"],
-                                        "order": order, "error": str(exc), "request": kwargs, "response": resp,
-                                        "latency_ms": latency_ms, **context})
-            raise
-        message = ((resp.get("choices") or [{}])[0].get("message")) or {}
-        content = message.get("content") or ""
-        attempts.append({"request": kwargs, "response": resp, "latency_ms": latency_ms})
-        decision = parse_decision(content)
-        if decision:
-            break
-        if content:
-            messages = messages + [{"role": "assistant", "content": content},
-                                   {"role": "user", "content": RETRY_PROMPT}]
+            exc.attempts = attempts
+        except AttributeError:  # an exception type without instance attributes: the attempts are lost
+            pass
+        raise
     selected = decision["selected_tool"] if decision else None
     last = attempts[-1]["response"] if attempts else {}
     rec = {
@@ -284,12 +381,59 @@ def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=N
         "finished_at": datetime.now(timezone.utc).isoformat(),
     }
     if error:
-        rec["error"] = error
+        rec["error"] = error  # raw, unchanged
+        rec["error_key"] = error_key(error)  # what the persistent-error rule and the breaker compare
+        rec["request"] = failed_request  # the call that failed (error records carry no response)
     return rec
 
 
-def _log_incident(out_dir, incident):
-    with open(Path(out_dir) / INCIDENTS, "a", encoding="utf-8") as fh:
+def _attempt_cell(client, spec, case, order, context, sleep, out_dir, msgs, attempts):
+    """Up to two calls for one cell, appending each response to `attempts`. Returns
+    (decision, error, failed_request)."""
+    messages = first_messages(msgs)
+    decision, error, failed_request = None, None, None
+    for _ in range(2):
+        kwargs = request_kwargs(spec, messages)
+        t0 = time.time()
+        try:
+            resp = _create(client, kwargs, sleep).model_dump()
+        except Exception as exc:
+            kind = _error_kind(exc)
+            if kind == "model":
+                raise ModelUnavailable(f"{spec['model_id']}: {type(exc).__name__}: {exc}"[:500]) from exc
+            if kind == "transient":  # e.g. a quota 429: stop the model (resumable), not the provider job
+                raise ModelUnavailable(f"{spec['model_id']}: {type(exc).__name__} persisted after {RETRY_TRIES} "
+                                       f"tries: {exc}"[:500]) from exc
+            if kind == "cell":
+                error, failed_request = f"{type(exc).__name__}: {exc}"[:500], kwargs
+                break
+            raise
+        latency_ms = (time.time() - t0) * 1000
+        try:
+            check_served(spec, resp.get("model"))
+        except ModelMismatch as exc:
+            if out_dir is not None:  # the paid responses are the drift evidence: keep them before stopping
+                # (no cell record is written, so earlier attempts of this cell are logged here too)
+                _log_incident(out_dir, spec, {"kind": "model_mismatch", "model_id": spec["model_id"],
+                                        "original_name": spec["original_name"], "case_id": case["case_id"],
+                                        "order": order, "error": str(exc), "request": kwargs, "response": resp,
+                                        "latency_ms": latency_ms, "attempts": attempts, **context})
+            raise
+        message = ((resp.get("choices") or [{}])[0].get("message")) or {}
+        content = message.get("content") or ""
+        attempts.append({"request": kwargs, "response": resp, "latency_ms": latency_ms})
+        decision = parse_decision(content)
+        if decision:
+            break
+        if content:
+            messages = messages + [{"role": "assistant", "content": content},
+                                   {"role": "user", "content": RETRY_PROMPT}]
+    return decision, error, failed_request
+
+
+def _log_incident(out_dir, spec, incident):
+    """Append one incident to the model's own incident file. Callers hold the model lock (run_model)."""
+    with open(incidents_path(spec, out_dir), "a", encoding="utf-8") as fh:
         fh.write(json.dumps({**incident, "logged_at": datetime.now(timezone.utc).isoformat()},
                             ensure_ascii=False, default=str) + "\n")
         fh.flush()
@@ -310,9 +454,10 @@ def _spec_mismatches(r, spec, msgs):
     for field in ("model_id", "original_name"):
         if r.get(field) != spec[field]:
             out.append((field, r.get(field), spec[field]))
-    if is_error_only(r):
-        return out
-    req = ((r.get("attempts") or [{}])[0] or {}).get("request") or {}
+    if is_unresolved(r):
+        return out  # re-attempted on this resume anyway; a persistent_error record is checked like any other
+    attempts = r.get("attempts") or []
+    req = ((attempts[0] or {}).get("request") if attempts else r.get("request")) or {}
     temp = spec.get("temperature")
     if ("temperature" in req) != (temp is not None) or (temp is not None and req["temperature"] != temp):
         out.append(("temperature", req.get("temperature", "<absent>"), "<absent>" if temp is None else temp))
@@ -323,11 +468,15 @@ def _spec_mismatches(r, spec, msgs):
     return out
 
 
-def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
-    done = set()
-    if not path.exists():
-        return done
-    lines = path.read_bytes().split(b"\n")
+def _done(path, cases, context, spec, out_dir, accept_spec_change=False, retry_persistent=False):
+    """Validate every stored record; the LAST record of each cell decides its state. Returns
+    (done, error_texts, reopen):
+    - done: cells whose last record completes them (is_done), except persistent cells under retry_persistent;
+    - error_texts: per cell, the error_key of every error-only record (persistent rule);
+    - reopen: with retry_persistent, {cell: (prior raw error text, 1-based line)} for each cell whose last
+      record is a persistent_error record."""
+    last, error_texts = {}, {}
+    lines = path.read_bytes().split(b"\n") if path.exists() else []
     if lines and lines[-1] == b"":
         lines.pop()
     offset = 0
@@ -340,8 +489,11 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
         except (UnicodeDecodeError, json.JSONDecodeError):
             if i == len(lines) - 1:
                 print(f"WARNING: dropped torn final line ({len(line)} bytes) in {path}", flush=True)
+                _log_incident(out_dir, spec, {"kind": "torn_tail", "model_id": spec["model_id"], "file": path.name,
+                                              "line": i + 1, "offset": start, "length": len(line),
+                                              "dropped_b64": base64.b64encode(line).decode("ascii")})
                 os.truncate(path, start)  # keeps every earlier byte; nothing is rewritten
-                return done
+                break
             raise CorruptResults(f"{path}: unparseable line {i + 1}")
         key = (r["case_id"], r["order"])
         msgs = render_messages(cases[key[0]], key[1]) if key[0] in cases else None
@@ -356,12 +508,19 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
         for field, recorded, current in mismatches:
             print(f"ACCEPTED spec change {path.name} {key}: {field}: recorded {recorded!r}, "
                   f"current {current!r}", flush=True)
-            _log_incident(out_dir, {"kind": "accepted_spec_change", "model_id": spec["model_id"],
+            _log_incident(out_dir, spec, {"kind": "accepted_spec_change", "model_id": spec["model_id"],
                                     "file": path.name, "case_id": key[0], "order": key[1], "field": field,
                                     "recorded": recorded, "current": current})
-        if not is_error_only(r):
+        last[key] = (r, i + 1)
+        if is_error_only(r):
+            error_texts.setdefault(key, set()).add(_error_key(r))
+    done, reopen = set(), {}
+    for key, (r, line_no) in last.items():
+        if retry_persistent and r.get("persistent_error") is True:
+            reopen[key] = (r["error"], line_no)
+        elif is_done(r):
             done.add(key)
-    return done
+    return done, error_texts, reopen
 
 
 @contextmanager
@@ -380,38 +539,82 @@ def _model_lock(out_dir, spec):
         fh.close()  # closing the descriptor releases the lock
 
 
-def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.sleep, accept_spec_change=False):
+def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.sleep, accept_spec_change=False,
+              retry_persistent=False):
+    """Run every not-yet-done cell of the first `limit` case_ids (all when limit is None; 0 runs none).
+    Fresh (never-attempted) cells run before re-attempts. With retry_persistent, cells whose last record is
+    persistent_error are re-attempted too, each after a reopened_persistent incident."""
+    if limit is not None and limit < 0:
+        raise ValueError(f"limit must be >= 0 or None, got {limit}")
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = results_path(spec, out_dir)
     with _model_lock(out_dir, spec):
-        done = _done(path, cases, context, spec, out_dir, accept_spec_change)
-        ids = sorted(cases)[:limit] if limit else sorted(cases)
-        if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
+        cell = None  # the cell being attempted when a stop is raised (None: before any cell)
+        try:
+            done, error_texts, reopen = _done(path, cases, context, spec, out_dir, accept_spec_change,
+                                              retry_persistent)
+            ids = sorted(cases) if limit is None else sorted(cases)[:limit]
+            todo = [(cid, order) for cid in ids for order in ORDERS if (cid, order) not in done]
+            # Fresh cells first: a provider-wide error then trips the breaker on fresh cells before any
+            # re-attempt can reproduce its text and be finalized.
+            todo = [c for c in todo if c not in error_texts] + [c for c in todo if c in error_texts]
+            if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
+                with open(path, "a", encoding="utf-8") as fh:
+                    fh.write("\n")
+            breaker = _Breaker(spec)
             with open(path, "a", encoding="utf-8") as fh:
-                fh.write("\n")
-        breaker = _Breaker(spec)
-        with open(path, "a", encoding="utf-8") as fh:
-            for cid in ids:
-                for order in ORDERS:
-                    if (cid, order) in done:
-                        continue
+                for cell in todo:
+                    cid, order = cell
+                    if cell in reopen:
+                        prior, line_no = reopen[cell]
+                        print(f"REOPEN {spec['original_name']} {cid} {order}: persistent_error at line {line_no}: "
+                              f"{prior[:ERROR_TEXT_CHARS]}", flush=True)
+                        _log_incident(out_dir, spec, {"kind": "reopened_persistent", "model_id": spec["model_id"],
+                                                      "original_name": spec["original_name"], "case_id": cid,
+                                                      "order": order, "prior_error": prior,
+                                                      "prior_error_key": error_key(prior),
+                                                      "prior_line": line_no, **context})
                     rec = execute_cell(client, spec, cases[cid], order, context, sleep=sleep,
                                        out_dir=out_dir)
+                    earlier = error_texts.get(cell)
+                    if earlier and is_error_only(rec) and _error_key(rec) in earlier:
+                        rec["persistent_error"] = True
+                        print(f"FINAL {spec['original_name']} {cid} {order}: same error as an earlier "
+                              f"attempt, recorded as persistent_error: {rec['error'][:ERROR_TEXT_CHARS]}", flush=True)
                     fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
                     fh.flush()
                     os.fsync(fh.fileno())
-                    breaker.observe(rec)
+                    if rec.get("persistent_error"):
+                        _log_incident(out_dir, spec, {"kind": "persistent_error", "model_id": spec["model_id"],
+                                                      "original_name": spec["original_name"], "case_id": cid,
+                                                      "order": order, "error": rec["error"],
+                                                      "error_key": rec["error_key"], **context})
+                    if not earlier:  # re-attempted cells count toward neither breaker rule
+                        breaker.observe(rec)
+        except ModelMismatch:
+            raise  # execute_cell has already logged a model_mismatch incident with the served response
+        except Exception as exc:
+            _log_incident(out_dir, spec, {"kind": "stopped", "model_id": spec["model_id"],
+                                          "original_name": spec["original_name"],
+                                          "case_id": cell[0] if cell else None,
+                                          "order": cell[1] if cell else None,
+                                          "error_type": type(exc).__name__, "error": str(exc)[:2000],
+                                          "attempts": getattr(exc, "attempts", []), **context})
+            raise
     return path
 
 
+CODE_PATHS = ("r2", "data/v2", "tests")  # must be committed: harness_commit identifies all of them
+
+
 def _clean_commit():
-    status = subprocess.run(["git", "status", "--porcelain", "r2", "data/v2"], cwd=REPO,
+    status = subprocess.run(["git", "status", "--porcelain", *CODE_PATHS], cwd=REPO,
                             capture_output=True, text=True)
     if status.returncode != 0:
         raise SystemExit(f"git status failed (rc {status.returncode}); cannot record harness_commit")
     if status.stdout.strip():
-        raise SystemExit(f"commit r2/ and data/v2/ before running:\n{status.stdout.strip()}")
+        raise SystemExit(f"commit r2/, data/v2/ and tests/ before running:\n{status.stdout.strip()}")
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True)
     sha = head.stdout.strip()
     if head.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", sha):
@@ -455,16 +658,37 @@ def _require_frozen(stim_sha):
                          f"{path} records pairs_v2_sha256 = {verified} (the physician-verified stimuli)")
 
 
+def _same_dir(a, b):
+    """True when a and b name the same directory: os.path.samefile when both exist, else the resolved
+    paths compared case-insensitively (the run volume is case-insensitive exFAT)."""
+    a, b = Path(a), Path(b)
+    if a.exists() and b.exists():
+        return os.path.samefile(a, b)
+    return str(a.resolve()).casefold() == str(b.resolve()).casefold()
+
+
+def _non_negative_int(text):
+    value = int(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0, got {value}")
+    return value
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", default="all")
-    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--limit", type=_non_negative_int, default=None,
+                        help="run only the first N pairs (sorted case_id); 0 runs none; omit for all")
     parser.add_argument("--out", default=None, help="default: RUNS_V2/main, or RUNS_V2/pilot with --pilot")
     parser.add_argument("--pilot", action="store_true",
                         help="pilot run: skip the freeze-tag and verified-stimulus checks")
     parser.add_argument("--accept-spec-change", action="store_true",
                         help="keep stored records whose prompt, model mapping or decoding differs from the "
-                             "current spec; each accepted mismatch is logged to <out>/incidents.jsonl")
+                             "current spec; each accepted mismatch is logged to "
+                             "<out>/<safe_name>.incidents.jsonl")
+    parser.add_argument("--retry-persistent", action="store_true",
+                        help="re-attempt cells whose last record is persistent_error (each logged as a "
+                             "reopened_persistent incident); use after a provider-wide condition is fixed")
     args = parser.parse_args(argv)
     if args.out is None:
         args.out = str(RUNS_V2 / ("pilot" if args.pilot else "main"))
@@ -473,7 +697,7 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
-    if args.pilot and Path(args.out).resolve() == (RUNS_V2 / "main").resolve():
+    if args.pilot and _same_dir(args.out, RUNS_V2 / "main"):
         raise SystemExit("refusing a --pilot run into the main out dir")
     cases, stim_sha = load_v2_cases()
     if not args.pilot:
@@ -481,14 +705,43 @@ def main(argv=None):
     context = {"harness_commit": _clean_commit(), "stimulus_sha256": stim_sha}
     from dotenv import load_dotenv
     load_dotenv(REPO / ".env")
-    for spec in _select(load_specs(), args.models):
-        print(f"[{datetime.now():%H:%M:%S}] {spec['original_name']}", flush=True)
+    specs, stopped, need_resume = _select(load_specs(), args.models), [], 0
+    for spec in specs:
+        name = spec["original_name"]
+        print(f"[{datetime.now():%H:%M:%S}] {name}", flush=True)
+        locked = False
         try:
             run_model(spec, cases, args.out, make_client(spec["provider"]), context, limit=args.limit,
-                      accept_spec_change=args.accept_spec_change)
-        except (ModelMismatch, ModelUnavailable, RunLocked) as exc:
-            print(f"STOPPED {spec['original_name']}: {exc}", flush=True)
+                      accept_spec_change=args.accept_spec_change, retry_persistent=args.retry_persistent)
+        except (ModelMismatch, ModelUnavailable, RunLocked, StaleRecords, CorruptResults) as exc:
+            stopped.append(name)
+            locked = isinstance(exc, RunLocked)
+            print(f"STOPPED {name}: {type(exc).__name__}: {exc}", flush=True)
+        except Exception as exc:  # never let one model end the provider job
+            stopped.append(name)
+            print(f"STOPPED {name}: unexpected {type(exc).__name__}: {exc}", flush=True)
+            traceback.print_exc()
+        path = results_path(spec, args.out)
+        if locked or not path.exists():
+            continue  # a locked model belongs to another process; its file is not read here
+        try:
+            pending = unresolved_cells(path)
+        except (CorruptResults, ValueError):
+            continue  # an unreadable file: the model is already reported as STOPPED
+        if pending:
+            need_resume += len(pending)
+            print(f"PENDING {name}: {len(pending)} cells end in an error and need a resume to be re-attempted: "
+                  f"{pending[:20]}{' ...' if len(pending) > 20 else ''}", flush=True)
+    print(f"FINISHED {len(specs)} model(s); stopped {len(stopped)}: {stopped}; {need_resume} cells need a resume",
+          flush=True)
+    return {"stopped": stopped, "need_resume": need_resume}
+
+
+def cli(argv=None):
+    """Exit status 1 when any model stopped or any cell needs a resume, else 0."""
+    summary = main(argv)
+    return 1 if summary["stopped"] or summary["need_resume"] else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(cli())

@@ -271,11 +271,19 @@ def test_breaker_trips_after_three_consecutive_cell_errors(tmp_path):
     assert len(client.calls) == 3
 
 
-def test_breaker_trips_on_same_error_text_three_times_in_a_row(tmp_path):
+def test_same_text_counter_resets_on_ok_record(tmp_path):
     client = ScriptedClient([_bad("same"), GOOD, _bad("same"), GOOD, _bad("same"), GOOD])
-    with pytest.raises(ModelUnavailable):
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(_recs(results_path(SPEC, tmp_path))) == 6
+
+
+def test_same_text_counter_not_reset_by_non_response_without_error(tmp_path):
+    # A parse failure (non_response, no error key) resets the consecutive rule but not the same-text rule.
+    client = ScriptedClient([_bad("same"), "nope", "nope", _bad("same"), "nope", "nope", _bad("same"), GOOD])
+    with pytest.raises(ModelUnavailable, match="same error text 3x"):
         run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
-    assert len(_recs(results_path(SPEC, tmp_path))) == 5
+    recs = _recs(results_path(SPEC, tmp_path))
+    assert len(recs) == 5 and [("error" in r) for r in recs] == [True, False, True, False, True]
 
 
 def test_breaker_not_tripped_by_distinct_interleaved_errors(tmp_path):
@@ -297,6 +305,107 @@ def test_error_only_record_is_reattempted_on_resume(tmp_path):
     client3 = FakeClient([])
     run_model(SPEC, SUBSET, tmp_path, client3, CTX, sleep=lambda s: None)
     assert client3.calls == []
+
+
+# ---- Step 4b N1: a repeated identical cell error is final; re-attempted cells are outside the breaker ----
+SUBSET6 = {k: CASES[k] for k in ("CASE_001", "CASE_002", "CASE_003", "CASE_004", "CASE_005", "CASE_006")}
+
+
+class CellClient(FakeClient):
+    """Deterministic per cell: a cell in `failing` always raises BadRequestError(text), the rest reply GOOD."""
+
+    def __init__(self, cases, failing, text="Invalid prompt: your prompt was flagged"):
+        super().__init__([])
+        self.cell_of = {render_messages(c, o)["user"]: (cid, o) for cid, c in cases.items() for o in ("TS", "ST")}
+        self.failing, self.text = set(failing), text
+
+    def create(self, **kw):
+        self.calls.append(kw)
+        if self.cell_of[kw["messages"][1]["content"]] in self.failing:
+            raise _bad(self.text)
+        return _Resp(GOOD, kw["model"])
+
+
+def _run_tolerant(*args, **kw):
+    """One harness invocation of run_model; a breaker stop ends the invocation, as STOPPED does in main()."""
+    try:
+        run_model(*args, sleep=lambda s: None, **kw)
+    except ModelUnavailable:
+        pass
+
+
+def test_persistent_identical_errors_do_not_deadlock_the_model(tmp_path):
+    from r2.run.check_complete import check
+    from r2.run.harness import final_records
+    failing = {("CASE_001", "ST"), ("CASE_003", "ST"), ("CASE_005", "ST")}  # 3 non-adjacent of 12 cells
+    for _ in range(2):  # a first run plus one resume
+        _run_tolerant(SPEC, SUBSET6, tmp_path, CellClient(SUBSET6, failing), CTX)
+    fin = final_records(results_path(SPEC, tmp_path))
+    assert len(fin) == 12
+    assert sum(r["status"] == "ok" for r in fin) == 9
+    persistent = [r for r in fin if r.get("persistent_error")]
+    assert {(r["case_id"], r["order"]) for r in persistent} == failing
+    assert all(r["status"] == "non_response" and r["persistent_error"] is True and r["attempts"] == []
+               for r in persistent)
+    client3 = CellClient(SUBSET6, failing)
+    run_model(SPEC, SUBSET6, tmp_path, client3, CTX, sleep=lambda s: None)
+    assert client3.calls == []  # a cell whose last record is persistent_error is done
+    (row,) = check(tmp_path, [SPEC], sorted(SUBSET6))
+    assert (row["cells"], row["missing"], row["duplicates"]) == (12, 0, 0)
+    assert (row["ok"], row["non_response"], row["errors"], row["superseded_errors"]) == (9, 3, 3, 3)
+
+
+@pytest.mark.parametrize("first,second,final", [
+    ("x", "x", True),
+    ("x", "y", False),
+    ("e" * 300 + "1", "e" * 300 + "2", True),  # compared on the first 200 characters of the error text
+], ids=["same-text", "different-text", "same-first-200-chars"])
+def test_reattempt_is_final_only_on_the_same_error_text(tmp_path, first, second, final):
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad(first), GOOD]), CTX, limit=1, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad(second)]), CTX, limit=1, sleep=lambda s: None)
+    last = _recs(results_path(SPEC, tmp_path))[-1]
+    assert last["status"] == "non_response" and last.get("persistent_error", False) is final
+    client = FakeClient([GOOD])
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=1, sleep=lambda s: None)
+    assert len(client.calls) == (0 if final else 1)
+
+
+def test_repeat_of_any_earlier_error_text_is_final(tmp_path, capsys):
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), GOOD]), CTX, limit=1, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("y")]), CTX, limit=1, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x")]), CTX, limit=1, sleep=lambda s: None)
+    recs = _recs(results_path(SPEC, tmp_path))
+    assert [r.get("persistent_error", False) for r in recs if r["order"] == "TS"] == [False, False, True]
+    assert "FINAL m CASE_001 TS" in capsys.readouterr().out
+    client = FakeClient([])
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=1, sleep=lambda s: None)
+    assert client.calls == []
+
+
+def test_reattempted_cells_do_not_count_toward_the_breaker(tmp_path):
+    # Run 1 trips on 3 consecutive distinct errors. On resume the 3 fresh cells run first and succeed; the
+    # same 3 cells then fail again with new texts: re-attempts neither trip the breaker nor become final.
+    with pytest.raises(ModelUnavailable):
+        run_model(SPEC, SUBSET3, tmp_path, ScriptedClient([_bad("a"), _bad("b"), _bad("c")]), CTX,
+                  sleep=lambda s: None)
+    client = ScriptedClient([GOOD, GOOD, GOOD, _bad("d"), _bad("e"), _bad("f")])
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(client.calls) == 6
+    recs = _recs(results_path(SPEC, tmp_path))
+    assert len(recs) == 9 and not any(r.get("persistent_error") for r in recs)
+
+
+def test_reattempt_error_does_not_extend_a_fresh_error_run(tmp_path):
+    # Re-attempted cells are invisible to the breaker: 2 fresh errors followed by a re-attempt error is not
+    # 3 consecutive errors.
+    run_model(SPEC, SUBSET3, tmp_path, ScriptedClient([GOOD, GOOD, _bad("a"), GOOD, GOOD, GOOD]), CTX,
+              sleep=lambda s: None)  # CASE_002/TS is error-only
+    path = results_path(SPEC, tmp_path)
+    keep = [r for r in _recs(path) if r["order"] == "TS" and r["case_id"] in ("CASE_001", "CASE_002")]
+    _rewrite(path, keep)  # resume: fresh 001/ST, 002/ST, 003/TS, 003/ST, then the re-attempt 002/TS
+    client = ScriptedClient([GOOD, GOOD, _bad("p"), _bad("q"), _bad("r")])
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(client.calls) == 5
 
 
 def test_final_records_takes_last_record_per_cell(tmp_path):
@@ -343,7 +452,8 @@ def test_accept_spec_change_keeps_records_and_logs_incidents(tmp_path, capsys):
     run_model({**SPEC, "temperature": 0.7}, SUBSET, tmp_path, client, CTX, sleep=lambda s: None,
               accept_spec_change=True)
     assert len(client.calls) == 2
-    incidents = [json.loads(l) for l in (tmp_path / "incidents.jsonl").read_text().splitlines()]
+    incidents = [json.loads(l) for l in (tmp_path / "prov_m-1.incidents.jsonl").read_text().splitlines()]
+    assert not (tmp_path / "incidents.jsonl").exists()
     assert len(incidents) == 2 and {i["field"] for i in incidents} == {"temperature"}
     assert all(i["kind"] == "accepted_spec_change" for i in incidents)
     assert "ACCEPTED" in capsys.readouterr().out
@@ -488,6 +598,38 @@ def test_pilot_refuses_main_out_dir(no_side_effects):
         harness.main(["--pilot", "--out", str(RUNS_V2 / "main")])
 
 
+# ---- Step 4b N4: the pilot guard compares with samefile when both exist, else casefolded resolved paths ----
+@pytest.mark.parametrize("make_main", [False, True], ids=["main-absent", "main-exists"])
+@pytest.mark.parametrize("out", ["Main", "MAIN", "main/../main", "./main/"])
+def test_pilot_guard_catches_case_and_spelling_variants(no_side_effects, monkeypatch, tmp_path, make_main, out):
+    runs = tmp_path / "r2_runs"
+    monkeypatch.setattr(harness, "RUNS_V2", runs)
+    if make_main:
+        (runs / "main").mkdir(parents=True)
+    with pytest.raises(SystemExit, match="refusing a --pilot run into the main out dir"):
+        harness.main(["--pilot", "--out", str(runs / out)])
+
+
+def test_pilot_guard_follows_a_symlink_to_main(no_side_effects, monkeypatch, tmp_path):
+    runs = tmp_path / "r2_runs"
+    (runs / "main").mkdir(parents=True)
+    (tmp_path / "elsewhere").symlink_to(runs / "main")
+    monkeypatch.setattr(harness, "RUNS_V2", runs)
+    with pytest.raises(SystemExit, match="refusing a --pilot run"):
+        harness.main(["--pilot", "--out", str(tmp_path / "elsewhere")])
+
+
+@pytest.mark.parametrize("make_dirs", [False, True])
+def test_pilot_guard_allows_a_distinct_dir(no_side_effects, monkeypatch, tmp_path, make_dirs):
+    runs = tmp_path / "r2_runs"
+    if make_dirs:
+        (runs / "main").mkdir(parents=True)
+        (runs / "pilot").mkdir()
+    monkeypatch.setattr(harness, "RUNS_V2", runs)
+    harness.main(["--pilot", "--out", str(runs / "pilot")])
+    harness.main(["--pilot", "--out", str(runs / "main-pilot")])
+
+
 # ---- M1-M5, M17 ----
 def _rate_limited(retry_after):
     exc = _fake_exc("RateLimitError")("slow down")
@@ -500,6 +642,44 @@ def test_create_honors_retry_after(header, expected):
     sleeps = []
     assert _create(_Seq([_rate_limited(header), "ok"]), {}, sleeps.append) == "ok"
     assert sleeps == [expected]
+
+
+# ---- Step 4b N2: Retry-After capped at 900 s, non-finite or negative values fall back, every sleep logged ----
+def _http_date(seconds_from_now):
+    from datetime import datetime, timedelta, timezone
+    from email.utils import format_datetime
+    return format_datetime(datetime.now(timezone.utc) + timedelta(seconds=seconds_from_now), usegmt=True)
+
+
+@pytest.mark.parametrize("header,expected", [
+    ("899", 899.0), ("900", 900.0), ("901", 900), ("86400", 900), ("1e19", 900),
+    ("inf", 2), ("Infinity", 2), ("-inf", 2), ("nan", 2), ("1e400", 2), ("-5", 2), ("0", 2),
+])
+def test_create_caps_retry_after(header, expected):
+    sleeps = []
+    assert _create(_Seq([_rate_limited(header), "ok"]), {}, sleeps.append) == "ok"
+    assert sleeps == [expected]
+
+
+def test_create_caps_retry_after_http_date():
+    sleeps = []
+    assert _create(_Seq([_rate_limited(_http_date(7200)), _rate_limited(_http_date(-60)), "ok"]), {},
+                   sleeps.append) == "ok"
+    assert sleeps == [900, 4]  # far future → cap; past date → backoff of the second try
+
+
+def test_create_prints_a_line_before_each_sleep(capsys):
+    def sleep(seconds):
+        print(f"<slept {seconds}>")
+    _create(_Seq([_rate_limited("86400"), _fake_exc("APIConnectionError")("reset"), "ok"]),
+            {"model": "prov/m-1"}, sleep)
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 4
+    assert lines[0].startswith("RETRY prov/m-1 try 1/10: RateLimitError: slow down; sleeping 900 s")
+    assert "Retry-After 86400" in lines[0] and "capped" in lines[0]
+    assert lines[1] == "<slept 900>"
+    assert lines[2].startswith("RETRY prov/m-1 try 2/10: APIConnectionError: reset; sleeping 4 s")
+    assert lines[3] == "<slept 4>"
 
 
 @pytest.mark.parametrize("served,ok", [("prov/m-1", True), ("other-org/M-1", True), ("m-1", True),
@@ -524,7 +704,7 @@ def test_check_served_prefix_opt_in():
 def test_model_mismatch_response_logged_to_incidents(tmp_path):
     with pytest.raises(ModelMismatch):
         run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD], served="prov/m-1-preview"), CTX, sleep=lambda s: None)
-    (inc,) = [json.loads(l) for l in (tmp_path / "incidents.jsonl").read_text().splitlines()]
+    (inc,) = [json.loads(l) for l in (tmp_path / "prov_m-1.incidents.jsonl").read_text().splitlines()]
     assert inc["kind"] == "model_mismatch" and inc["response"]["model"] == "prov/m-1-preview"
     assert inc["case_id"] == "CASE_001" and inc["request"]["model"] == "prov/m-1"
     assert not results_path(SPEC, tmp_path).read_text()
@@ -585,3 +765,667 @@ def test_select_known_names_and_providers():
 def test_select_rejects_unknown(selector, name):
     with pytest.raises(SystemExit, match=name):
         harness._select(SPECS, selector)
+
+
+# ---- Step 4b N5: per-model incident files, written under the model lock ----
+def test_incidents_are_per_model_files(tmp_path):
+    other = {**SPEC, "original_name": "n", "model_id": "prov/n-1"}
+    with pytest.raises(ModelMismatch):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD], served="prov/m-1-preview"), CTX, sleep=lambda s: None)
+    with pytest.raises(ModelMismatch):
+        run_model(other, SUBSET, tmp_path, FakeClient([GOOD], served="prov/n-2"), CTX, sleep=lambda s: None)
+    from r2.run.harness import incidents_path
+    assert incidents_path(SPEC, tmp_path).name == "prov_m-1.incidents.jsonl"
+    m = [json.loads(l) for l in incidents_path(SPEC, tmp_path).read_text().splitlines()]
+    n = [json.loads(l) for l in incidents_path(other, tmp_path).read_text().splitlines()]
+    assert [i["model_id"] for i in m] == ["prov/m-1"] and [i["model_id"] for i in n] == ["prov/n-1"]
+    assert not (tmp_path / "incidents.jsonl").exists()
+    assert [p.name for p in iter_result_files(tmp_path)] == ["prov_m-1.jsonl", "prov_n-1.jsonl"]
+
+
+def test_incidents_are_written_under_the_model_lock(tmp_path, monkeypatch):
+    import fcntl
+
+    from r2.run.harness import safe_name
+    real, held = harness._log_incident, []
+
+    def probe(out_dir, spec, incident):
+        with open(tmp_path / f"{safe_name(spec['model_id'])}.lock", "a") as fh:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                held.append(False)
+            except BlockingIOError:
+                held.append(True)
+        real(out_dir, spec, incident)
+    monkeypatch.setattr(harness, "_log_incident", probe)
+    _first_record(tmp_path)
+    run_model({**SPEC, "temperature": 0.7}, SUBSET, tmp_path, FakeClient([GOOD] * 2), CTX, sleep=lambda s: None,
+              accept_spec_change=True)  # accepted_spec_change incidents, from _done
+    with pytest.raises(ModelMismatch):  # model_mismatch incident, from execute_cell
+        run_model({**SPEC, "original_name": "z", "model_id": "prov/z-1"}, SUBSET, tmp_path,
+                  FakeClient([GOOD], served="prov/x"), CTX, sleep=lambda s: None)
+    assert held == [True, True, True]
+
+
+# ---- Step 4b: an exhausted transient error stops the model, the job continues; every stop is logged ----
+def test_exhausted_transient_error_raises_model_unavailable():
+    client = RaisingClient(_fake_exc("RateLimitError"))
+    with pytest.raises(ModelUnavailable, match="RateLimitError persisted after 10 tries: boom"):
+        execute_cell(client, SPEC, CASES["CASE_001"], "TS", CTX, sleep=lambda s: None)
+
+
+@pytest.fixture
+def two_models(monkeypatch, tmp_path):
+    import functools
+    a = {**SPEC, "original_name": "a", "model_id": "prov/a-1", "provider": "openai"}
+    b = {**SPEC, "original_name": "b", "model_id": "prov/b-1", "provider": "together"}
+    clients = {}
+    monkeypatch.setattr(harness, "load_v2_cases", lambda *x, **k: (SUBSET, "stim-sha"))
+    monkeypatch.setattr(harness, "_clean_commit", lambda: "0" * 40)
+    monkeypatch.setattr(harness, "load_specs", lambda *x, **k: [a, b])
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *x, **k: None)
+    monkeypatch.setattr(harness, "make_client", lambda provider: clients[provider])
+    monkeypatch.setattr(harness, "run_model", functools.partial(harness.run_model, sleep=lambda s: None))
+    return a, b, clients, tmp_path / "pilot"
+
+
+def _incidents(spec, out):
+    from r2.run.harness import incidents_path
+    return [json.loads(l) for l in incidents_path(spec, out).read_text().splitlines()]
+
+
+def _main_continues_after_stop(two_models, capsys, a_client):
+    a, b, clients, out = two_models
+    clients["openai"], clients["together"] = a_client, FakeClient([GOOD] * 4)
+    summary = harness.main(["--pilot", "--out", str(out)])
+    captured = capsys.readouterr()
+    assert summary["stopped"] == ["a"]
+    assert len(_recs(results_path(b, out))) == 4  # the next model ran to completion
+    assert "FINISHED 2 model(s); stopped 1: ['a']" in captured.out
+    return captured, out, a
+
+
+def test_main_exhausted_transient_error_stops_model_and_continues(two_models, capsys):
+    captured, out, a = _main_continues_after_stop(two_models, capsys, RaisingClient(_fake_exc("RateLimitError")))
+    assert "STOPPED a: ModelUnavailable: prov/a-1: RateLimitError persisted after 10 tries: boom" in captured.out
+    assert captured.out.count("RETRY prov/a-1 try ") == 9
+    assert results_path(a, out).read_text() == ""  # no response, so no record: the cell runs again on resume
+    (inc,) = _incidents(a, out)
+    assert inc["kind"] == "stopped" and inc["error_type"] == "ModelUnavailable"
+    assert (inc["case_id"], inc["order"]) == ("CASE_001", "TS") and "RateLimitError" in inc["error"]
+    assert inc["harness_commit"] == "0" * 40 and inc["stimulus_sha256"] == "stim-sha"
+
+
+def test_main_model_unavailable_stops_model_and_continues(two_models, capsys):
+    captured, out, a = _main_continues_after_stop(two_models, capsys, RaisingClient(_fake_exc("NotFoundError")))
+    assert "STOPPED a: ModelUnavailable: prov/a-1: NotFoundError: boom" in captured.out
+    (inc,) = _incidents(a, out)
+    assert inc["kind"] == "stopped" and "NotFoundError" in inc["error"]
+
+
+def test_main_model_mismatch_stops_model_and_continues(two_models, capsys):
+    captured, out, a = _main_continues_after_stop(two_models, capsys, FakeClient([GOOD], served="prov/a-2"))
+    assert "STOPPED a: ModelMismatch: requested 'prov/a-1', provider served 'prov/a-2'" in captured.out
+    assert [i["kind"] for i in _incidents(a, out)] == ["model_mismatch"]  # logged once, with the response
+
+
+def test_main_unexpected_error_stops_model_and_continues(two_models, capsys):
+    # e.g. an HTTP status the SDK maps to the generic APIStatusError (402), which no rule classifies
+    captured, out, a = _main_continues_after_stop(two_models, capsys, RaisingClient(_fake_exc("APIStatusError")))
+    assert "STOPPED a: unexpected APIStatusError: boom" in captured.out
+    assert "Traceback" in captured.err
+    (inc,) = _incidents(a, out)
+    assert inc["kind"] == "stopped" and inc["error_type"] == "APIStatusError"
+
+
+def test_main_stale_records_stop_model_and_continue(two_models, capsys):
+    a, b, clients, out = two_models
+    run_model(a, SUBSET, out, FakeClient([GOOD] * 2), {**CTX, "stimulus_sha256": "older"}, limit=1,
+              sleep=lambda s: None)
+    captured, out, a = _main_continues_after_stop(two_models, capsys, FakeClient([GOOD] * 4))
+    assert "STOPPED a: StaleRecords: " in captured.out and "stale record for ('CASE_001', 'TS')" in captured.out
+    (inc,) = _incidents(a, out)
+    assert inc["kind"] == "stopped" and inc["error_type"] == "StaleRecords" and inc["case_id"] is None
+
+
+def test_main_run_locked_stops_model_without_writing_its_files(two_models, capsys):
+    import fcntl
+
+    from r2.run.harness import incidents_path, safe_name
+    a, b, clients, out = two_models
+    out.mkdir(parents=True)
+    holder = open(out / f"{safe_name(a['model_id'])}.lock", "a")
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        captured, out, a = _main_continues_after_stop(two_models, capsys, FakeClient([GOOD] * 4))
+    finally:
+        holder.close()
+    assert "STOPPED a: RunLocked: " in captured.out
+    assert not incidents_path(a, out).exists() and not results_path(a, out).exists()
+
+
+def test_breaker_stop_is_logged_as_an_incident(tmp_path):
+    with pytest.raises(ModelUnavailable):
+        run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("a"), _bad("b"), _bad("c")]), CTX,
+                  sleep=lambda s: None)
+    (inc,) = _incidents(SPEC, tmp_path)
+    assert inc["kind"] == "stopped" and inc["error_type"] == "ModelUnavailable"
+    assert "circuit breaker" in inc["error"] and (inc["case_id"], inc["order"]) == ("CASE_002", "TS")
+
+
+# ---- minor 3: --limit 0 means zero pairs; omit --limit for all ----
+def test_limit_zero_runs_no_cells(tmp_path):
+    client = FakeClient([GOOD] * 4)
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=0, sleep=lambda s: None)
+    assert client.calls == []
+    path = results_path(SPEC, tmp_path)
+    assert not path.exists() or path.read_text() == ""
+
+
+def test_limit_none_runs_all_cells(tmp_path):
+    client = FakeClient([GOOD] * 4)
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=None, sleep=lambda s: None)
+    assert len(client.calls) == 4
+
+
+def test_negative_limit_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match="limit"):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, limit=-1, sleep=lambda s: None)
+    with pytest.raises(SystemExit):
+        harness.parse_args(["--limit", "-1"])
+    assert harness.parse_args(["--limit", "0"]).limit == 0
+    assert harness.parse_args([]).limit is None
+
+
+# ---- minor 2: _clean_commit checks git's return codes and treats r2/, data/v2/ and tests/ as code ----
+def _git(repo, *args):
+    import subprocess
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false",
+                    *args], cwd=repo, check=True, capture_output=True)
+
+
+@pytest.fixture
+def tiny_repo(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    for rel in ("r2/run/harness.py", "data/v2/pairs_v2.json", "tests/r2/test_harness.py", "docs/notes.md"):
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text("x\n")
+    _git(repo, "init", "-q")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "init")
+    monkeypatch.setattr(harness, "REPO", repo)
+    return repo
+
+
+@pytest.mark.parametrize("rel,dirty", [("tests/r2/test_harness.py", True), ("tests/r2/test_new.py", True),
+                                       ("r2/run/harness.py", True), ("data/v2/pairs_v2.json", True),
+                                       ("docs/notes.md", False)])
+def test_clean_commit_dirty_check_covers_r2_data_v2_and_tests(tiny_repo, rel, dirty):
+    import re
+    (tiny_repo / rel).write_text("changed\n")
+    if dirty:
+        with pytest.raises(SystemExit, match=rel):
+            harness._clean_commit()
+    else:
+        assert re.fullmatch(r"[0-9a-f]{40}", harness._clean_commit())
+
+
+def test_clean_commit_fails_outside_a_git_repo(tmp_path, monkeypatch):
+    monkeypatch.setattr(harness, "REPO", tmp_path)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
+    with pytest.raises(SystemExit, match="git status failed"):
+        harness._clean_commit()
+
+
+# ---- minor 4: load_v2_cases raises explicit exceptions (no assert anywhere in r2/run/) ----
+def test_no_assert_statements_in_r2_run():
+    import ast
+    from pathlib import Path
+    run_dir = Path(harness.__file__).parent
+    found = [f"{p.name}:{n.lineno}" for p in sorted(run_dir.glob("*.py")) if not p.name.startswith("._")
+             for n in ast.walk(ast.parse(p.read_text())) if isinstance(n, ast.Assert)]
+    assert found == []
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda d: list(d["cases"]),                                  # top level is not an object
+    lambda d: {k: v for k, v in d.items() if k != "cases"},      # no "cases"
+    lambda d: {**d, "cases": {"CASE_001": {}}},                  # "cases" is not a list
+    lambda d: {**d, "cases": [{k: v for k, v in c.items() if k != "case_id"} if i == 3 else c
+                              for i, c in enumerate(d["cases"])]},
+    lambda d: {**d, "cases": [{**c, "tools": {"T": c["tools"]["T"]}} if i == 3 else c
+                              for i, c in enumerate(d["cases"])]},
+], ids=["not-an-object", "no-cases", "cases-not-a-list", "case-without-id", "case-without-S"])
+def test_load_v2_cases_rejects_malformed_payload(tmp_path, make_pairs, mutate):
+    path = tmp_path / "pairs_v2.json"
+    path.write_text(json.dumps(mutate(make_pairs(IDS500))))
+    with pytest.raises(ValueError, match="pairs_v2.json"):
+        harness.load_v2_cases(path)
+
+
+# ---- minor 5: selected_tool forms; the raw value is kept in selected_raw ----
+ACCEPTED = [("A", "A"), ("B", "B"), ("a", "A"), ("b", "B"), (" A ", "A"), ("B\n", "B"),
+            ("Excerpt A", "A"), ("Excerpt B", "B"), ("Option A", "A"), ("Option B", "B"),
+            ("Tool A", "A"), ("Tool B", "B"), ("Source A", "A"), ("Source B", "B"),
+            ("excerpt a", "A"), ("OPTION B", "B"), ("tool b", "B"), ("SOURCE a", "A"),
+            ("  Tool  A ", "A"), ("Excerpt\tB", "B")]
+REJECTED = ["A or B", "Neither", "", "C", "Excerpt C", "A.", "Tool", "ExcerptA", "Guideline excerpt A",
+            "A and B", "Tool A or Tool B", None, 1, ["A"]]
+
+
+@pytest.mark.parametrize("raw,expected", ACCEPTED)
+def test_parse_decision_accepts_selected_forms(raw, expected):
+    d = parse_decision(json.dumps({"selected_tool": raw, "confidence": 0.5}))
+    assert d["selected_tool"] == expected and d["selected_raw"] == raw
+
+
+@pytest.mark.parametrize("raw", REJECTED)
+def test_parse_decision_rejects_other_selected_values(raw):
+    assert parse_decision(json.dumps({"selected_tool": raw, "confidence": 0.5})) is None
+
+
+def test_selected_form_flows_into_the_record():
+    client = FakeClient(['{"selected_tool": "Tool A", "confidence": 0.9}'])
+    rec = execute_cell(client, SPEC, CASES["CASE_001"], "ST", CTX, sleep=lambda s: None)
+    assert rec["status"] == "ok" and rec["selected_tool"] == "A" and rec["correct"] == 0  # ST: A is the sham
+    assert rec["decision"]["selected_raw"] == "Tool A" and rec["decision"]["selected_tool"] == "A"
+    client = FakeClient(['{"selected_tool": "Neither"}', '{"selected_tool": "A or B"}'])
+    rec = execute_cell(client, SPEC, CASES["CASE_001"], "ST", CTX, sleep=lambda s: None)
+    assert rec["status"] == "non_response" and rec["selected_tool"] is None and len(rec["attempts"]) == 2
+
+
+# ---- minor 1: the mismatched served response, and any earlier attempt of the cell, are logged first ----
+class ServedSeq(FakeClient):
+    """Each call pops (content, served model)."""
+
+    def create(self, **kw):
+        self.calls.append(kw)
+        text, served = self.replies.pop(0)
+        return _Resp(text, served)
+
+
+def test_model_mismatch_on_retry_logs_the_earlier_attempt_too(tmp_path):
+    from r2.run.harness import incidents_path
+    client = ServedSeq([("nope", "prov/m-1"), (GOOD, "prov/m-2")])
+    with pytest.raises(ModelMismatch):
+        run_model(SPEC, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
+    (inc,) = [json.loads(l) for l in incidents_path(SPEC, tmp_path).read_text().splitlines()]
+    assert inc["kind"] == "model_mismatch" and inc["response"]["model"] == "prov/m-2"
+    assert inc["request"] == client.calls[1]
+    assert [a["response"]["model"] for a in inc["attempts"]] == ["prov/m-1"]
+    assert inc["attempts"][0]["response"]["choices"][0]["message"]["content"] == "nope"
+    assert results_path(SPEC, tmp_path).read_text() == ""
+
+
+# ---- minor 7: _done splits bytes before decoding; a tear inside any multibyte character is a torn tail ----
+@pytest.mark.parametrize("char", ["é", "•", "🙂"], ids=["2-byte", "3-byte", "4-byte"])
+def test_torn_tail_inside_multibyte_char_at_every_offset(tmp_path, char):
+    encoded = char.encode("utf-8")
+    for cut_in_char in range(1, len(encoded)):
+        out = tmp_path / f"cut{cut_in_char}"
+        path, recs = _first_record(out)
+        before = path.read_bytes()
+        tail = json.dumps({**recs[0], "order": "ST", "note": f"x{char}y"}, ensure_ascii=False).encode("utf-8")
+        cut = tail.index(encoded) + cut_in_char
+        with open(path, "ab") as fh:
+            fh.write(tail[:cut])
+        client = FakeClient([GOOD] * 2)
+        run_model(SPEC, SUBSET, out, client, CTX, sleep=lambda s: None)
+        after = path.read_bytes()
+        assert after[:len(before)] == before and len(client.calls) == 2
+        new = after[len(before):].decode("utf-8").splitlines()
+        assert len(new) == 2 and all(json.loads(l)["case_id"] == "CASE_002" for l in new)
+
+
+def test_invalid_utf8_in_a_middle_line_is_corrupt_not_a_decode_crash(tmp_path):
+    path, recs = _first_record(tmp_path)
+    good = path.read_bytes()
+    path.write_bytes(b'{"case_id": "CASE_001", "note": "\xe2\x80"}\n' + good)
+    with pytest.raises(CorruptResults, match="line 1"):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+# ---- minor 8: trailing-newline append branch; StaleRecords message content ----
+def test_complete_last_line_without_newline_is_kept_and_a_newline_appended(tmp_path, capsys):
+    path, _ = _first_record(tmp_path)
+    stored = path.read_bytes()
+    path.write_bytes(stored.rstrip(b"\n"))  # a complete record whose newline never reached the disk
+    client = FakeClient([GOOD] * 2)
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
+    after = path.read_bytes()
+    assert after.startswith(stored) and len(client.calls) == 2  # the stored records still count as done
+    assert [(r["case_id"], r["order"]) for r in _recs(path)] == [
+        ("CASE_001", "TS"), ("CASE_001", "ST"), ("CASE_002", "TS"), ("CASE_002", "ST")]
+    assert "dropped torn" not in capsys.readouterr().out
+
+
+def test_stale_records_message_names_file_and_cell(tmp_path):
+    import re
+    path, recs = _first_record(tmp_path)
+    recs[0]["stimulus_sha256"] = "other"
+    _rewrite(path, recs)
+    with pytest.raises(StaleRecords, match=re.escape(f"{path}: stale record for ('CASE_001', 'TS')")):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+@pytest.mark.parametrize("change,fields", [({"temperature": 0.7}, "['temperature']"),
+                                           ({"max_tokens": 128}, "['token_param']"),
+                                           ({"original_name": "m2"}, "['original_name']")])
+def test_stale_records_message_names_fields_and_flag(tmp_path, change, fields):
+    import re
+    path, _ = _first_record(tmp_path)
+    expected = (f"{path}: record for ('CASE_001', 'TS') differs from the current prompt or spec in {fields}; "
+                "rerun with --accept-spec-change to keep it")
+    with pytest.raises(StaleRecords, match=re.escape(expected)):
+        run_model({**SPEC, **change}, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+def test_stale_records_message_names_prompt_fields(tmp_path):
+    path, recs = _first_record(tmp_path)
+    recs[1]["system"], recs[1]["user"] = "old system", "old user"
+    _rewrite(path, recs)
+    with pytest.raises(StaleRecords, match=r"\('CASE_001', 'ST'\) differs .* in \['system', 'user'\]"):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+# ---- minor 10: an error cell's record has model_served None, and resume reads it ----
+def test_error_cell_record_has_model_served_none_and_resume_reads_it(tmp_path):
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), GOOD]), CTX, limit=1, sleep=lambda s: None)
+    first = _recs(results_path(SPEC, tmp_path))[0]
+    assert "error" in first and first["model_served"] is None and first["system_fingerprint"] is None
+    client = FakeClient([GOOD])
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=1, sleep=lambda s: None)
+    assert len(client.calls) == 1 and _recs(results_path(SPEC, tmp_path))[-1]["model_served"] == "prov/m-1"
+
+
+# ---- fix round 1, I1: --retry-persistent reopens final cells; fresh cells run before re-attempts ----
+from r2.run.harness import ORDERS  # noqa: E402
+ORG_UNVERIFIED = ("Error code: 400 - {'error': {'message': \"Your organization must be verified to use the model "
+                  "'gpt-5-mini-2025-08-07'. Please go to: https://platform.openai.com/settings/organization/general "
+                  "and click on Verify Organization. If you just verified, it can take up to 15 minutes for access "
+                  "to propagate.\", 'type': 'invalid_request_error', 'param': None, 'code': 'unverified_organization'}}")
+
+
+class ProviderClient(FakeClient):
+    """Every call fails with the same 400 until `fixed` is set; then every call replies GOOD."""
+
+    def __init__(self, fixed=False, exc=None):
+        super().__init__([])
+        self.fixed, self.exc = fixed, exc
+
+    def create(self, **kw):
+        self.calls.append(kw)
+        if not self.fixed:
+            raise self.exc or _bad(ORG_UNVERIFIED)
+        return _Resp(GOOD, kw["model"])
+
+
+def test_org_verification_replay_premature_resume_then_retry_persistent(tmp_path, capsys):
+    from r2.run.check_complete import check
+    from r2.run.harness import final_records, incidents_path
+    path = results_path(SPEC, tmp_path)
+    # run 1: the breaker trips on the first 3 fresh cells
+    with pytest.raises(ModelUnavailable, match="circuit breaker"):
+        run_model(SPEC, SUBSET3, tmp_path, ProviderClient(), CTX, sleep=lambda s: None)
+    # run 2, before the fix: fresh cells run first, so the breaker trips again before any re-attempt
+    client = ProviderClient()
+    with pytest.raises(ModelUnavailable, match="circuit breaker"):
+        run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(client.calls) == 3
+    assert not any(r.get("persistent_error") for r in _recs(path)) and "FINAL" not in capsys.readouterr().out
+    # run 3, still before the fix: no fresh cell is left, the 6 re-attempts reproduce the text and become final
+    run_model(SPEC, SUBSET3, tmp_path, ProviderClient(), CTX, sleep=lambda s: None)
+    assert capsys.readouterr().out.count("FINAL m ") == 6
+    assert all(r.get("persistent_error") for r in final_records(path))
+    # after the fix, a plain resume leaves final cells alone (unchanged behaviour) ...
+    client = ProviderClient(fixed=True)
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert client.calls == []
+    # ... and --retry-persistent reopens them: an incident per cell, then a new record that supersedes the old
+    client = ProviderClient(fixed=True)
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None, retry_persistent=True)
+    assert len(client.calls) == 6
+    fin = final_records(path)
+    assert len(fin) == 6 and all(r["status"] == "ok" and "persistent_error" not in r for r in fin)
+    reopened = [i for i in _incidents(SPEC, tmp_path) if i["kind"] == "reopened_persistent"]
+    assert sorted((i["case_id"], i["order"]) for i in reopened) == sorted((c, o) for c in SUBSET3 for o in ORDERS)
+    assert all(i["prior_error"] == f"BadRequestError: {ORG_UNVERIFIED}" for i in reopened)  # raw, unchanged
+    assert all(i["prior_error_key"] == harness.normalize_error(i["prior_error"])[:200] for i in reopened)
+    lines = path.read_text().splitlines()
+    assert all(json.loads(lines[i["prior_line"] - 1]).get("persistent_error") for i in reopened)
+    (row,) = check(tmp_path, [SPEC], sorted(SUBSET3))
+    assert (row["missing"], row["duplicates"], row["ok"], row["superseded_errors"]) == (0, 0, 6, 12)
+    client = ProviderClient(fixed=True)
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None, retry_persistent=True)
+    assert client.calls == []  # nothing is persistent any more
+    assert incidents_path(SPEC, tmp_path).exists()
+
+
+def test_retry_persistent_refinalizes_on_the_same_text(tmp_path):
+    from r2.run.harness import final_records
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), GOOD, GOOD, GOOD]), CTX, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x")]), CTX, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x")]), CTX, sleep=lambda s: None, retry_persistent=True)
+    recs = [r for r in _recs(results_path(SPEC, tmp_path)) if (r["case_id"], r["order"]) == ("CASE_001", "TS")]
+    assert [r.get("persistent_error", False) for r in recs] == [False, True, True]
+    assert sum(r.get("persistent_error", False) for r in final_records(results_path(SPEC, tmp_path))) == 1
+
+
+def test_reopened_incident_is_logged_before_the_attempt(tmp_path):
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), GOOD, GOOD, GOOD]), CTX, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x")]), CTX, sleep=lambda s: None)
+    with pytest.raises(ModelUnavailable):
+        run_model(SPEC, SUBSET, tmp_path, ProviderClient(exc=_fake_exc("NotFoundError")("gone")), CTX,
+                  sleep=lambda s: None, retry_persistent=True)
+    kinds = [i["kind"] for i in _incidents(SPEC, tmp_path)]
+    assert kinds == ["persistent_error", "reopened_persistent", "stopped"]
+
+
+def test_fresh_cells_run_before_reattempts(tmp_path):
+    # CASE_001/TS is error-only; on resume the fresh CASE_002 cells are attempted first.
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), GOOD]), CTX, limit=1, sleep=lambda s: None)
+    client = FakeClient([GOOD] * 3)
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
+    sent = [c["messages"][1]["content"] for c in client.calls]
+    order = [next((cid, o) for cid in SUBSET for o in ORDERS if render_messages(SUBSET[cid], o)["user"] == u)
+             for u in sent]
+    assert order == [("CASE_002", "TS"), ("CASE_002", "ST"), ("CASE_001", "TS")]
+
+
+def test_persistent_finalization_is_an_incident(tmp_path):
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), GOOD]), CTX, limit=1, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x")]), CTX, limit=1, sleep=lambda s: None)
+    (inc,) = _incidents(SPEC, tmp_path)
+    assert inc["kind"] == "persistent_error" and (inc["case_id"], inc["order"]) == ("CASE_001", "TS")
+    assert inc["error"] == "BadRequestError: x" and inc["harness_commit"] == "abc"
+
+
+def test_retry_persistent_flag_reaches_run_model(no_side_effects, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(harness, "load_specs", lambda *a, **k: [SPEC])
+    monkeypatch.setattr(harness, "make_client", lambda p: None)
+    monkeypatch.setattr(harness, "run_model", lambda *a, **k: seen.update(k))
+    harness.main(["--pilot", "--retry-persistent"])
+    assert seen["retry_persistent"] is True
+    harness.main(["--pilot"])
+    assert seen["retry_persistent"] is False
+
+
+def test_last_record_decides_a_cells_state(tmp_path):
+    # An ok record later followed by an error-only record for the same cell: the last record decides.
+    path, recs = _first_record(tmp_path)
+    err = {**recs[0], "attempts": [], "decision": None, "status": "non_response", "selected_tool": None,
+           "correct": None, "error": "BadRequestError: late"}
+    _rewrite(path, recs + [err])
+    client = FakeClient([GOOD] * 3)
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(client.calls) == 3  # CASE_002 TS/ST fresh, then CASE_001/TS re-attempted
+
+
+# ---- fix round 1, I2: cells ending in an unresolved error are reported, and the job exits non-zero ----
+def test_finished_line_counts_cells_that_need_a_resume(two_models, capsys):
+    a, b, clients, out = two_models
+    clients["openai"], clients["together"] = ScriptedClient([_bad("one-off"), GOOD, GOOD, GOOD]), FakeClient([GOOD] * 4)
+    assert harness.cli(["--pilot", "--out", str(out)]) == 1
+    text = capsys.readouterr().out
+    assert "PENDING a: 1 cells end in an error and need a resume to be re-attempted: [('CASE_001', 'TS')]" in text
+    assert "FINISHED 2 model(s); stopped 0: []; 1 cells need a resume" in text
+    clients["openai"] = FakeClient([GOOD])  # the resume re-attempts the cell, which now succeeds
+    assert harness.cli(["--pilot", "--out", str(out)]) == 0
+    text = capsys.readouterr().out
+    assert "PENDING" not in text and "FINISHED 2 model(s); stopped 0: []; 0 cells need a resume" in text
+
+
+def test_persistent_cells_do_not_need_a_resume(two_models, capsys):
+    a, b, clients, out = two_models
+    clients["openai"], clients["together"] = ScriptedClient([_bad("x"), GOOD, GOOD, GOOD]), FakeClient([GOOD] * 4)
+    assert harness.cli(["--pilot", "--out", str(out)]) == 1
+    clients["openai"] = ScriptedClient([_bad("x")])  # same text: final
+    assert harness.cli(["--pilot", "--out", str(out)]) == 0
+    assert "; 0 cells need a resume" in capsys.readouterr().out
+
+
+def test_cli_exit_status_when_a_model_stopped(two_models):
+    a, b, clients, out = two_models
+    clients["openai"], clients["together"] = RaisingClient(_fake_exc("NotFoundError")), FakeClient([GOOD] * 4)
+    assert harness.cli(["--pilot", "--out", str(out)]) == 1
+
+
+# ---- fix round 1, review minors m2, m3, m4, m7 ----
+def test_torn_tail_is_logged_as_an_incident_before_truncation(tmp_path):
+    import base64
+    path, _ = _first_record(tmp_path)
+    before = path.read_bytes()
+    torn = b'{"case_id": "CASE_002", "note": "\xe2\x80'
+    with open(path, "ab") as fh:
+        fh.write(torn)
+    run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 2), CTX, sleep=lambda s: None)
+    (inc,) = [i for i in _incidents(SPEC, tmp_path) if i["kind"] == "torn_tail"]
+    assert inc["offset"] == len(before) and inc["length"] == len(torn) and inc["line"] == 3
+    assert base64.b64decode(inc["dropped_b64"]) == torn and inc["file"] == path.name
+
+
+@pytest.mark.parametrize("second,stop_type", [(_fake_exc("RateLimitError")("quota"), "ModelUnavailable"),
+                                              (_fake_exc("NotFoundError")("gone"), "ModelUnavailable"),
+                                              (_fake_exc("APIStatusError")("402"), "APIStatusError")],
+                         ids=["exhausted-transient", "model-error", "unexpected"])
+def test_stop_after_a_paid_attempt_logs_that_attempt(tmp_path, second, stop_type):
+    class Client(FakeClient):
+        def create(self, **kw):
+            self.calls.append(kw)
+            if len(self.calls) == 1:
+                return _Resp("not json", kw["model"])
+            raise second
+    with pytest.raises(Exception):
+        run_model(SPEC, SUBSET, tmp_path, Client([]), CTX, sleep=lambda s: None)
+    (inc,) = _incidents(SPEC, tmp_path)
+    assert inc["kind"] == "stopped" and inc["error_type"] == stop_type
+    assert [a["response"]["choices"][0]["message"]["content"] for a in inc["attempts"]] == ["not json"]
+
+
+def test_stop_before_any_response_logs_no_attempts(tmp_path):
+    with pytest.raises(ModelUnavailable):
+        run_model(SPEC, SUBSET, tmp_path, RaisingClient(_fake_exc("NotFoundError")), CTX, sleep=lambda s: None)
+    (inc,) = _incidents(SPEC, tmp_path)
+    assert inc["attempts"] == []
+
+
+def test_error_record_stores_the_failing_request():
+    client = RaisingClient(_fake_exc("BadRequestError"))
+    rec = execute_cell(client, SPEC, CASES["CASE_001"], "TS", CTX, sleep=lambda s: None)
+    sent = render_messages(CASES["CASE_001"], "TS")
+    assert rec["request"] == {"model": "prov/m-1", "max_tokens": 64, "temperature": 0,
+                              "messages": [{"role": "system", "content": sent["system"]},
+                                           {"role": "user", "content": sent["user"]}]}
+
+
+def test_persistent_record_is_decoding_checked_on_resume(tmp_path):
+    # Both cells of CASE_001 end persistent; no record with a response exists, so only the decoding check
+    # of the persistent records can raise.
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), _bad("y")]), CTX, limit=1, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), _bad("y")]), CTX, limit=1, sleep=lambda s: None)
+    assert all(r.get("persistent_error") for r in _recs(results_path(SPEC, tmp_path))[2:])
+    run_model(SPEC, SUBSET, tmp_path, FakeClient([]), CTX, limit=1, sleep=lambda s: None)  # unchanged spec: fine
+    with pytest.raises(StaleRecords, match=r"\('CASE_001', 'TS'\) differs .* \['temperature'\]"):
+        run_model({**SPEC, "temperature": 0.7}, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+@pytest.mark.parametrize("sep", [" ", " ", "\x85", "\x1c", "\r"], ids=["LS", "PS", "NEL", "FS", "CR"])
+def test_read_records_splits_only_on_newline(tmp_path, sep):
+    from r2.run.harness import final_records, read_records
+    path, recs = _first_record(tmp_path)
+    recs[0]["decision"]["trust_rationale"] = f"first{sep}second"
+    _rewrite(path, recs)  # ensure_ascii=False, as the harness writes
+    assert len(read_records(path)) == 2 and len(final_records(path)) == 2
+    assert read_records(path)[0]["decision"]["trust_rationale"] == f"first{sep}second"
+
+
+def test_read_records_on_a_torn_file_says_resume_first(tmp_path):
+    from r2.run.harness import read_records
+    path, _ = _first_record(tmp_path)
+    with open(path, "ab") as fh:
+        fh.write(b'{"case_id": "CASE_00')
+    with pytest.raises(CorruptResults, match=r"line 3 .*resume the model"):
+        read_records(path)
+
+
+# ---- error_key: request ids, UUIDs, hex runs, timestamps and long digit runs are normalized before comparing ----
+def _openai_400(req):
+    return (f"Error code: 400 - {{'error': {{'message': 'Invalid prompt (request_id: {req}): your prompt was "
+            "flagged as potentially violating our usage policy. Please try again with a different prompt.', "
+            "'type': 'invalid_request_error', 'param': None, 'code': 'invalid_prompt'}}")
+
+
+REQ_1, REQ_2 = "req_7f3a9c21d4e84b0fa1c2d3e4f5a6b7c8", "req_0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e"
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("id 123e4567-e89b-12d3-a456-426614174000 failed", "id <uuid> failed"),
+    ("see req_7f3a9c21d4e84b0f now", "see <req> now"),
+    ("request_id: abc-123_XYZ; retry", "request_id: <id>; retry"),
+    ("Request ID 'f00ba5' (x)", "Request ID '<id>' (x)"),
+    ('"request_id": "2f1e0d"', '"request_id": "<id>"'),
+    ("trace 9f86d081884c7d65 end", "trace <hex> end"),
+    ("at 2026-10-05T12:34:56.789Z and 2026-10-05 12:34:56+02:00", "at <ts> and <ts>"),
+    ("job 1234567 queued", "job <n> queued"),
+])
+def test_normalize_error_replaces_volatile_tokens(raw, expected):
+    from r2.run.harness import normalize_error
+    assert normalize_error(raw) == expected
+
+
+@pytest.mark.parametrize("stable", [
+    "The model 'gpt-5-mini-2025-08-07' does not exist", "max_tokens is 8192 but limit is 32768",
+    "code 12345 and hex deadbee", "Request contains an invalid argument.", "Unable to access non-serverless model",
+    "Please include the request ID in your message if the error persists.",
+])
+def test_normalize_error_keeps_stable_text(stable):
+    from r2.run.harness import normalize_error
+    assert normalize_error(stable) == stable
+
+
+def test_openai_400s_differing_only_in_request_id_finalize_on_reattempt(tmp_path):
+    from r2.run.harness import final_records
+    assert _openai_400(REQ_1)[:200] != _openai_400(REQ_2)[:200]  # the raw texts differ inside the compared span
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad(_openai_400(REQ_1)), GOOD]), CTX, limit=1,
+              sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad(_openai_400(REQ_2))]), CTX, limit=1, sleep=lambda s: None)
+    first, last = [r for r in _recs(results_path(SPEC, tmp_path)) if r["order"] == "TS"]
+    assert last.get("persistent_error") is True
+    assert first["error"] == f"BadRequestError: {_openai_400(REQ_1)}"  # raw text stored unchanged
+    assert last["error"] == f"BadRequestError: {_openai_400(REQ_2)}"
+    assert first["error_key"] == last["error_key"] and "<req>" in first["error_key"]
+    assert REQ_1 not in first["error_key"] and len(first["error_key"]) <= 200
+    client = FakeClient([])
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=1, sleep=lambda s: None)
+    assert client.calls == [] and len(final_records(results_path(SPEC, tmp_path))) == 2
+
+
+def test_openai_400s_differing_only_in_request_id_count_as_the_same_text_for_the_breaker(tmp_path):
+    # Parse-failure non_responses between the errors reset the consecutive rule, so only the same-text rule trips.
+    reqs = [REQ_1, REQ_2, "req_aaaaaaaabbbbbbbbccccccccdddddddd"]
+    client = ScriptedClient([_bad(_openai_400(reqs[0])), "nope", "nope", _bad(_openai_400(reqs[1])), "nope", "nope",
+                             _bad(_openai_400(reqs[2])), GOOD])
+    with pytest.raises(ModelUnavailable, match="same error text 3x"):
+        run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(_recs(results_path(SPEC, tmp_path))) == 5
