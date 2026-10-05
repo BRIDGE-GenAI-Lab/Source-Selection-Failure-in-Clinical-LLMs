@@ -1,0 +1,25 @@
+{
+  "models": [
+    {"original_name": "gpt-4.1-2025-04-14", "provider": "openai", "model_id": "gpt-4.1-2025-04-14", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "gpt-4.1-nano-2025-04-14", "provider": "openai", "model_id": "gpt-4.1-nano-2025-04-14", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "gpt-4o-mini-2024-07-18", "provider": "openai", "model_id": "gpt-4o-mini-2024-07-18", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "gpt-5-nano-2025-08-07", "provider": "openai", "model_id": "gpt-5-nano-2025-08-07", "reasoning": true, "temperature": null, "max_tokens": 8192, "token_param": "max_completion_tokens"},
+    {"original_name": "gemini-2.5-flash-lite", "provider": "gemini", "model_id": "gemini-2.5-flash-lite", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "deepseek-chat", "provider": "deepseek", "model_id": "deepseek-chat", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "deepseek-reasoner", "provider": "deepseek", "model_id": "deepseek-reasoner", "reasoning": true, "temperature": null, "max_tokens": 8192, "token_param": "max_tokens"},
+    {"original_name": "Qwen/Qwen3-235B-A22B-Instruct-2507-tput", "provider": "together", "model_id": "Qwen/Qwen3-235B-A22B-Instruct-2507-tput", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "Qwen/Qwen3-Next-80B-A3B-Thinking", "provider": "together", "model_id": "Qwen/Qwen3-Next-80B-A3B-Thinking", "reasoning": true, "temperature": null, "max_tokens": 8192, "token_param": "max_tokens"},
+    {"original_name": "Qwen/Qwen3-VL-8B-Instruct", "provider": "together", "model_id": "Qwen/Qwen3-VL-8B-Instruct", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "ServiceNow-AI/Apriel-1.6-15b-Thinker", "provider": "together", "model_id": "ServiceNow-AI/Apriel-1.6-15b-Thinker", "reasoning": true, "temperature": null, "max_tokens": 8192, "token_param": "max_tokens"},
+    {"original_name": "google/gemma-3n-E4B-it", "provider": "together", "model_id": "google/gemma-3n-E4B-it", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "meta-llama/Llama-3.2-3B-Instruct-Turbo", "provider": "together", "model_id": "meta-llama/Llama-3.2-3B-Instruct-Turbo", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "meta-llama/Llama-3.3-70B-Instruct-Turbo", "provider": "together", "model_id": "meta-llama/Llama-3.3-70B-Instruct-Turbo", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8", "provider": "together", "model_id": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "meta-llama/Llama-4-Scout-17B-16E-Instruct", "provider": "together", "model_id": "meta-llama/Llama-4-Scout-17B-16E-Instruct", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "mistralai/Mistral-Small-24B-Instruct-2501", "provider": "together", "model_id": "mistralai/Mistral-Small-24B-Instruct-2501", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "mistralai/Mixtral-8x7B-Instruct-v0.1", "provider": "together", "model_id": "mistralai/Mixtral-8x7B-Instruct-v0.1", "reasoning": false, "temperature": 0, "max_tokens": 2048, "token_param": "max_tokens"},
+    {"original_name": "nvidia/NVIDIA-Nemotron-Nano-9B-v2", "provider": "together", "model_id": "nvidia/NVIDIA-Nemotron-Nano-9B-v2", "reasoning": true, "temperature": null, "max_tokens": 8192, "token_param": "max_tokens"},
+    {"original_name": "openai/gpt-oss-120b", "provider": "together", "model_id": "openai/gpt-oss-120b", "reasoning": true, "temperature": null, "max_tokens": 8192, "token_param": "max_tokens"},
+    {"original_name": "openai/gpt-oss-20b", "provider": "together", "model_id": "openai/gpt-oss-20b", "reasoning": true, "temperature": null, "max_tokens": 8192, "token_param": "max_tokens"}
+  ]
+}
