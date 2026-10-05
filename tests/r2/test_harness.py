@@ -1083,3 +1083,46 @@ def test_invalid_utf8_in_a_middle_line_is_corrupt_not_a_decode_crash(tmp_path):
     path.write_bytes(b'{"case_id": "CASE_001", "note": "\xe2\x80"}\n' + good)
     with pytest.raises(CorruptResults, match="line 1"):
         run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+# ---- minor 8: trailing-newline append branch; StaleRecords message content ----
+def test_complete_last_line_without_newline_is_kept_and_a_newline_appended(tmp_path, capsys):
+    path, _ = _first_record(tmp_path)
+    stored = path.read_bytes()
+    path.write_bytes(stored.rstrip(b"\n"))  # a complete record whose newline never reached the disk
+    client = FakeClient([GOOD] * 2)
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
+    after = path.read_bytes()
+    assert after.startswith(stored) and len(client.calls) == 2  # the stored records still count as done
+    assert [(r["case_id"], r["order"]) for r in _recs(path)] == [
+        ("CASE_001", "TS"), ("CASE_001", "ST"), ("CASE_002", "TS"), ("CASE_002", "ST")]
+    assert "dropped torn" not in capsys.readouterr().out
+
+
+def test_stale_records_message_names_file_and_cell(tmp_path):
+    import re
+    path, recs = _first_record(tmp_path)
+    recs[0]["stimulus_sha256"] = "other"
+    _rewrite(path, recs)
+    with pytest.raises(StaleRecords, match=re.escape(f"{path}: stale record for ('CASE_001', 'TS')")):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+@pytest.mark.parametrize("change,fields", [({"temperature": 0.7}, "['temperature']"),
+                                           ({"max_tokens": 128}, "['token_param']"),
+                                           ({"original_name": "m2"}, "['original_name']")])
+def test_stale_records_message_names_fields_and_flag(tmp_path, change, fields):
+    import re
+    path, _ = _first_record(tmp_path)
+    expected = (f"{path}: record for ('CASE_001', 'TS') differs from the current prompt or spec in {fields}; "
+                "rerun with --accept-spec-change to keep it")
+    with pytest.raises(StaleRecords, match=re.escape(expected)):
+        run_model({**SPEC, **change}, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+def test_stale_records_message_names_prompt_fields(tmp_path):
+    path, recs = _first_record(tmp_path)
+    recs[1]["system"], recs[1]["user"] = "old system", "old user"
+    _rewrite(path, recs)
+    with pytest.raises(StaleRecords, match=r"\('CASE_001', 'ST'\) differs .* in \['system', 'user'\]"):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
