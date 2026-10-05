@@ -18,20 +18,20 @@ def _tokens(text):
     return re.findall(r"[a-z0-9]+", str(text).lower())
 
 
+def _grams(tokens, k):
+    return {tuple(tokens[i:i + k]) for i in range(len(tokens) - k + 1)}
+
+
 def noticed(differences, snippets, k=3):
+    """E1 (exploratory): does any reported difference share a k-word sequence (k = 3, ANALYSIS_PLAN E1)
+    with the edited content? Snippets shorter than k words cannot meet the rule and are ignored; when
+    no snippet has k words the response is not assessable and the result is None (never False)."""
     grams = set()
     for s in snippets:
-        t = _tokens(s)
-        grams |= {tuple(t[i:i + k]) for i in range(len(t) - k + 1)}
-        if 0 < len(t) < k:
-            grams.add(tuple(t))
-    for d in differences or []:
-        t = _tokens(d)
-        if any(tuple(t[i:i + k]) in grams for i in range(len(t) - k + 1)):
-            return True
-        if any((tok,) in grams for tok in t):
-            return True
-    return False
+        grams |= _grams(_tokens(s), k)
+    if not grams:
+        return None
+    return any(_grams(_tokens(d), k) & grams for d in differences or [])
 
 
 def _side(x):

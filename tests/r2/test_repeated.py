@@ -37,9 +37,26 @@ def test_non_response_sensitivity():
 
 def test_noticed():
     snippets = ["Most contraindications are relative in emergency settings"]
-    assert noticed(["B says most contraindications are relative in emergencies"], snippets)
-    assert not noticed(["B has a different year"], snippets)
-    assert noticed(["year 2010 vs 2019"], ["2010"])
+    assert noticed(["B says most contraindications are relative in emergencies"], snippets) is True
+    assert noticed(["B has a different year"], snippets) is False
+    # M10: a snippet shorter than 3 words cannot be matched by the 3-word overlap rule: not assessable
+    assert noticed(["year 2010 vs 2019"], ["2010"]) is None
+
+
+def test_noticed_three_word_rule_is_applied_consistently():
+    # a 2-token snippet (e.g. "IDSA 2014") used to be unmatchable and scored "not noticed"
+    assert noticed(["A cites IDSA 2014, B cites IDSA 2019"], ["IDSA 2014"]) is None
+    assert noticed([], ["ESC 2020"]) is None
+    # a 1-token snippet (a year) no longer matches any mention of that year
+    assert noticed(["published in 2014"], ["2014", "2019"]) is None
+    # exactly 3 tokens is assessable: "v1.0-archived" -> v1, 0, archived
+    assert noticed(["B is labelled v1.0-archived"], ["v1.0-archived"]) is True
+    assert noticed(["B is older"], ["v1.0-archived"]) is False
+    # short snippets are ignored when a longer one makes the response assessable
+    assert noticed(["no difference"], ["2014", "Historical guideline version for reference only"]) is False
+    assert noticed(["B: historical guideline version"], ["2014", "Historical guideline version"]) is True
+    # no differences listed for an assessable edit is "not noticed"
+    assert noticed([], ["Most contraindications are relative"]) is False
 
 
 def test_repeated_frame_tolerates_error_cells(tmp_path, monkeypatch):
