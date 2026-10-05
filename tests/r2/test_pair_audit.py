@@ -48,26 +48,46 @@ def test_parse_log_fields():
 
 def test_reconciliation():
     df = run(write=False)
+    assert "log_matches_observed" not in df.columns
+    assert set(df.claim_status) <= {"no_claim", "realized", "not_realized", "partially_realized"}
+    assert set(df.unclaimed_changes) <= {"none", "curation_only", "content"}
 
-    # All no_edit rows should have log_matches_observed = False when there is a logged claim
-    no_edit_df = df[df.raw_status == "no_edit"]
-    has_claim = no_edit_df.log_fields_claimed != ""
-    assert (no_edit_df[has_claim].log_matches_observed == False).all(), \
-        "All no_edit rows with logged claims should not match observed fields"
+    # no_edit rows with a logged claim: nothing was realized
+    no_edit = df[df.raw_status == "no_edit"]
+    claimed = no_edit[no_edit.log_fields_claimed.fillna("") != ""]
+    assert (claimed.claim_status == "not_realized").all() and (claimed.claimed_not_observed != "").all()
 
-    # no_edit rows with claims should have non-empty claimed_not_observed
-    assert (no_edit_df[has_claim].claimed_not_observed != "").all(), \
-        "no_edit rows with claims should have non-empty claimed_not_observed"
 
-    # CASE_022 should have log_matches_observed = True
-    case_022 = df[df.case_id == "CASE_022"].iloc[0]
-    assert case_022.log_matches_observed == True, "CASE_022 should have matching log and observed fields"
+def test_unedited_subtle_inversions_have_no_claim_and_no_change():
+    df = run(write=False)
+    rows = df[(df.sham_type == "subtle_inversion") & (df.raw_status == "no_edit")]
+    assert len(rows) == 31
+    assert (rows.claim_status == "no_claim").all() and (rows.unclaimed_changes == "none").all()
 
-    # CASE_001 - check that safety_guardrails is in claimed_not_observed
-    case_001 = df[df.case_id == "CASE_001"].iloc[0]
-    if case_001.log_fields_claimed != "":
-        # Verify the actual values for CASE_001
-        claimed_fields = set(case_001.claimed_not_observed.split(";")) if case_001.claimed_not_observed else set()
-        # The coordinator asked to report actual values if the assertion is false
-        assert "safety_guardrails" in claimed_fields or case_001.claimed_not_observed == "", \
-            f"CASE_001 claimed_not_observed: '{case_001.claimed_not_observed}'"
+
+def test_outdated_version_notes_only_is_curation_only():
+    df = run(write=False)
+    rows = df[(df.sham_type == "outdated_version") & (df.observed_not_claimed.fillna("") == "metadata.notes")]
+    assert len(rows) > 0
+    assert (rows.unclaimed_changes == "curation_only").all()
+
+
+def test_claim_status_case001_and_case022():
+    df = run(write=False).set_index("case_id")
+    assert df.loc["CASE_001", "claim_status"] == "partially_realized"
+    assert df.loc["CASE_022", "claim_status"] == "realized"
+    assert df.loc["CASE_022", "unclaimed_changes"] == "none"
+
+
+def test_summary_counts_by_type(tmp_path, monkeypatch):
+    import json
+
+    from r2.audit import pair_audit
+    monkeypatch.setattr(pair_audit, "AUDIT_DIR", tmp_path)
+    df = pair_audit.run(write=True)
+    summary = json.loads((tmp_path / "pair_audit_summary.json").read_text())
+    assert "log_matches_observed" not in summary
+    for col in ("claim_status", "unclaimed_changes"):
+        by_type = summary[f"{col}_by_type"]
+        assert sum(sum(v.values()) for v in by_type.values()) == 500
+        assert by_type == {t: dict(Counter(g[col])) for t, g in df.groupby("sham_type")}

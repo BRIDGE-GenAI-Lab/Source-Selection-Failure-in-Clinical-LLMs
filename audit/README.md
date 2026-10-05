@@ -49,14 +49,19 @@ the modification log written by `scripts/generate_tools.py`. Columns:
 | `root_cause` | string | why the pair is not discriminable as presented: the edit exists only in fields no runner serialized (hidden_only), or the transform made no change (no_edit); empty for visible pairs |
 | `t_excerpt_hash` | 16-char hex string | SHA256 hash (first 16 characters) of the authentic tool's excerpt_text, for tracking reuse across cases |
 | `t_excerpt_shared_by` | integer | Number of cases that reuse the same authentic excerpt (indicates domain-level excerpt reuse) |
-
-| `log_fields_claimed` | semicolon-separated list | Fields claimed by the log as modified, parsed from where_in_tool and reconciled with observed changes |
+| `log_fields_claimed` | semicolon-separated list | Fields the modification log claims were edited, parsed from `where_in_tool` |
 | `observed_fields_changed` | semicolon-separated list | All fields that actually differ between T and S (audited content + metadata, excluding generator bookkeeping) |
-| `claimed_not_observed` | semicolon-separated list | Fields the log claimed changed but were not actually observed; indicates a discrepancy in the modification record |
-| `observed_not_claimed` | semicolon-separated list | Fields that actually changed but were not claimed in the log; indicates an incomplete modification record |
-| `log_matches_observed` | bool | True if claimed_not_observed and observed_not_claimed are both empty; reconciliation succeeds |
+| `claimed_not_observed` | semicolon-separated list | Fields the log claims were edited but that do not differ between T and S |
+| `observed_not_claimed` | semicolon-separated list | Fields that differ between T and S but that the log does not claim |
+| `claim_status` | no_claim, realized, partially_realized, not_realized | How the logged claim relates to the observed changes: no_claim = the log claims no field; realized = every claimed field changed; not_realized = no claimed field changed; partially_realized = some claimed fields changed and some did not |
+| `unclaimed_changes` | none, curation_only, content | Changes the log does not claim (observed_not_claimed): none = no such change; curation_only = every unclaimed change is a `metadata.*` key outside the visible metadata (organization, guideline_title, version_label, publication_year), i.e. a curation field no model saw (e.g. `metadata.notes`); content = any other unclaimed change |
 
-Log reconciliation columns (log_fields_claimed through log_matches_observed) cross-reference the generator's logged claim against observed changes.
+The log reconciliation columns (`log_fields_claimed` through `unclaimed_changes`) cross-reference the
+generator's logged claim with the changes actually present in the case file. The two categorical columns are
+read together: for example, the 31 unedited `subtle_inversion` pairs are `no_claim` / `none` (the transform
+did nothing and logged nothing), and the 50 `outdated_version` pairs whose only unlogged change is
+`metadata.notes` are `curation_only`.
 
 Related outputs: `pair_audit_by_type.csv` (tabulation of raw_status and visible_status by sham_type),
-`pair_audit_summary.json` (overall counts and case_022 detail).
+`pair_audit_summary.json` (overall counts, `claim_status_by_type` and `unclaimed_changes_by_type` as nested
+counts `{sham_type: {category: n}}`, `claimed_not_observed_by_type`, and the CASE_022 detail).

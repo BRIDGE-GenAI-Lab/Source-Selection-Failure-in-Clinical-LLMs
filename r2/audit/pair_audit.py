@@ -73,6 +73,29 @@ def observed_fields(t, s) -> list[str]:
     return sorted(list(result))
 
 
+def claim_status(claimed, observed):
+    """How the generator's logged claim relates to what actually changed between T and S."""
+    claimed, observed = set(claimed), set(observed)
+    if not claimed:
+        return "no_claim"
+    if claimed <= observed:
+        return "realized"
+    if not claimed & observed:
+        return "not_realized"
+    return "partially_realized"
+
+
+def unclaimed_changes(claimed, observed):
+    """Changes the log does not claim: none, curation-only (metadata keys no model saw), or content."""
+    unclaimed = set(observed) - set(claimed)
+    if not unclaimed:
+        return "none"
+    visible_meta = {f"metadata.{k}" for k in VISIBLE_META}
+    if all(f.startswith("metadata.") and f not in visible_meta for f in unclaimed):
+        return "curation_only"
+    return "content"
+
+
 def classify_pair(case, log_row, shared_by):
     t, s = case["tools"]["T"], case["tools"]["S"]
     content = [f for f in VISIBLE_CONTENT + HIDDEN_CONTENT if t.get(f) != s.get(f)]
@@ -105,7 +128,6 @@ def classify_pair(case, log_row, shared_by):
 
     claimed_not_observed = sorted(set(log_fields) - set(obs_fields))
     observed_not_claimed = sorted(set(obs_fields) - set(log_fields))
-    log_matches_observed = len(claimed_not_observed) == 0 and len(observed_not_claimed) == 0
 
     return {
         "case_id": case["case_id"], "sham_type": sham_type,
@@ -118,8 +140,13 @@ def classify_pair(case, log_row, shared_by):
         "observed_fields_changed": ";".join(obs_fields),
         "claimed_not_observed": ";".join(claimed_not_observed),
         "observed_not_claimed": ";".join(observed_not_claimed),
-        "log_matches_observed": log_matches_observed,
+        "claim_status": claim_status(log_fields, obs_fields),
+        "unclaimed_changes": unclaimed_changes(log_fields, obs_fields),
     }
+
+
+def _by_type(df, col):
+    return {t: {k: int(n) for k, n in sorted(Counter(g[col]).items())} for t, g in df.groupby("sham_type")}
 
 
 def run(write=True):
@@ -135,7 +162,7 @@ def run(write=True):
         by_type["pairs"] = df.groupby("sham_type").size()
         by_type.to_csv(AUDIT_DIR / "pair_audit_by_type.csv")
 
-        # Compute log_matches_observed counts by sham_type
+        # Pairs whose log claims a field that did not change, by sham_type
         claimed_not_obs_by_type = {}
         for sham_type in df.sham_type.unique():
             subset = df[df.sham_type == sham_type]
@@ -147,7 +174,8 @@ def run(write=True):
             "visible_status": dict(Counter(df.visible_status)),
             "raw_status": dict(Counter(df.raw_status)),
             "distinct_authentic_excerpts": int(df.t_excerpt_hash.nunique()),
-            "log_matches_observed": dict(Counter(df.log_matches_observed)),
+            "claim_status_by_type": _by_type(df, "claim_status"),
+            "unclaimed_changes_by_type": _by_type(df, "unclaimed_changes"),
             "claimed_not_observed_by_type": claimed_not_obs_by_type,
             "case_022": df.set_index("case_id").loc["CASE_022"].to_dict(),
         }
