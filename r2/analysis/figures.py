@@ -153,7 +153,8 @@ def legend2(head):
             "c, Outcome of each model-pair unit with a valid response in both orders: correct in both orders, "
             "position-driven (the same position chosen in both orders) or wrong in both orders; models are ordered "
             f"by the share correct in both orders (n = {_fmt(head['n_pair_units'])} model-pair units). "
-            f"{_fmt(head['non_response'])} non-responses are not included. " + _common_tail(head))
+            f"{_fmt(head['non_response'])} non-responses (replies without a valid choice, "
+            f"{_fmt(head['n_api_errors'])} of them after an API error) are not included. " + _common_tail(head))
 
 
 def legend3(head):

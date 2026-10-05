@@ -91,6 +91,7 @@ def test_repeated_frame_tolerates_error_cells(tmp_path, monkeypatch):
     ok_row = df[df.case_id == c1].iloc[0]
     assert not bool(ok_row.excluded) and bool(ok_row.flagged)
     assert ok_row.noticed == 0.0  # "d" shares no 3-word sequence with the edit
+    assert bool(row.api_error) and not bool(ok_row.api_error)
     assert df.noticed.dtype == float
     assert len(_ok(df)) == 1
 
@@ -206,6 +207,9 @@ def _synthetic_frame():
                              "finished_at": f"2026-11-{1 + i % 9:02d}T10:00:00+00:00"})
     df = pd.DataFrame(rows)
     df["category"] = df.sham_type.map(repeated.CATEGORY)
+    df["api_error"] = False
+    df.attrs.update({"exclusion_rule": "x", "synthetic": False,
+                     "verification": repeated.Verification({"C0"}, {"C1"}, "x", None, False)})
     return df
 
 
@@ -514,3 +518,64 @@ def test_flags_json_may_carry_only_a_true_synthetic_marker(tmp_path):
     assert ver.flagged == {"CASE_001"} and ver.synthetic is True
     with pytest.raises(ValueError, match="flags.json"):
         repeated.load_verification(_verify_dir(tmp_path / "b", flags='{"synthetic": "yes"}'), pairs)
+
+
+# ---- fix round 1, minors M1, M2, M3, M8 ----
+def test_headline_counts_api_errors_beside_non_responses(monkeypatch):
+    frame = _synthetic_frame()
+    idx = frame.index[(frame.case_id == "C5")]
+    frame = frame.astype({"selected_first": object, "correct": object})
+    frame.loc[idx, ["status", "correct", "selected_first"]] = ["non_response", None, None]
+    frame.loc[idx[:1], "api_error"] = True
+    frame.attrs.update(_synthetic_frame().attrs)
+    monkeypatch.setattr(repeated, "repeated_frame", lambda *a, **k: frame)
+    head = repeated.run(write=False)
+    assert head["non_response"] == len(idx) and head["n_api_errors"] == 1
+
+
+def test_pair_counts_match_the_verification_numbers(monkeypatch):
+    """n_excluded_pairs = len(excluded) and n_flagged_pairs = len(flags.json) (the documents' verif_n_excluded and
+    verif_n_flagged); n_flagged_analyzed_pairs counts the flagged pairs that are not excluded (S3)."""
+    frame = _synthetic_frame()
+    frame.attrs["verification"] = repeated.Verification({"C0", "NO_RECORDS"}, {"C0", "C1", "C2"}, "x", None, False)
+    monkeypatch.setattr(repeated, "repeated_frame", lambda *a, **k: frame)
+    head = repeated.run(write=False)
+    assert head["n_excluded_pairs"] == 2 and head["n_flagged_pairs"] == 3 and head["n_flagged_analyzed_pairs"] == 2
+
+
+@pytest.fixture
+def world(tmp_path):
+    from r2.analysis import synthetic
+    return synthetic.build_world(tmp_path / "w", n_per_type=1)
+
+
+def _kw(world):
+    return {"pairs_path": world["pairs_path"], "verify_dir": world["verify_dir"], "specs": world["specs"]}
+
+
+def test_run_refuses_logs_from_another_stimulus_file(world, tmp_path):
+    from r2.run.harness import results_path
+    path = results_path(world["specs"][3], world["runs_main"])
+    lines = path.read_text().splitlines()
+    rec = json.loads(lines[-1])
+    rec["stimulus_sha256"] = "0" * 64
+    path.write_text("\n".join(lines[:-1] + [json.dumps(rec)]) + "\n")
+    with pytest.raises(ValueError, match="stimulus_sha256"):
+        repeated.run(world["runs_main"], analysis_dir=tmp_path / "a", **_kw(world))
+    from r2.analysis import table1
+    with pytest.raises(ValueError, match="stimulus_sha256"):
+        table1.table1_rows(runs_dir=world["runs_main"], **_kw(world))
+
+
+def test_run_refuses_exclusions_made_on_another_stimulus_file(world, tmp_path):
+    ex_path = world["verify_dir"] / "excluded_pairs.json"
+    ex = json.loads(ex_path.read_text())
+    ex["pairs_v2_sha256"] = "f" * 64
+    ex_path.write_text(json.dumps(ex))
+    with pytest.raises(ValueError, match="pairs_v2_sha256"):
+        repeated.run(world["runs_main"], analysis_dir=tmp_path / "a", **_kw(world))
+
+
+def test_run_records_gee_convergence(world, tmp_path):
+    repeated.run(world["runs_main"], analysis_dir=tmp_path / "a", **_kw(world))
+    assert json.loads((tmp_path / "a" / "headline.json").read_text())["gee_converged"] is True

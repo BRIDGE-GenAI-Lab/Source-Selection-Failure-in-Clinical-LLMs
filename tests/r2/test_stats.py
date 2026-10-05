@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import pandas as pd
 
 from r2.analysis.stats import calibration, cluster_bootstrap_paa, position_summary, wilson
@@ -97,3 +98,31 @@ def test_cluster_bootstrap_mean_widens_for_clustered_data():
 def test_wilson_empty_arm_is_nan_not_error():
     p, lo, hi = wilson(0, 0)
     assert np.isnan(p) and np.isnan(lo) and np.isnan(hi)
+
+
+
+def _gee_frame():
+    rng = np.random.default_rng(0)
+    return pd.DataFrame({"correct": rng.integers(0, 2, 400), "x": rng.integers(0, 2, 400),
+                         "case_id": np.repeat(np.arange(100), 4)})
+
+
+def test_gee_logit_records_convergence():
+    from r2.analysis.stats import gee_logit
+    out = gee_logit(_gee_frame(), "correct ~ x", require_converged=True)
+    assert out.attrs["converged"] is True
+
+
+def test_gee_logit_refuses_a_fit_that_did_not_converge():
+    import warnings
+    from r2.analysis.stats import gee_logit
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=400)
+    df = pd.DataFrame({"correct": (rng.random(400) < 1 / (1 + np.exp(-3 * x))).astype(int), "x": x,
+                       "z": rng.normal(size=400), "case_id": np.repeat(np.arange(100), 4)})
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # statsmodels' IterationLimitWarning
+        assert gee_logit(df, "correct ~ x + z", maxiter=2).attrs["converged"] is False
+        with pytest.raises(RuntimeError, match="converge"):
+            gee_logit(df, "correct ~ x + z", maxiter=2, require_converged=True)
+        assert gee_logit(df, "correct ~ x + z", require_converged=True).attrs["converged"] is True

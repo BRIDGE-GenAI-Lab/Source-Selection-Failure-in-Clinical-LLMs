@@ -56,12 +56,20 @@ def fdr(pvals):
     return multipletests(list(pvals), alpha=0.05, method="fdr_bh")[1]
 
 
-def gee_logit(df, formula, group="case_id"):
+def gee_logit(df, formula, group="case_id", require_converged=False, maxiter=60):
+    """Logistic GEE, exchangeable working correlation clustered by `group`; odds ratios with 95% CIs.
+    out.attrs["converged"] records whether the fit converged (statsmodels' default 60 iterations);
+    require_converged=True raises RuntimeError instead of returning a non-converged fit."""
     res = smf.gee(formula, groups=group, data=df, family=sm.families.Binomial(),
-                  cov_struct=sm.cov_struct.Exchangeable()).fit()
+                  cov_struct=sm.cov_struct.Exchangeable()).fit(maxiter=maxiter)
+    converged = bool(res.converged)
+    if require_converged and not converged:
+        raise RuntimeError(f"GEE did not converge in {maxiter} iterations: {formula}")
     ci = res.conf_int()
-    return pd.DataFrame({"OR": np.exp(res.params), "lo": np.exp(ci[0]),
-                         "hi": np.exp(ci[1]), "p": res.pvalues})
+    out = pd.DataFrame({"OR": np.exp(res.params), "lo": np.exp(ci[0]),
+                        "hi": np.exp(ci[1]), "p": res.pvalues})
+    out.attrs["converged"] = converged
+    return out
 
 
 def calibration(conf, correct, bins=10):

@@ -6,13 +6,14 @@ excluded nor flagged. Every path defaults to r2.paths at call time, so a sandbox
 CLI: python -m r2.analysis.table1 [out_dir]
 """
 import csv
+import hashlib
 import json
 import random
 import sys
 from pathlib import Path
 
 from r2 import paths
-from r2.analysis.repeated import _side, load_verification
+from r2.analysis.repeated import _side, check_stimulus, load_verification
 from r2.run import harness
 
 SEED = 20261005
@@ -100,9 +101,11 @@ def _table1(seed=SEED, *, pairs_path=None, verify_dir=None, runs_dir=None, specs
     verify_dir = paths.VERIFY_DIR if verify_dir is None else Path(verify_dir)
     runs_dir = paths.RUNS_V2 / "main" if runs_dir is None else Path(runs_dir)
     specs = harness.load_specs() if specs is None else specs
-    doc = json.loads(pairs_path.read_text())
+    raw = pairs_path.read_bytes()
+    doc = json.loads(raw)
     pairs = {c["case_id"]: c for c in doc["cases"]}
     ver = load_verification(verify_dir, set(pairs))
+    shas = set()
     synthetic = doc.get("synthetic") is True or ver.synthetic
     pools = {}
     for spec in specs:
@@ -111,6 +114,7 @@ def _table1(seed=SEED, *, pairs_path=None, verify_dir=None, runs_dir=None, specs
             continue
         for r in harness.final_records(path):
             synthetic = synthetic or r.get("synthetic") is True
+            shas.add(r.get("stimulus_sha256"))
             rationale = (r.get("decision") or {}).get("trust_rationale")
             if r.get("status") != "ok" or r["case_id"] in ver.excluded | ver.flagged \
                     or not isinstance(rationale, str) or not rationale.strip():
@@ -118,6 +122,7 @@ def _table1(seed=SEED, *, pairs_path=None, verify_dir=None, runs_dir=None, specs
             sham_type = pairs[r["case_id"]]["eval"]["sham_trap_type"]
             outcome = "Success" if r["correct"] == 1 else "Failure"
             pools.setdefault((sham_type, outcome), []).append((r["original_name"], r["case_id"], r["order"], rationale))
+    check_stimulus(hashlib.sha256(raw).hexdigest(), ver, shas)
     rng = random.Random(seed)
     rows = []
     for sham_type in sorted({t for t, _ in pools}):

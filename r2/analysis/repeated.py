@@ -1,5 +1,6 @@
 """Pre-specified analyses of the repeated experiment (docs/r2/ANALYSIS_PLAN.md).
 Exploratory outputs are written with an 'exploratory_' prefix."""
+import hashlib
 import json
 import math
 import re
@@ -24,7 +25,7 @@ PAIR_COLS = ["model", "case_id", "invariant_correct", "position_driven", "wrong_
 # identified by its original_name in r2/run/models_v2.json.
 S5_MODEL = "gemini-2.5-flash-lite"
 SENSITIVITY = {
-    "S1_non_response_incorrect": "Non-responses counted as incorrect",
+    "S1_non_response_incorrect": "Non-responses (unparseable replies and API errors) counted as incorrect",
     "S2_including_excluded": "Including the pairs excluded by the physicians",
     "S3_excluding_flagged": "Excluding the pairs flagged in physician verification",
     "S4_excluding_substituted": "Excluding substituted models",
@@ -124,8 +125,8 @@ def _snippets(case):
     return [s for s in out if s.strip()]
 
 
-RECORD_COLS = ["model", "case_id", "order", "status", "sham_first", "selected_first", "correct", "confidence",
-               "differences", "rationale", "finished_at"]
+RECORD_COLS = ["model", "case_id", "order", "status", "api_error", "sham_first", "selected_first", "correct",
+               "confidence", "differences", "rationale", "finished_at", "stimulus_sha256"]
 FRAME_COLS = RECORD_COLS + ["sham_type", "category", "excluded", "flagged", "substituted", "noticed"]
 
 
@@ -137,12 +138,27 @@ def _noticed_value(status, differences, case):
     return np.nan if hit is None else float(hit)
 
 
-def repeated_frame(out_dir=None, *, pairs_path=None, verify_dir=None, specs=None):
-    """One row per final record (last record per cell) of every current spec's result file.
+def check_stimulus(pairs_sha256, verification, record_shas):
+    """The logs and the exclusions must belong to the stimulus file being analysed: every record's
+    stimulus_sha256 and excluded_pairs.json pairs_v2_sha256 must equal sha256(pairs_v2.json). Edit snippets
+    (E1), Table 1 modifications and the exclusions are read from the current files, so a mismatch is fatal."""
+    if verification.pairs_v2_sha256 != pairs_sha256:
+        raise ValueError(f"excluded_pairs.json pairs_v2_sha256 {verification.pairs_v2_sha256} differs from the "
+                         f"stimulus file being analysed ({pairs_sha256})")
+    bad = sorted({str(x) for x in record_shas} - {pairs_sha256})
+    if bad:
+        raise ValueError(f"run records carry stimulus_sha256 {bad[:3]} but the stimulus file being analysed has "
+                         f"{pairs_sha256}")
+
+
+def repeated_frame(out_dir=None, *, pairs_path=None, verify_dir=None, specs=None, check=False):
+    """One row per final record (last record per cell) of every current spec's result file. check=True (as
+    run() calls it) refuses logs or exclusions made on another stimulus file (check_stimulus).
     `noticed` (E1) is 1.0 / 0.0, or NaN when not assessable (no ok response, or no edit snippet of 3+ words)."""
     out_dir = RUNS_V2 / "main" if out_dir is None else out_dir
     pairs_path = DATA_V2 / "pairs_v2.json" if pairs_path is None else pairs_path
-    doc = json.loads(Path(pairs_path).read_text())
+    raw = Path(pairs_path).read_bytes()
+    doc = json.loads(raw)
     pairs = {c["case_id"]: c for c in doc["cases"]}
     ver = load_verification(VERIFY_DIR if verify_dir is None else verify_dir, set(pairs))
     excluded, flagged = ver.excluded, ver.flagged
@@ -160,13 +176,16 @@ def repeated_frame(out_dir=None, *, pairs_path=None, verify_dir=None, specs=None
             sel = r.get("selected_tool")
             rows.append({
                 "model": r["original_name"], "case_id": r["case_id"], "order": r["order"],
-                "status": r["status"], "sham_first": r["labels"]["A"] == "S",
+                "status": r["status"], "api_error": "error" in r, "sham_first": r["labels"]["A"] == "S",
                 "selected_first": None if sel is None else sel == "A",
                 "correct": r.get("correct"), "confidence": d.get("confidence"),
                 "differences": d.get("differences_found") or [],
                 "rationale": d.get("trust_rationale") or "", "finished_at": r.get("finished_at"),
+                "stimulus_sha256": r.get("stimulus_sha256"),
             })
     df = pd.DataFrame(rows, columns=RECORD_COLS)
+    if check:
+        check_stimulus(hashlib.sha256(raw).hexdigest(), ver, set(df.stimulus_sha256))
     df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce")
     df["sham_type"] = df.case_id.map(lambda c: pairs[c]["eval"]["sham_trap_type"])
     df["category"] = df.sham_type.map(CATEGORY)
@@ -418,7 +437,8 @@ def run(out_dir=None, write=True, *, analysis_dir=None, pairs_path=None, verify_
     specs = load_specs() if specs is None else specs
     if S5_MODEL not in {sp["original_name"] for sp in specs}:
         raise ValueError(f"S5 model {S5_MODEL!r} is not an original_name in the model specs")
-    df = repeated_frame(out_dir, pairs_path=pairs_path, verify_dir=verify_dir, specs=specs)
+    df = repeated_frame(out_dir, pairs_path=pairs_path, verify_dir=verify_dir, specs=specs, check=True)
+    ver = df.attrs["verification"]
     kept = df[~df.excluded]
     analysis = _ok(kept)
     pairs = pair_level(kept)
@@ -426,11 +446,16 @@ def run(out_dir=None, write=True, *, analysis_dir=None, pairs_path=None, verify_
         "primary": _summary(analysis),
         "n_models": int(analysis.model.nunique()), "n_pairs": int(analysis.case_id.nunique()),
         "n_types": int(analysis.sham_type.nunique()),
-        "n_excluded_pairs": int(df[df.excluded].case_id.nunique()),
-        "n_flagged_pairs": int(kept[kept.flagged].case_id.nunique()),
+        # the same counts as the verification numbers (verif_n_excluded, verif_n_flagged): pairs listed
+        "n_excluded_pairs": len(ver.excluded),
+        "n_flagged_pairs": len(ver.flagged),
+        "n_flagged_analyzed_pairs": len(ver.flagged - ver.excluded),  # the pairs S3 removes
         "n_cells": int(len(kept)),
         "models_without_ok_cells": sorted(set(df.model) - set(analysis.model)),
+        # non_response = final records without a decision: unparseable replies and API cell errors
         "non_response": int((kept.status == "non_response").sum()),
+        "n_api_errors": int(((kept.status == "non_response") & kept.api_error.astype(bool)).sum()),
+        "substitutions": {sp["original_name"]: sp["substituted_for"] for sp in specs if sp.get("substituted_for")},
         "n_pair_units": int(len(pairs)),
         "rep_call_dates": call_dates(RUNS_V2 / "main" if out_dir is None else out_dir, specs),
         "exclusion_rule": df.attrs.get("exclusion_rule"),
@@ -457,7 +482,10 @@ def run(out_dir=None, write=True, *, analysis_dir=None, pairs_path=None, verify_
         to_csv(pm.sort_values("position_averaged_accuracy", ascending=False), "per_model.csv", index=False)
         for col, name in (("sham_type", "per_type"), ("category", "per_category")):
             to_csv(rate_table(analysis, col), f"{name}.csv", index=False)
-        to_csv(gee_logit(analysis, "correct ~ sham_first + C(category, Treatment('metadata')) + C(model)"), "gee.csv")
+        gee = gee_logit(analysis, "correct ~ sham_first + C(category, Treatment('metadata')) + C(model)",
+                        require_converged=True)
+        head["gee_converged"] = gee.attrs["converged"]
+        to_csv(gee, "gee.csv")
         to_csv(calibration_table(analysis), "calibration_overall.csv", index=False)
         to_csv(calibration_table(analysis, "model"), "calibration_per_model.csv", index=False)
         to_csv(pairs, "pair_level.csv", index=False)
