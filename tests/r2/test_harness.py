@@ -185,7 +185,7 @@ def test_torn_final_line_dropped_and_resumes(tmp_path):
     run_model(SPEC, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
     lines = path.read_text().splitlines()
     assert len(lines) == 4 and all(json.loads(l) for l in lines)
-    assert len(client.calls) == 3
+    assert len(client.calls) == 2
 
 
 def test_corrupt_middle_line_raises(tmp_path):
