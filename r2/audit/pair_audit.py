@@ -12,6 +12,7 @@ from r2.paths import AUDIT_DIR
 VISIBLE_CONTENT = ("excerpt_text",)
 HIDDEN_CONTENT = ("safety_guardrails", "exclusions_or_cautions", "applicability")
 VISIBLE_META = ("organization", "guideline_title", "version_label", "publication_year")
+GENERATOR_BOOKKEEPING = {"sham_type", "modification_log", "source_status"}
 
 ROOT_CAUSE = {
     "hidden_only": "edit written only to fields no original runner serialized "
@@ -19,6 +20,57 @@ ROOT_CAUSE = {
     ("no_edit", "authority_mimicry"): "organization not in the 6-entry spoof table; transform made no change",
     ("no_edit", "subtle_inversion"): "no polarity keyword in the excerpt; transform made no change",
 }
+
+
+def parse_log_fields(where: str) -> list[str]:
+    """Parse the 'where_in_tool' field from the log.
+
+    Split on commas; for each piece, take the leading token before any space or "("
+    and strip it; keep only tokens that are one of excerpt_text, safety_guardrails,
+    exclusions_or_cautions, applicability, or start with "metadata."; return sorted
+    and deduplicated. An empty string returns [].
+    """
+    if not where:
+        return []
+
+    valid_tokens = {"excerpt_text", "safety_guardrails", "exclusions_or_cautions", "applicability"}
+    result = set()
+
+    for piece in where.split(","):
+        piece = piece.strip()
+        if not piece:
+            continue
+        # Take the leading token before space or "("
+        token = piece.split("(")[0].split()[0].strip()
+        if token in valid_tokens or token.startswith("metadata."):
+            result.add(token)
+
+    return sorted(list(result))
+
+
+def observed_fields(t, s) -> list[str]:
+    """Get sorted names of every changed content field and metadata field.
+
+    Returns sorted names of every changed content field (excerpt_text, safety_guardrails,
+    exclusions_or_cautions, applicability) plus "metadata.<key>" for every metadata key
+    whose value differs between T and S, EXCLUDING the generator bookkeeping keys
+    sham_type, modification_log, source_status.
+    """
+    result = set()
+
+    # Check content fields
+    for field in VISIBLE_CONTENT + HIDDEN_CONTENT:
+        if t.get(field) != s.get(field):
+            result.add(field)
+
+    # Check metadata fields, excluding bookkeeping keys
+    if "metadata" in t and "metadata" in s:
+        for key in set(t["metadata"].keys()) | set(s["metadata"].keys()):
+            if key not in GENERATOR_BOOKKEEPING:
+                if t["metadata"].get(key) != s["metadata"].get(key):
+                    result.add(f"metadata.{key}")
+
+    return sorted(list(result))
 
 
 def classify_pair(case, log_row, shared_by):
@@ -46,6 +98,15 @@ def classify_pair(case, log_row, shared_by):
     elif raw == "no_edit":
         cause = ROOT_CAUSE.get(("no_edit", sham_type), "no change found")
     t_hash = hashlib.sha256(t["excerpt_text"].encode("utf-8")).hexdigest()[:16]
+
+    # Reconciliation: compare logged fields with observed fields
+    log_fields = parse_log_fields(summary.get("where_in_tool", ""))
+    obs_fields = observed_fields(t, s)
+
+    claimed_not_observed = sorted(set(log_fields) - set(obs_fields))
+    observed_not_claimed = sorted(set(obs_fields) - set(log_fields))
+    log_matches_observed = len(claimed_not_observed) == 0 and len(observed_not_claimed) == 0
+
     return {
         "case_id": case["case_id"], "sham_type": sham_type,
         "raw_status": raw, "visible_status": visible,
@@ -53,6 +114,11 @@ def classify_pair(case, log_row, shared_by):
         "hidden_fields_changed": ";".join(hidden),
         "log_where": summary.get("where_in_tool", ""), "log_what": summary.get("what_changed", ""),
         "root_cause": cause, "t_excerpt_hash": t_hash, "t_excerpt_shared_by": shared_by[t_hash],
+        "log_fields_claimed": ";".join(log_fields),
+        "observed_fields_changed": ";".join(obs_fields),
+        "claimed_not_observed": ";".join(claimed_not_observed),
+        "observed_not_claimed": ";".join(observed_not_claimed),
+        "log_matches_observed": log_matches_observed,
     }
 
 
@@ -68,10 +134,21 @@ def run(write=True):
                      .join(df.groupby(["sham_type", "visible_status"]).size().unstack(fill_value=0)))
         by_type["pairs"] = df.groupby("sham_type").size()
         by_type.to_csv(AUDIT_DIR / "pair_audit_by_type.csv")
+
+        # Compute log_matches_observed counts by sham_type
+        claimed_not_obs_by_type = {}
+        for sham_type in df.sham_type.unique():
+            subset = df[df.sham_type == sham_type]
+            count = (subset.claimed_not_observed != "").sum()
+            if count > 0:
+                claimed_not_obs_by_type[sham_type] = int(count)
+
         summary = {
             "visible_status": dict(Counter(df.visible_status)),
             "raw_status": dict(Counter(df.raw_status)),
             "distinct_authentic_excerpts": int(df.t_excerpt_hash.nunique()),
+            "log_matches_observed": dict(Counter(df.log_matches_observed)),
+            "claimed_not_observed_by_type": claimed_not_obs_by_type,
             "case_022": df.set_index("case_id").loc["CASE_022"].to_dict(),
         }
         (AUDIT_DIR / "pair_audit_summary.json").write_text(json.dumps(summary, indent=2, default=str))

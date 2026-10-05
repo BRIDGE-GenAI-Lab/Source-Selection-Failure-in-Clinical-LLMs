@@ -39,16 +39,24 @@ the modification log written by `scripts/generate_tools.py`. Columns:
 |---|---|---|
 | `case_id` | CASE_001, ... CASE_500 | Case identifier |
 | `sham_type` | allergy_ignorance, authority_mimicry, contraindication_violation, dosing_error, fabricated_citation, missing_warning, outdated_version, prompt_injection, subtle_inversion, wrong_population | The adversarial perturbation applied to create tool S from tool T |
-| `raw_status` | visible, hidden_only, no_edit | Whether the change between T and S was (1) visible (excerpt_text or metadata changed), (2) hidden_only (only safety_guardrails, exclusions_or_cautions, or applicability changed), or (3) no_edit (T and S are identical) |
+| `raw_status` | visible, hidden_only, no_edit | no difference between T and S in any audited content field (excerpt_text, safety_guardrails, exclusions_or_cautions, applicability) or visible metadata field (organization, guideline_title, version_label, publication_year) |
 | `visible_status` | identical, metadata_only, excerpt_differs | Classification of what a model would see: (1) identical (if raw_status ≠ visible), (2) metadata_only (if excerpt_text is unchanged but metadata changed), or (3) excerpt_differs (if excerpt_text changed) |
 | `content_fields_changed` | semicolon-separated list | Fields that differ between T and S (subset of excerpt_text, safety_guardrails, exclusions_or_cautions, applicability) |
 | `visible_meta_changed` | semicolon-separated list | Metadata fields that changed (subset of organization, guideline_title, version_label, publication_year) |
 | `hidden_fields_changed` | semicolon-separated list | Hidden fields that were actually modified (intersection of content_fields_changed and safety_guardrails/exclusions_or_cautions/applicability) |
 | `log_where` | string (from modification log) | Where in tool S the change was made, if recorded |
 | `log_what` | string (from modification log) | Description of what changed, if recorded |
-| `root_cause` | string | Root cause diagnosis for why models cannot discriminate (hidden_only) or why no change was made (no_edit) |
+| `root_cause` | string | why the pair is not discriminable as presented: the edit exists only in fields no runner serialized (hidden_only), or the transform made no change (no_edit); empty for visible pairs |
 | `t_excerpt_hash` | 16-char hex string | SHA256 hash (first 16 characters) of the authentic tool's excerpt_text, for tracking reuse across cases |
 | `t_excerpt_shared_by` | integer | Number of cases that reuse the same authentic excerpt (indicates domain-level excerpt reuse) |
+
+| `log_fields_claimed` | semicolon-separated list | Fields claimed by the log as modified, parsed from where_in_tool and reconciled with observed changes |
+| `observed_fields_changed` | semicolon-separated list | All fields that actually differ between T and S (audited content + metadata, excluding generator bookkeeping) |
+| `claimed_not_observed` | semicolon-separated list | Fields the log claimed changed but were not actually observed; indicates a discrepancy in the modification record |
+| `observed_not_claimed` | semicolon-separated list | Fields that actually changed but were not claimed in the log; indicates an incomplete modification record |
+| `log_matches_observed` | bool | True if claimed_not_observed and observed_not_claimed are both empty; reconciliation succeeds |
+
+Log reconciliation columns (log_fields_claimed through log_matches_observed) cross-reference the generator's logged claim against observed changes.
 
 Related outputs: `pair_audit_by_type.csv` (tabulation of raw_status and visible_status by sham_type),
 `pair_audit_summary.json` (overall counts and case_022 detail).

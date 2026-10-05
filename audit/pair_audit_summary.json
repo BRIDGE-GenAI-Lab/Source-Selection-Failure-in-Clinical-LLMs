@@ -10,6 +10,16 @@
     "no_edit": 57
   },
   "distinct_authentic_excerpts": 69,
+  "log_matches_observed": {
+    "false": 161,
+    "true": 339
+  },
+  "claimed_not_observed_by_type": {
+    "allergy_ignorance": 39,
+    "contraindication_violation": 46,
+    "authority_mimicry": 26,
+    "outdated_version": 1
+  },
   "case_022": {
     "sham_type": "contraindication_violation",
     "raw_status": "hidden_only",
@@ -21,6 +31,11 @@
     "log_what": "Weakened contraindication language to suggest proceeding despite safety concerns",
     "root_cause": "edit written only to fields no original runner serialized (safety_guardrails / exclusions_or_cautions / applicability)",
     "t_excerpt_hash": "907ee113d533f1b5",
-    "t_excerpt_shared_by": 21
+    "t_excerpt_shared_by": 21,
+    "log_fields_claimed": "exclusions_or_cautions;safety_guardrails",
+    "observed_fields_changed": "exclusions_or_cautions;safety_guardrails",
+    "claimed_not_observed": "",
+    "observed_not_claimed": "",
+    "log_matches_observed": true
   }
 }
