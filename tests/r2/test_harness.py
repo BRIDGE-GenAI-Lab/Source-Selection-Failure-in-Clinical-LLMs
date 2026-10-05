@@ -1288,3 +1288,81 @@ def test_cli_exit_status_when_a_model_stopped(two_models):
     a, b, clients, out = two_models
     clients["openai"], clients["together"] = RaisingClient(_fake_exc("NotFoundError")), FakeClient([GOOD] * 4)
     assert harness.cli(["--pilot", "--out", str(out)]) == 1
+
+
+# ---- fix round 1, review minors m2, m3, m4, m7 ----
+def test_torn_tail_is_logged_as_an_incident_before_truncation(tmp_path):
+    import base64
+    path, _ = _first_record(tmp_path)
+    before = path.read_bytes()
+    torn = b'{"case_id": "CASE_002", "note": "\xe2\x80'
+    with open(path, "ab") as fh:
+        fh.write(torn)
+    run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 2), CTX, sleep=lambda s: None)
+    (inc,) = [i for i in _incidents(SPEC, tmp_path) if i["kind"] == "torn_tail"]
+    assert inc["offset"] == len(before) and inc["length"] == len(torn) and inc["line"] == 3
+    assert base64.b64decode(inc["dropped_b64"]) == torn and inc["file"] == path.name
+
+
+@pytest.mark.parametrize("second,stop_type", [(_fake_exc("RateLimitError")("quota"), "ModelUnavailable"),
+                                              (_fake_exc("NotFoundError")("gone"), "ModelUnavailable"),
+                                              (_fake_exc("APIStatusError")("402"), "APIStatusError")],
+                         ids=["exhausted-transient", "model-error", "unexpected"])
+def test_stop_after_a_paid_attempt_logs_that_attempt(tmp_path, second, stop_type):
+    class Client(FakeClient):
+        def create(self, **kw):
+            self.calls.append(kw)
+            if len(self.calls) == 1:
+                return _Resp("not json", kw["model"])
+            raise second
+    with pytest.raises(Exception):
+        run_model(SPEC, SUBSET, tmp_path, Client([]), CTX, sleep=lambda s: None)
+    (inc,) = _incidents(SPEC, tmp_path)
+    assert inc["kind"] == "stopped" and inc["error_type"] == stop_type
+    assert [a["response"]["choices"][0]["message"]["content"] for a in inc["attempts"]] == ["not json"]
+
+
+def test_stop_before_any_response_logs_no_attempts(tmp_path):
+    with pytest.raises(ModelUnavailable):
+        run_model(SPEC, SUBSET, tmp_path, RaisingClient(_fake_exc("NotFoundError")), CTX, sleep=lambda s: None)
+    (inc,) = _incidents(SPEC, tmp_path)
+    assert inc["attempts"] == []
+
+
+def test_error_record_stores_the_failing_request():
+    client = RaisingClient(_fake_exc("BadRequestError"))
+    rec = execute_cell(client, SPEC, CASES["CASE_001"], "TS", CTX, sleep=lambda s: None)
+    sent = render_messages(CASES["CASE_001"], "TS")
+    assert rec["request"] == {"model": "prov/m-1", "max_tokens": 64, "temperature": 0,
+                              "messages": [{"role": "system", "content": sent["system"]},
+                                           {"role": "user", "content": sent["user"]}]}
+
+
+def test_persistent_record_is_decoding_checked_on_resume(tmp_path):
+    # Both cells of CASE_001 end persistent; no record with a response exists, so only the decoding check
+    # of the persistent records can raise.
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), _bad("y")]), CTX, limit=1, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), _bad("y")]), CTX, limit=1, sleep=lambda s: None)
+    assert all(r.get("persistent_error") for r in _recs(results_path(SPEC, tmp_path))[2:])
+    run_model(SPEC, SUBSET, tmp_path, FakeClient([]), CTX, limit=1, sleep=lambda s: None)  # unchanged spec: fine
+    with pytest.raises(StaleRecords, match=r"\('CASE_001', 'TS'\) differs .* \['temperature'\]"):
+        run_model({**SPEC, "temperature": 0.7}, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+@pytest.mark.parametrize("sep", [" ", " ", "\x85", "\x1c", "\r"], ids=["LS", "PS", "NEL", "FS", "CR"])
+def test_read_records_splits_only_on_newline(tmp_path, sep):
+    from r2.run.harness import final_records, read_records
+    path, recs = _first_record(tmp_path)
+    recs[0]["decision"]["trust_rationale"] = f"first{sep}second"
+    _rewrite(path, recs)  # ensure_ascii=False, as the harness writes
+    assert len(read_records(path)) == 2 and len(final_records(path)) == 2
+    assert read_records(path)[0]["decision"]["trust_rationale"] == f"first{sep}second"
+
+
+def test_read_records_on_a_torn_file_says_resume_first(tmp_path):
+    from r2.run.harness import read_records
+    path, _ = _first_record(tmp_path)
+    with open(path, "ab") as fh:
+        fh.write(b'{"case_id": "CASE_00')
+    with pytest.raises(CorruptResults, match=r"line 3 .*resume the model"):
+        read_records(path)

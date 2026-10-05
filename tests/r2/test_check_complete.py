@@ -329,3 +329,11 @@ def test_persistent_errors_pass_the_gate_and_are_exported(tmp_path, monkeypatch)
     mod.main()
     rows = _flat_rows(tmp_path / "results_repeated.csv")
     assert [(r["order"], r["persistent_error"]) for r in rows] == [("TS", "0"), ("ST", "1")]
+
+
+def test_gate_on_a_torn_file_fails_with_a_clear_message(tmp_path, monkeypatch):
+    mod, out = _gate(tmp_path, monkeypatch, [_rec("C1", "TS", "ok"), _rec("C1", "ST", "ok")])
+    with open(out / "m-1.jsonl", "ab") as fh:
+        fh.write(b'{"case_id": "C1", "note": "\xe2')
+    with pytest.raises(SystemExit, match="gate failed: .*resume the model"):
+        mod.main()

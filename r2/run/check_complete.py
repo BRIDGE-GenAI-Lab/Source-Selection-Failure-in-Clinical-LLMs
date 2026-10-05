@@ -5,7 +5,7 @@ from collections import Counter
 from pathlib import Path
 
 from r2.paths import DATA_V2, REPO, RUNS_V2
-from r2.run.harness import (ORDERS, final_records, is_error_only, is_unresolved, iter_result_files, load_specs,
+from r2.run.harness import (ORDERS, CorruptResults, final_records, is_error_only, is_unresolved, iter_result_files, load_specs,
                             load_v2_cases, read_records, results_path)
 
 
@@ -120,7 +120,7 @@ def main():
     specs = load_specs()
     try:
         report = check(out_dir, specs, sorted(cases))
-    except (OrphanResults, ValueError) as exc:
+    except (OrphanResults, CorruptResults, ValueError) as exc:
         raise SystemExit(f"gate failed: {exc}")
     dest = REPO / "analysis_repeated" / "completeness.csv"
     dest.parent.mkdir(exist_ok=True)

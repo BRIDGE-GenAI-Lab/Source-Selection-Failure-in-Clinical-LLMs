@@ -1,6 +1,7 @@
 """Unified runner for the repeated experiment: one prompt (r2.stimuli.render), both orders,
 one code path for every provider (OpenAI-compatible endpoints), full request/response logs."""
 import argparse
+import base64
 import fcntl
 import hashlib
 import json
@@ -172,7 +173,18 @@ def _error_text(r):
 
 
 def read_records(path):
-    return [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()]
+    """Every record of a results file. Lines are split on b"\\n" only: str.splitlines() would also split
+    on U+2028, U+2029 and NEL, which json.dumps(ensure_ascii=False) writes raw inside model text."""
+    out = []
+    for i, line in enumerate(Path(path).read_bytes().split(b"\n"), 1):
+        if not line.strip():
+            continue
+        try:
+            out.append(json.loads(line.decode("utf-8")))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise CorruptResults(f"{path}: line {i} is unparseable ({type(exc).__name__}); a torn final line is "
+                                 "repaired when the harness resumes the model: resume the model first") from exc
+    return out
 
 
 def final_records(path):
@@ -318,8 +330,41 @@ def request_kwargs(spec, messages):
 
 def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=None):
     msgs = render_messages(case, order)
+    attempts = []
+    try:
+        decision, error, failed_request = _attempt_cell(client, spec, case, order, context, sleep, out_dir, msgs,
+                                                        attempts)
+    except Exception as exc:  # a stop after a paid attempt: hand the attempts to the stop incident
+        try:
+            exc.attempts = attempts
+        except AttributeError:  # an exception type without instance attributes: the attempts are lost
+            pass
+        raise
+    selected = decision["selected_tool"] if decision else None
+    last = attempts[-1]["response"] if attempts else {}
+    rec = {
+        **context,
+        "model_id": spec["model_id"], "provider": spec["provider"], "original_name": spec["original_name"],
+        "model_served": last.get("model"), "system_fingerprint": last.get("system_fingerprint"),
+        "case_id": case["case_id"], "order": order, "labels": msgs["labels"],
+        "payload_sha256": msgs["payload_sha256"], "system": msgs["system"], "user": msgs["user"],
+        "attempts": attempts, "decision": decision,
+        "status": "ok" if decision else "non_response",
+        "selected_tool": selected,
+        "correct": None if selected is None else int(msgs["labels"][selected] == "T"),
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if error:
+        rec["error"] = error
+        rec["request"] = failed_request  # the call that failed (error records carry no response)
+    return rec
+
+
+def _attempt_cell(client, spec, case, order, context, sleep, out_dir, msgs, attempts):
+    """Up to two calls for one cell, appending each response to `attempts`. Returns
+    (decision, error, failed_request)."""
     messages = first_messages(msgs)
-    attempts, decision, error = [], None, None
+    decision, error, failed_request = None, None, None
     for _ in range(2):
         kwargs = request_kwargs(spec, messages)
         t0 = time.time()
@@ -333,7 +378,7 @@ def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=N
                 raise ModelUnavailable(f"{spec['model_id']}: {type(exc).__name__} persisted after {RETRY_TRIES} "
                                        f"tries: {exc}"[:500]) from exc
             if kind == "cell":
-                error = f"{type(exc).__name__}: {exc}"[:500]
+                error, failed_request = f"{type(exc).__name__}: {exc}"[:500], kwargs
                 break
             raise
         latency_ms = (time.time() - t0) * 1000
@@ -356,23 +401,7 @@ def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=N
         if content:
             messages = messages + [{"role": "assistant", "content": content},
                                    {"role": "user", "content": RETRY_PROMPT}]
-    selected = decision["selected_tool"] if decision else None
-    last = attempts[-1]["response"] if attempts else {}
-    rec = {
-        **context,
-        "model_id": spec["model_id"], "provider": spec["provider"], "original_name": spec["original_name"],
-        "model_served": last.get("model"), "system_fingerprint": last.get("system_fingerprint"),
-        "case_id": case["case_id"], "order": order, "labels": msgs["labels"],
-        "payload_sha256": msgs["payload_sha256"], "system": msgs["system"], "user": msgs["user"],
-        "attempts": attempts, "decision": decision,
-        "status": "ok" if decision else "non_response",
-        "selected_tool": selected,
-        "correct": None if selected is None else int(msgs["labels"][selected] == "T"),
-        "finished_at": datetime.now(timezone.utc).isoformat(),
-    }
-    if error:
-        rec["error"] = error
-    return rec
+    return decision, error, failed_request
 
 
 def _log_incident(out_dir, spec, incident):
@@ -398,9 +427,10 @@ def _spec_mismatches(r, spec, msgs):
     for field in ("model_id", "original_name"):
         if r.get(field) != spec[field]:
             out.append((field, r.get(field), spec[field]))
-    if is_error_only(r):
-        return out
-    req = ((r.get("attempts") or [{}])[0] or {}).get("request") or {}
+    if is_unresolved(r):
+        return out  # re-attempted on this resume anyway; a persistent_error record is checked like any other
+    attempts = r.get("attempts") or []
+    req = ((attempts[0] or {}).get("request") if attempts else r.get("request")) or {}
     temp = spec.get("temperature")
     if ("temperature" in req) != (temp is not None) or (temp is not None and req["temperature"] != temp):
         out.append(("temperature", req.get("temperature", "<absent>"), "<absent>" if temp is None else temp))
@@ -432,6 +462,9 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False, retry_p
         except (UnicodeDecodeError, json.JSONDecodeError):
             if i == len(lines) - 1:
                 print(f"WARNING: dropped torn final line ({len(line)} bytes) in {path}", flush=True)
+                _log_incident(out_dir, spec, {"kind": "torn_tail", "model_id": spec["model_id"], "file": path.name,
+                                              "line": i + 1, "offset": start, "length": len(line),
+                                              "dropped_b64": base64.b64encode(line).decode("ascii")})
                 os.truncate(path, start)  # keeps every earlier byte; nothing is rewritten
                 break
             raise CorruptResults(f"{path}: unparseable line {i + 1}")
@@ -538,7 +571,7 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
                                           "case_id": cell[0] if cell else None,
                                           "order": cell[1] if cell else None,
                                           "error_type": type(exc).__name__, "error": str(exc)[:2000],
-                                          **context})
+                                          "attempts": getattr(exc, "attempts", []), **context})
             raise
     return path
 
