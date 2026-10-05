@@ -493,6 +493,15 @@ def _require_frozen(stim_sha):
                          f"{path} records pairs_v2_sha256 = {verified} (the physician-verified stimuli)")
 
 
+def _same_dir(a, b):
+    """True when a and b name the same directory: os.path.samefile when both exist, else the resolved
+    paths compared case-insensitively (the run volume is case-insensitive exFAT)."""
+    a, b = Path(a), Path(b)
+    if a.exists() and b.exists():
+        return os.path.samefile(a, b)
+    return str(a.resolve()).casefold() == str(b.resolve()).casefold()
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", default="all")
@@ -511,7 +520,7 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
-    if args.pilot and Path(args.out).resolve() == (RUNS_V2 / "main").resolve():
+    if args.pilot and _same_dir(args.out, RUNS_V2 / "main"):
         raise SystemExit("refusing a --pilot run into the main out dir")
     cases, stim_sha = load_v2_cases()
     if not args.pilot:

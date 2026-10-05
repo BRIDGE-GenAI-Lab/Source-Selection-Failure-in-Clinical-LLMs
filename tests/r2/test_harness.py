@@ -597,6 +597,38 @@ def test_pilot_refuses_main_out_dir(no_side_effects):
         harness.main(["--pilot", "--out", str(RUNS_V2 / "main")])
 
 
+# ---- Step 4b N4: the pilot guard compares with samefile when both exist, else casefolded resolved paths ----
+@pytest.mark.parametrize("make_main", [False, True], ids=["main-absent", "main-exists"])
+@pytest.mark.parametrize("out", ["Main", "MAIN", "main/../main", "./main/"])
+def test_pilot_guard_catches_case_and_spelling_variants(no_side_effects, monkeypatch, tmp_path, make_main, out):
+    runs = tmp_path / "r2_runs"
+    monkeypatch.setattr(harness, "RUNS_V2", runs)
+    if make_main:
+        (runs / "main").mkdir(parents=True)
+    with pytest.raises(SystemExit, match="refusing a --pilot run into the main out dir"):
+        harness.main(["--pilot", "--out", str(runs / out)])
+
+
+def test_pilot_guard_follows_a_symlink_to_main(no_side_effects, monkeypatch, tmp_path):
+    runs = tmp_path / "r2_runs"
+    (runs / "main").mkdir(parents=True)
+    (tmp_path / "elsewhere").symlink_to(runs / "main")
+    monkeypatch.setattr(harness, "RUNS_V2", runs)
+    with pytest.raises(SystemExit, match="refusing a --pilot run"):
+        harness.main(["--pilot", "--out", str(tmp_path / "elsewhere")])
+
+
+@pytest.mark.parametrize("make_dirs", [False, True])
+def test_pilot_guard_allows_a_distinct_dir(no_side_effects, monkeypatch, tmp_path, make_dirs):
+    runs = tmp_path / "r2_runs"
+    if make_dirs:
+        (runs / "main").mkdir(parents=True)
+        (runs / "pilot").mkdir()
+    monkeypatch.setattr(harness, "RUNS_V2", runs)
+    harness.main(["--pilot", "--out", str(runs / "pilot")])
+    harness.main(["--pilot", "--out", str(runs / "main-pilot")])
+
+
 # ---- M1-M5, M17 ----
 def _rate_limited(retry_after):
     exc = _fake_exc("RateLimitError")("slow down")
