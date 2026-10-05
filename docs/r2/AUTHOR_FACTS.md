@@ -42,8 +42,15 @@ Full evidence (file paths, quotes and computations) is in `docs/r2/AUTHOR_FACTS_
 - **CASE_335 is truncated.** It has no labs, ECG, imaging, assessment or clinical question, and the models saw it that way.
 - **Do not use the "GPT-4 generated vignettes" text.** It comes from appendix-generator script literals and is not a provenance record.
 
+**Update (2026-10-05, follow-up search): interface identified, model version pending.**
+- **The user's Google Drive holds a Google AI Studio chat that matches the vignettes.** It is `My Drive/Google AI Studio/EHR Synthetic Data Generation.`, 1.99 MB, last saved 2026-01-03 13:23. That is 5 minutes before `75cases.json` was saved (13:28) and about an hour after `500cases.json` (12:20). The title matches the generation prompt ("synthetic dataset of EHR-like cases") and the dataset name `Synthetic_EHR_Tool_Safety_Dataset`. AI Studio saves each chat to this Drive folder automatically.
+- **`75cases.json` begins with Google AI Studio's code-block header labels**, copied along with the JSON: `"code", "JSON", "download", "content_copy", "expand_less"`. These are Material-icon labels. Copying from Claude.ai or ChatGPT does not produce them.
+- **Conclusion:** the vignettes were generated in Google AI Studio, so with a Gemini model. This is consistent with the Feb 2026 AI Studio note in the same folder ("…we will run it through gemini internally…").
+- **The exact model version** is stored in the chat file's `runSettings.model`. The file is online-only and this Mac has no Google Drive client, so it could not be read yet. Read it via the Google Drive connector, or open the chat in AI Studio (Library → "EHR Synthetic Data Generation." → Run settings).
+- **No evidence supports Claude Opus.**
+
 **Still needed from the authors.**
-- [ ] Generating model and version, the interface, and the parameters.
+- [ ] Generating model and version (read `runSettings.model` from the AI Studio chat above), the interface (Google AI Studio, see above) and the parameters (temperature, from the same `runSettings`).
 - [ ] Real generation dates.
 - [ ] Whether the published prompt was used for every batch, including the 75-case batch and the truncated CASE_335.
 - [ ] How the "12 domains" were defined, or agreement to drop the claim.
