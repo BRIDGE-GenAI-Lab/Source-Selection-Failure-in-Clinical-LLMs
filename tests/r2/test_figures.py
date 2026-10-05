@@ -111,3 +111,19 @@ def test_real_headline_gives_an_unmarked_legend():
     head = {"primary": {"n": 10}, "n_models": 1, "n_pairs": 5, "n_excluded_pairs": 0, "n_pair_units": 5,
             "non_response": 0, "n_api_errors": 0, "exclusion_rule": "x", "synthetic": False}
     assert figures.legend3(head).startswith("**Figure 3 | ")
+
+
+# ---- fix round 1, M7: readability geometry ----
+def test_figure2_per_model_points_sit_beside_their_bar_not_on_it():
+    for k in (0, 1):
+        xs = figures.strip_x(k, 21)
+        assert all(abs(x - figures.BAR_X[k]) > figures.BAR_WIDTH / 2 for x in xs), k
+    # the two strips sit in the gap between the bars, so the paired lines of panel b never cross a bar
+    assert max(figures.strip_x(0, 21)) < min(figures.strip_x(1, 21))
+    assert min(figures.strip_x(0, 21)) > figures.BAR_X[0] + figures.BAR_WIDTH / 2
+    assert max(figures.strip_x(1, 21)) < figures.BAR_X[1] - figures.BAR_WIDTH / 2
+
+
+def test_figure4_order_markers_and_ci_whisker_are_on_separate_rows():
+    assert abs(figures.MARKER_DY - figures.CI_DY) >= 0.25
+    assert abs(figures.MARKER_DY) < 0.34 and abs(figures.CI_DY) < 0.34  # both stay inside the bar's band

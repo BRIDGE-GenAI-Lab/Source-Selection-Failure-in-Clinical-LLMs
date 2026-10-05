@@ -220,27 +220,43 @@ def _save(fig, out_dir, name, legend, synthetic=False):
     return paths
 
 
+# Figure 2a/2b layout: two bars far enough apart that each bar's per-model points sit in the gap beside it
+# (never over the bar or its narrow pooled whisker), and panel b's paired lines run between the two strips.
+BAR_X = (0.0, 1.8)
+BAR_WIDTH = 0.6
+STRIP_OFFSET = 0.55   # bar centre to strip centre, towards the other bar
+STRIP_HALF = 0.1      # half-width of a strip's jitter
+
+
+def strip_x(k, n):
+    """x positions of the n per-model points beside bar k (0: right of the first bar, 1: left of the second)."""
+    centre = BAR_X[k] + (STRIP_OFFSET if k == 0 else -STRIP_OFFSET)
+    return centre + _jitter(n, STRIP_HALF)
+
+
 def _bar_panel(ax, values, cis, colors, ticklabels, per_model, ylabel, paired=False):
-    x = np.arange(len(values))
+    x = np.array(BAR_X)
     heights = [100 * v for v in values]
-    ax.bar(x, heights, width=0.58, color=colors, edgecolor="white", zorder=2)
+    ax.bar(x, heights, width=BAR_WIDTH, color=colors, edgecolor="white", zorder=2)
     lo = [100 * (v - c[0]) for v, c in zip(values, cis)]
     hi = [100 * (c[1] - v) for v, c in zip(values, cis)]
-    ax.errorbar(x, heights, yerr=np.nan_to_num([lo, hi]), fmt="none", ecolor=INK, elinewidth=1.1, capsize=4,
+    ax.errorbar(x, heights, yerr=np.nan_to_num([lo, hi]), fmt="none", ecolor=INK, elinewidth=1.2, capsize=5,
                 zorder=5)
-    jit = _jitter(len(per_model[0]))
+    n = len(per_model[0])
+    xs = [strip_x(k, n) for k in range(len(x))]
     if paired:
-        for i in range(len(per_model[0])):
-            ax.plot(x + jit[i], [100 * per_model[k][i] for k in range(len(x))], color=MUTED, lw=0.5, alpha=0.6,
-                    zorder=3)
+        for i in range(n):
+            ax.plot([xs[0][i], xs[1][i]], [100 * per_model[0][i], 100 * per_model[1][i]], color=MUTED, lw=0.5,
+                    alpha=0.6, zorder=3)
     for k in range(len(x)):
-        ax.scatter(x[k] + jit, 100 * np.asarray(per_model[k]), s=15, color="white", edgecolor=INK,
-                   linewidth=0.6, zorder=4)
+        ax.scatter(xs[k], 100 * np.asarray(per_model[k]), s=15, color="white", edgecolor=INK, linewidth=0.6,
+                   zorder=4)
     for k, v in enumerate(values):
-        top = max([100 * cis[k][1]] + [100 * p for p in per_model[k] if np.isfinite(p)])
-        ax.text(x[k], top + 3, _pct(v), ha="center", va="bottom", fontsize=10, fontweight="bold", color=C["text"])
+        top = 100 * cis[k][1] if np.isfinite(cis[k][1]) else 100 * v
+        ax.text(x[k], max(top, 100 * v) + 3, _pct(v), ha="center", va="bottom", fontsize=10, fontweight="bold",
+                color=C["text"])
     ax.set_xticks(x, ticklabels)
-    ax.set_xlim(-0.6, len(x) - 0.4)
+    ax.set_xlim(x[0] - 0.5, x[-1] + 0.5)
     ax.set_ylim(0, 115)
     ax.set_yticks(range(0, 101, 25))
     ax.set_ylabel(ylabel)
@@ -326,6 +342,9 @@ def figure3(head, per_type, out_dir):
         return _save(fig, out_dir, "Figure3", legend3(head), head.get("synthetic") is True)
 
 
+MARKER_DY, CI_DY = -0.13, 0.17  # Figure 4 rows: order markers above, CI whisker below (y axis is inverted)
+
+
 def _model_class(spec):
     if spec and spec.get("reasoning"):
         return "reasoning"
@@ -345,12 +364,15 @@ def figure4(head, per_model, out_dir, specs):
         hi = np.array([100 * _f(r["paa_hi"]) for r in pm])
         colors = [C[_model_class(by_name.get(r["model"]))] for r in pm]
         ax.barh(y, paa, height=0.68, color=colors, edgecolor="white", alpha=0.9, zorder=2)
-        ax.errorbar(paa, y, xerr=np.nan_to_num([paa - lo, hi - paa]), fmt="none", ecolor=INK, elinewidth=1.1,
-                    capsize=3, zorder=3)
+        # the CI whisker runs along the lower part of the bar, the order markers along the upper part, so a
+        # marker inside the CI never sits on the whisker
+        ax.errorbar(paa, y + CI_DY, xerr=np.nan_to_num([paa - lo, hi - paa]), fmt="none", ecolor=INK,
+                    elinewidth=1.1, capsize=2.2, zorder=3)
         a = np.array([100 * _f(r["acc_sham_first"]) for r in pm])
         b = np.array([100 * _f(r["acc_sham_second"]) for r in pm])
-        ax.scatter(a, y, marker="o", s=30, color=INK, edgecolor="white", linewidth=0.7, zorder=4)
-        ax.scatter(b, y, marker="D", s=26, color=C["injection"], edgecolor="white", linewidth=0.7, zorder=4)
+        ax.scatter(a, y + MARKER_DY, marker="o", s=30, color=INK, edgecolor="white", linewidth=0.7, zorder=4)
+        ax.scatter(b, y + MARKER_DY, marker="D", s=26, color=C["injection"], edgecolor="white", linewidth=0.7,
+                   zorder=4)
         for yy, v in zip(y, paa):
             ax.text(104.5, yy, f"{v:.1f}%", va="center", ha="left", fontsize=8.5, color=C["text"])
         ax.set_yticks(y, [display_name(r["model"]) for r in pm])
