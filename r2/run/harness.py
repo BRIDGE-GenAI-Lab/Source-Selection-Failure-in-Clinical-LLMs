@@ -344,11 +344,12 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
                 return done
             raise CorruptResults(f"{path}: unparseable line {i + 1}")
         key = (r["case_id"], r["order"])
-        ok = (r.get("stimulus_sha256") == context["stimulus_sha256"] and key[0] in cases
-              and r.get("payload_sha256") == render_messages(cases[key[0]], key[1])["payload_sha256"])
+        msgs = render_messages(cases[key[0]], key[1]) if key[0] in cases else None
+        ok = (r.get("stimulus_sha256") == context["stimulus_sha256"] and msgs is not None
+              and r.get("payload_sha256") == msgs["payload_sha256"])
         if not ok:
             raise StaleRecords(f"{path}: stale record for {key}")
-        mismatches = _spec_mismatches(r, spec, render_messages(cases[key[0]], key[1]))
+        mismatches = _spec_mismatches(r, spec, msgs)
         if mismatches and not accept_spec_change:
             raise StaleRecords(f"{path}: record for {key} differs from the current prompt or spec in "
                                f"{[m[0] for m in mismatches]}; rerun with --accept-spec-change to keep it")
