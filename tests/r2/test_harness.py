@@ -911,3 +911,27 @@ def test_breaker_stop_is_logged_as_an_incident(tmp_path):
     (inc,) = _incidents(SPEC, tmp_path)
     assert inc["kind"] == "stopped" and inc["error_type"] == "ModelUnavailable"
     assert "circuit breaker" in inc["error"] and (inc["case_id"], inc["order"]) == ("CASE_002", "TS")
+
+
+# ---- minor 3: --limit 0 means zero pairs; omit --limit for all ----
+def test_limit_zero_runs_no_cells(tmp_path):
+    client = FakeClient([GOOD] * 4)
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=0, sleep=lambda s: None)
+    assert client.calls == []
+    path = results_path(SPEC, tmp_path)
+    assert not path.exists() or path.read_text() == ""
+
+
+def test_limit_none_runs_all_cells(tmp_path):
+    client = FakeClient([GOOD] * 4)
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=None, sleep=lambda s: None)
+    assert len(client.calls) == 4
+
+
+def test_negative_limit_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match="limit"):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, limit=-1, sleep=lambda s: None)
+    with pytest.raises(SystemExit):
+        harness.parse_args(["--limit", "-1"])
+    assert harness.parse_args(["--limit", "0"]).limit == 0
+    assert harness.parse_args([]).limit is None

@@ -431,6 +431,9 @@ def _model_lock(out_dir, spec):
 
 
 def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.sleep, accept_spec_change=False):
+    """Run every not-yet-done cell of the first `limit` case_ids (all when limit is None; 0 runs none)."""
+    if limit is not None and limit < 0:
+        raise ValueError(f"limit must be >= 0 or None, got {limit}")
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = results_path(spec, out_dir)
@@ -438,7 +441,7 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
         cell = None  # the cell being attempted when a stop is raised (None: before any cell)
         try:
             done, error_texts = _done(path, cases, context, spec, out_dir, accept_spec_change)
-            ids = sorted(cases)[:limit] if limit else sorted(cases)
+            ids = sorted(cases) if limit is None else sorted(cases)[:limit]
             if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
                 with open(path, "a", encoding="utf-8") as fh:
                     fh.write("\n")
@@ -533,10 +536,18 @@ def _same_dir(a, b):
     return str(a.resolve()).casefold() == str(b.resolve()).casefold()
 
 
+def _non_negative_int(text):
+    value = int(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0, got {value}")
+    return value
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", default="all")
-    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--limit", type=_non_negative_int, default=None,
+                        help="run only the first N pairs (sorted case_id); 0 runs none; omit for all")
     parser.add_argument("--out", default=None, help="default: RUNS_V2/main, or RUNS_V2/pilot with --pilot")
     parser.add_argument("--pilot", action="store_true",
                         help="pilot run: skip the freeze-tag and verified-stimulus checks")
