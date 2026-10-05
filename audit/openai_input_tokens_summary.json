@@ -1,0 +1,1724 @@
+{
+  "encoding": {
+    "name": "o200k_base",
+    "tiktoken_version": "0.14.0",
+    "encoding_for_model": {
+      "gpt-4.1-2025-04-14": "o200k_base",
+      "gpt-4.1-nano-2025-04-14": "o200k_base",
+      "gpt-4o-mini-2024-07-18": "o200k_base",
+      "gpt-5-nano-2025-08-07": "o200k_base"
+    }
+  },
+  "k_values": [
+    0,
+    1,
+    2,
+    5,
+    10
+  ],
+  "definitions": {
+    "decision_call": "the final API call (`<case>_final.json`); its input carries both tool payloads",
+    "call1": "the first API call (`<case>_response1.json`): system prompt, user message and tool schema; no tool payload",
+    "reconstructed": "sum of tiktoken counts of each message content and function output in the call input, replayed with src/runner.py",
+    "offset": "logged usage.input_tokens minus reconstructed",
+    "cf_*_added": "tokens added when the hidden field is serialized into both payloads",
+    "cf_*_offset": "logged minus the counterfactual reconstruction (= offset - added)",
+    "median_shift": "median(cf offset) - median(offset)",
+    "slope_offset_on_added": "OLS slope of the observed offset on the tokens the field would add: 0 if the field was absent, 1 if it was present",
+    "structure": "tool calls per tool-calling response: AB = both in call 1; A|B = one per call; -|AB = none, then both",
+    "twice_logged_minus_reconstructed": "call-1 diagnostic, 2 x logged - reconstructed, by number of function calls the model emitted in call 1",
+    "informative_subset": "records whose added tokens differ from the modal added count by more than 2; only these can tell the counterfactual from the reconstruction, since a constant addition is absorbed by the offset. If the field had been sent, their observed offset would exceed the rest's by predicted_difference (added - modal added); observed_difference is the difference of median observed offsets",
+    "multi_call_records": "every API call of the records with more than one tool-calling response"
+  },
+  "models": {
+    "gpt-4.1-2025-04-14": {
+      "n_records": 500,
+      "structures": {
+        "AB": 500
+      },
+      "decision_call": {
+        "offset": {
+          "n": 500,
+          "median": 51,
+          "q1": 51,
+          "q3": 51,
+          "iqr": 0,
+          "min": 51,
+          "max": 51,
+          "within_k_of_median": {
+            "0": 1.0,
+            "1": 1.0,
+            "2": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          }
+        },
+        "cf_guardrails_offset": {
+          "n": 500,
+          "median": -35,
+          "q1": -43,
+          "q3": -29.75,
+          "iqr": 13.25,
+          "min": -78,
+          "max": -9,
+          "within_k_of_median": {
+            "0": 0.09,
+            "1": 0.128,
+            "2": 0.29,
+            "5": 0.442,
+            "10": 0.728
+          }
+        },
+        "cf_exclusions_offset": {
+          "n": 500,
+          "median": 37,
+          "q1": 37,
+          "q3": 37,
+          "iqr": 0,
+          "min": -31,
+          "max": 38,
+          "within_k_of_median": {
+            "0": 0.706,
+            "1": 0.82,
+            "2": 0.82,
+            "5": 0.82,
+            "10": 0.956
+          }
+        },
+        "median_shift": {
+          "cf_guardrails": -86,
+          "cf_exclusions": -14
+        },
+        "added_tokens": {
+          "cf_guardrails": {
+            "min": 60,
+            "median": 86,
+            "max": 129
+          },
+          "cf_exclusions": {
+            "min": 13,
+            "median": 14,
+            "max": 82
+          }
+        },
+        "slope_offset_on_added": {
+          "cf_guardrails": 0,
+          "cf_exclusions": 0
+        },
+        "informative_subset": {
+          "cf_guardrails": {
+            "modal_added": 84,
+            "n": 357,
+            "predicted_difference": {
+              "min": -24,
+              "median": 6,
+              "max": 45
+            },
+            "offset_median_subset": 51,
+            "offset_median_rest": 51,
+            "observed_difference": 0
+          },
+          "cf_exclusions": {
+            "modal_added": 14,
+            "n": 90,
+            "predicted_difference": {
+              "min": 9,
+              "median": 9,
+              "max": 68
+            },
+            "offset_median_subset": 51,
+            "offset_median_rest": 51,
+            "observed_difference": 0
+          }
+        },
+        "by_structure": {
+          "AB": {
+            "offset": {
+              "n": 500,
+              "median": 51,
+              "q1": 51,
+              "q3": 51,
+              "iqr": 0,
+              "min": 51,
+              "max": 51,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "cf_guardrails_offset": {
+              "n": 500,
+              "median": -35,
+              "q1": -43,
+              "q3": -29.75,
+              "iqr": 13.25,
+              "min": -78,
+              "max": -9,
+              "within_k_of_median": {
+                "0": 0.09,
+                "1": 0.128,
+                "2": 0.29,
+                "5": 0.442,
+                "10": 0.728
+              }
+            },
+            "cf_exclusions_offset": {
+              "n": 500,
+              "median": 37,
+              "q1": 37,
+              "q3": 37,
+              "iqr": 0,
+              "min": -31,
+              "max": 38,
+              "within_k_of_median": {
+                "0": 0.706,
+                "1": 0.82,
+                "2": 0.82,
+                "5": 0.82,
+                "10": 0.956
+              }
+            },
+            "median_shift": {
+              "cf_guardrails": -86,
+              "cf_exclusions": -14
+            },
+            "added_tokens": {
+              "cf_guardrails": {
+                "min": 60,
+                "median": 86,
+                "max": 129
+              },
+              "cf_exclusions": {
+                "min": 13,
+                "median": 14,
+                "max": 82
+              }
+            },
+            "slope_offset_on_added": {
+              "cf_guardrails": 0,
+              "cf_exclusions": 0
+            },
+            "informative_subset": {
+              "cf_guardrails": {
+                "modal_added": 84,
+                "n": 357,
+                "predicted_difference": {
+                  "min": -24,
+                  "median": 6,
+                  "max": 45
+                },
+                "offset_median_subset": 51,
+                "offset_median_rest": 51,
+                "observed_difference": 0
+              },
+              "cf_exclusions": {
+                "modal_added": 14,
+                "n": 90,
+                "predicted_difference": {
+                  "min": 9,
+                  "median": 9,
+                  "max": 68
+                },
+                "offset_median_subset": 51,
+                "offset_median_rest": 51,
+                "observed_difference": 0
+              }
+            }
+          }
+        }
+      },
+      "call1": {
+        "offset": {
+          "n": 500,
+          "median": -278,
+          "q1": -285,
+          "q3": -272,
+          "iqr": 13,
+          "min": -323,
+          "max": -240,
+          "within_k_of_median": {
+            "0": 0.042,
+            "1": 0.156,
+            "2": 0.242,
+            "5": 0.434,
+            "10": 0.708
+          }
+        },
+        "by_function_calls": {
+          "2": {
+            "offset": {
+              "n": 500,
+              "median": -278,
+              "q1": -285,
+              "q3": -272,
+              "iqr": 13,
+              "min": -323,
+              "max": -240,
+              "within_k_of_median": {
+                "0": 0.042,
+                "1": 0.156,
+                "2": 0.242,
+                "5": 0.434,
+                "10": 0.708
+              }
+            },
+            "twice_logged_minus_reconstructed": {
+              "68": 277,
+              "69": 223
+            }
+          }
+        }
+      }
+    },
+    "gpt-4.1-nano-2025-04-14": {
+      "n_records": 500,
+      "structures": {
+        "AB": 500
+      },
+      "decision_call": {
+        "offset": {
+          "n": 500,
+          "median": 51,
+          "q1": 51,
+          "q3": 51,
+          "iqr": 0,
+          "min": 51,
+          "max": 51,
+          "within_k_of_median": {
+            "0": 1.0,
+            "1": 1.0,
+            "2": 1.0,
+            "5": 1.0,
+            "10": 1.0
+          }
+        },
+        "cf_guardrails_offset": {
+          "n": 500,
+          "median": -35,
+          "q1": -43,
+          "q3": -29.75,
+          "iqr": 13.25,
+          "min": -78,
+          "max": -9,
+          "within_k_of_median": {
+            "0": 0.09,
+            "1": 0.128,
+            "2": 0.29,
+            "5": 0.442,
+            "10": 0.728
+          }
+        },
+        "cf_exclusions_offset": {
+          "n": 500,
+          "median": 37,
+          "q1": 37,
+          "q3": 37,
+          "iqr": 0,
+          "min": -31,
+          "max": 38,
+          "within_k_of_median": {
+            "0": 0.706,
+            "1": 0.82,
+            "2": 0.82,
+            "5": 0.82,
+            "10": 0.956
+          }
+        },
+        "median_shift": {
+          "cf_guardrails": -86,
+          "cf_exclusions": -14
+        },
+        "added_tokens": {
+          "cf_guardrails": {
+            "min": 60,
+            "median": 86,
+            "max": 129
+          },
+          "cf_exclusions": {
+            "min": 13,
+            "median": 14,
+            "max": 82
+          }
+        },
+        "slope_offset_on_added": {
+          "cf_guardrails": 0,
+          "cf_exclusions": 0
+        },
+        "informative_subset": {
+          "cf_guardrails": {
+            "modal_added": 84,
+            "n": 357,
+            "predicted_difference": {
+              "min": -24,
+              "median": 6,
+              "max": 45
+            },
+            "offset_median_subset": 51,
+            "offset_median_rest": 51,
+            "observed_difference": 0
+          },
+          "cf_exclusions": {
+            "modal_added": 14,
+            "n": 90,
+            "predicted_difference": {
+              "min": 9,
+              "median": 9,
+              "max": 68
+            },
+            "offset_median_subset": 51,
+            "offset_median_rest": 51,
+            "observed_difference": 0
+          }
+        },
+        "by_structure": {
+          "AB": {
+            "offset": {
+              "n": 500,
+              "median": 51,
+              "q1": 51,
+              "q3": 51,
+              "iqr": 0,
+              "min": 51,
+              "max": 51,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "cf_guardrails_offset": {
+              "n": 500,
+              "median": -35,
+              "q1": -43,
+              "q3": -29.75,
+              "iqr": 13.25,
+              "min": -78,
+              "max": -9,
+              "within_k_of_median": {
+                "0": 0.09,
+                "1": 0.128,
+                "2": 0.29,
+                "5": 0.442,
+                "10": 0.728
+              }
+            },
+            "cf_exclusions_offset": {
+              "n": 500,
+              "median": 37,
+              "q1": 37,
+              "q3": 37,
+              "iqr": 0,
+              "min": -31,
+              "max": 38,
+              "within_k_of_median": {
+                "0": 0.706,
+                "1": 0.82,
+                "2": 0.82,
+                "5": 0.82,
+                "10": 0.956
+              }
+            },
+            "median_shift": {
+              "cf_guardrails": -86,
+              "cf_exclusions": -14
+            },
+            "added_tokens": {
+              "cf_guardrails": {
+                "min": 60,
+                "median": 86,
+                "max": 129
+              },
+              "cf_exclusions": {
+                "min": 13,
+                "median": 14,
+                "max": 82
+              }
+            },
+            "slope_offset_on_added": {
+              "cf_guardrails": 0,
+              "cf_exclusions": 0
+            },
+            "informative_subset": {
+              "cf_guardrails": {
+                "modal_added": 84,
+                "n": 357,
+                "predicted_difference": {
+                  "min": -24,
+                  "median": 6,
+                  "max": 45
+                },
+                "offset_median_subset": 51,
+                "offset_median_rest": 51,
+                "observed_difference": 0
+              },
+              "cf_exclusions": {
+                "modal_added": 14,
+                "n": 90,
+                "predicted_difference": {
+                  "min": 9,
+                  "median": 9,
+                  "max": 68
+                },
+                "offset_median_subset": 51,
+                "offset_median_rest": 51,
+                "observed_difference": 0
+              }
+            }
+          }
+        }
+      },
+      "call1": {
+        "offset": {
+          "n": 500,
+          "median": -278,
+          "q1": -285,
+          "q3": -272,
+          "iqr": 13,
+          "min": -323,
+          "max": -240,
+          "within_k_of_median": {
+            "0": 0.042,
+            "1": 0.156,
+            "2": 0.242,
+            "5": 0.434,
+            "10": 0.708
+          }
+        },
+        "by_function_calls": {
+          "2": {
+            "offset": {
+              "n": 500,
+              "median": -278,
+              "q1": -285,
+              "q3": -272,
+              "iqr": 13,
+              "min": -323,
+              "max": -240,
+              "within_k_of_median": {
+                "0": 0.042,
+                "1": 0.156,
+                "2": 0.242,
+                "5": 0.434,
+                "10": 0.708
+              }
+            },
+            "twice_logged_minus_reconstructed": {
+              "68": 277,
+              "69": 223
+            }
+          }
+        }
+      }
+    },
+    "gpt-4o-mini-2024-07-18": {
+      "n_records": 500,
+      "structures": {
+        "AB": 499,
+        "A|B": 1
+      },
+      "decision_call": {
+        "offset": {
+          "n": 500,
+          "median": 51,
+          "q1": 51,
+          "q3": 51,
+          "iqr": 0,
+          "min": 51,
+          "max": 55,
+          "within_k_of_median": {
+            "0": 0.998,
+            "1": 0.998,
+            "2": 0.998,
+            "5": 1.0,
+            "10": 1.0
+          }
+        },
+        "cf_guardrails_offset": {
+          "n": 500,
+          "median": -35,
+          "q1": -43,
+          "q3": -29.75,
+          "iqr": 13.25,
+          "min": -78,
+          "max": -9,
+          "within_k_of_median": {
+            "0": 0.09,
+            "1": 0.128,
+            "2": 0.29,
+            "5": 0.442,
+            "10": 0.726
+          }
+        },
+        "cf_exclusions_offset": {
+          "n": 500,
+          "median": 37,
+          "q1": 37,
+          "q3": 37,
+          "iqr": 0,
+          "min": -31,
+          "max": 42,
+          "within_k_of_median": {
+            "0": 0.706,
+            "1": 0.818,
+            "2": 0.818,
+            "5": 0.82,
+            "10": 0.956
+          }
+        },
+        "median_shift": {
+          "cf_guardrails": -86,
+          "cf_exclusions": -14
+        },
+        "added_tokens": {
+          "cf_guardrails": {
+            "min": 60,
+            "median": 86,
+            "max": 129
+          },
+          "cf_exclusions": {
+            "min": 13,
+            "median": 14,
+            "max": 82
+          }
+        },
+        "slope_offset_on_added": {
+          "cf_guardrails": -0.000642994592,
+          "cf_exclusions": -0.000214865876
+        },
+        "informative_subset": {
+          "cf_guardrails": {
+            "modal_added": 84,
+            "n": 357,
+            "predicted_difference": {
+              "min": -24,
+              "median": 6,
+              "max": 45
+            },
+            "offset_median_subset": 51,
+            "offset_median_rest": 51,
+            "observed_difference": 0
+          },
+          "cf_exclusions": {
+            "modal_added": 14,
+            "n": 90,
+            "predicted_difference": {
+              "min": 9,
+              "median": 9,
+              "max": 68
+            },
+            "offset_median_subset": 51,
+            "offset_median_rest": 51,
+            "observed_difference": 0
+          }
+        },
+        "by_structure": {
+          "AB": {
+            "offset": {
+              "n": 499,
+              "median": 51,
+              "q1": 51,
+              "q3": 51,
+              "iqr": 0,
+              "min": 51,
+              "max": 51,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "cf_guardrails_offset": {
+              "n": 499,
+              "median": -35,
+              "q1": -43,
+              "q3": -30,
+              "iqr": 13,
+              "min": -78,
+              "max": -9,
+              "within_k_of_median": {
+                "0": 0.09018036072144289,
+                "1": 0.1282565130260521,
+                "2": 0.2905811623246493,
+                "5": 0.44288577154308617,
+                "10": 0.7274549098196392
+              }
+            },
+            "cf_exclusions_offset": {
+              "n": 499,
+              "median": 37,
+              "q1": 37,
+              "q3": 37,
+              "iqr": 0,
+              "min": -31,
+              "max": 38,
+              "within_k_of_median": {
+                "0": 0.7074148296593187,
+                "1": 0.8196392785571143,
+                "2": 0.8196392785571143,
+                "5": 0.8196392785571143,
+                "10": 0.9559118236472945
+              }
+            },
+            "median_shift": {
+              "cf_guardrails": -86,
+              "cf_exclusions": -14
+            },
+            "added_tokens": {
+              "cf_guardrails": {
+                "min": 60,
+                "median": 86,
+                "max": 129
+              },
+              "cf_exclusions": {
+                "min": 13,
+                "median": 14,
+                "max": 82
+              }
+            },
+            "slope_offset_on_added": {
+              "cf_guardrails": 0,
+              "cf_exclusions": 0
+            },
+            "informative_subset": {
+              "cf_guardrails": {
+                "modal_added": 84,
+                "n": 356,
+                "predicted_difference": {
+                  "min": -24,
+                  "median": 6,
+                  "max": 45
+                },
+                "offset_median_subset": 51,
+                "offset_median_rest": 51,
+                "observed_difference": 0
+              },
+              "cf_exclusions": {
+                "modal_added": 14,
+                "n": 90,
+                "predicted_difference": {
+                  "min": 9,
+                  "median": 9,
+                  "max": 68
+                },
+                "offset_median_subset": 51,
+                "offset_median_rest": 51,
+                "observed_difference": 0
+              }
+            }
+          },
+          "A|B": {
+            "offset": {
+              "n": 1,
+              "median": 55,
+              "q1": 55,
+              "q3": 55,
+              "iqr": 0,
+              "min": 55,
+              "max": 55,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "cf_guardrails_offset": {
+              "n": 1,
+              "median": -24,
+              "q1": -24,
+              "q3": -24,
+              "iqr": 0,
+              "min": -24,
+              "max": -24,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "cf_exclusions_offset": {
+              "n": 1,
+              "median": 42,
+              "q1": 42,
+              "q3": 42,
+              "iqr": 0,
+              "min": 42,
+              "max": 42,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "median_shift": {
+              "cf_guardrails": -79,
+              "cf_exclusions": -13
+            },
+            "added_tokens": {
+              "cf_guardrails": {
+                "min": 79,
+                "median": 79,
+                "max": 79
+              },
+              "cf_exclusions": {
+                "min": 13,
+                "median": 13,
+                "max": 13
+              }
+            },
+            "slope_offset_on_added": {
+              "cf_guardrails": null,
+              "cf_exclusions": null
+            },
+            "informative_subset": {
+              "cf_guardrails": {
+                "modal_added": 79,
+                "n": 0,
+                "predicted_difference": null,
+                "offset_median_subset": null,
+                "offset_median_rest": null,
+                "observed_difference": null
+              },
+              "cf_exclusions": {
+                "modal_added": 13,
+                "n": 0,
+                "predicted_difference": null,
+                "offset_median_subset": null,
+                "offset_median_rest": null,
+                "observed_difference": null
+              }
+            }
+          }
+        }
+      },
+      "call1": {
+        "offset": {
+          "n": 500,
+          "median": -278,
+          "q1": -285,
+          "q3": -272,
+          "iqr": 13,
+          "min": -323,
+          "max": 69,
+          "within_k_of_median": {
+            "0": 0.042,
+            "1": 0.156,
+            "2": 0.242,
+            "5": 0.434,
+            "10": 0.708
+          }
+        },
+        "by_function_calls": {
+          "1": {
+            "offset": {
+              "n": 1,
+              "median": 69,
+              "q1": 69,
+              "q3": 69,
+              "iqr": 0,
+              "min": 69,
+              "max": 69,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "twice_logged_minus_reconstructed": {
+              "811": 1
+            }
+          },
+          "2": {
+            "offset": {
+              "n": 499,
+              "median": -278,
+              "q1": -285,
+              "q3": -272,
+              "iqr": 13,
+              "min": -323,
+              "max": -240,
+              "within_k_of_median": {
+                "0": 0.04208416833667335,
+                "1": 0.156312625250501,
+                "2": 0.24248496993987975,
+                "5": 0.4348697394789579,
+                "10": 0.7094188376753507
+              }
+            },
+            "twice_logged_minus_reconstructed": {
+              "68": 277,
+              "69": 222
+            }
+          }
+        }
+      }
+    },
+    "gpt-5-nano-2025-08-07": {
+      "n_records": 500,
+      "structures": {
+        "-|AB": 3,
+        "AB": 491,
+        "A|B": 6
+      },
+      "decision_call": {
+        "offset": {
+          "n": 500,
+          "median": 62,
+          "q1": 62,
+          "q3": 62,
+          "iqr": 0,
+          "min": 62,
+          "max": 66,
+          "within_k_of_median": {
+            "0": 0.982,
+            "1": 0.982,
+            "2": 0.982,
+            "5": 1.0,
+            "10": 1.0
+          }
+        },
+        "cf_guardrails_offset": {
+          "n": 500,
+          "median": -24,
+          "q1": -32,
+          "q3": -18,
+          "iqr": 14,
+          "min": -67,
+          "max": 2,
+          "within_k_of_median": {
+            "0": 0.09,
+            "1": 0.126,
+            "2": 0.288,
+            "5": 0.44,
+            "10": 0.728
+          }
+        },
+        "cf_exclusions_offset": {
+          "n": 500,
+          "median": 48,
+          "q1": 48,
+          "q3": 48,
+          "iqr": 0,
+          "min": -20,
+          "max": 52,
+          "within_k_of_median": {
+            "0": 0.69,
+            "1": 0.804,
+            "2": 0.804,
+            "5": 0.822,
+            "10": 0.956
+          }
+        },
+        "median_shift": {
+          "cf_guardrails": -86,
+          "cf_exclusions": -14
+        },
+        "added_tokens": {
+          "cf_guardrails": {
+            "min": 60,
+            "median": 86,
+            "max": 129
+          },
+          "cf_exclusions": {
+            "min": 13,
+            "median": 14,
+            "max": 82
+          }
+        },
+        "slope_offset_on_added": {
+          "cf_guardrails": 0.001266005805,
+          "cf_exclusions": -0.001158414821
+        },
+        "informative_subset": {
+          "cf_guardrails": {
+            "modal_added": 84,
+            "n": 357,
+            "predicted_difference": {
+              "min": -24,
+              "median": 6,
+              "max": 45
+            },
+            "offset_median_subset": 62,
+            "offset_median_rest": 62,
+            "observed_difference": 0
+          },
+          "cf_exclusions": {
+            "modal_added": 14,
+            "n": 90,
+            "predicted_difference": {
+              "min": 9,
+              "median": 9,
+              "max": 68
+            },
+            "offset_median_subset": 62,
+            "offset_median_rest": 62,
+            "observed_difference": 0
+          }
+        },
+        "by_structure": {
+          "-|AB": {
+            "offset": {
+              "n": 3,
+              "median": 66,
+              "q1": 66,
+              "q3": 66,
+              "iqr": 0,
+              "min": 66,
+              "max": 66,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "cf_guardrails_offset": {
+              "n": 3,
+              "median": -24,
+              "q1": -38,
+              "q3": -22.5,
+              "iqr": 15.5,
+              "min": -52,
+              "max": -21,
+              "within_k_of_median": {
+                "0": 0.3333333333333333,
+                "1": 0.3333333333333333,
+                "2": 0.3333333333333333,
+                "5": 0.6666666666666666,
+                "10": 0.6666666666666666
+              }
+            },
+            "cf_exclusions_offset": {
+              "n": 3,
+              "median": 52,
+              "q1": 52,
+              "q3": 52,
+              "iqr": 0,
+              "min": 52,
+              "max": 52,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "median_shift": {
+              "cf_guardrails": -90,
+              "cf_exclusions": -14
+            },
+            "added_tokens": {
+              "cf_guardrails": {
+                "min": 87,
+                "median": 90,
+                "max": 118
+              },
+              "cf_exclusions": {
+                "min": 14,
+                "median": 14,
+                "max": 14
+              }
+            },
+            "slope_offset_on_added": {
+              "cf_guardrails": 0,
+              "cf_exclusions": null
+            },
+            "informative_subset": {
+              "cf_guardrails": {
+                "modal_added": 87,
+                "n": 2,
+                "predicted_difference": {
+                  "min": 3,
+                  "median": 17,
+                  "max": 31
+                },
+                "offset_median_subset": 66,
+                "offset_median_rest": 66,
+                "observed_difference": 0
+              },
+              "cf_exclusions": {
+                "modal_added": 14,
+                "n": 0,
+                "predicted_difference": null,
+                "offset_median_subset": null,
+                "offset_median_rest": null,
+                "observed_difference": null
+              }
+            }
+          },
+          "AB": {
+            "offset": {
+              "n": 491,
+              "median": 62,
+              "q1": 62,
+              "q3": 62,
+              "iqr": 0,
+              "min": 62,
+              "max": 62,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "cf_guardrails_offset": {
+              "n": 491,
+              "median": -24,
+              "q1": -32,
+              "q3": -18,
+              "iqr": 14,
+              "min": -67,
+              "max": 2,
+              "within_k_of_median": {
+                "0": 0.08961303462321792,
+                "1": 0.12627291242362526,
+                "2": 0.28716904276985744,
+                "5": 0.4378818737270876,
+                "10": 0.7270875763747454
+              }
+            },
+            "cf_exclusions_offset": {
+              "n": 491,
+              "median": 48,
+              "q1": 48,
+              "q3": 48,
+              "iqr": 0,
+              "min": -20,
+              "max": 49,
+              "within_k_of_median": {
+                "0": 0.7026476578411406,
+                "1": 0.8187372708757638,
+                "2": 0.8187372708757638,
+                "5": 0.8187372708757638,
+                "10": 0.955193482688391
+              }
+            },
+            "median_shift": {
+              "cf_guardrails": -86,
+              "cf_exclusions": -14
+            },
+            "added_tokens": {
+              "cf_guardrails": {
+                "min": 60,
+                "median": 86,
+                "max": 129
+              },
+              "cf_exclusions": {
+                "min": 13,
+                "median": 14,
+                "max": 82
+              }
+            },
+            "slope_offset_on_added": {
+              "cf_guardrails": 0,
+              "cf_exclusions": 0
+            },
+            "informative_subset": {
+              "cf_guardrails": {
+                "modal_added": 84,
+                "n": 350,
+                "predicted_difference": {
+                  "min": -24,
+                  "median": 6,
+                  "max": 45
+                },
+                "offset_median_subset": 62,
+                "offset_median_rest": 62,
+                "observed_difference": 0
+              },
+              "cf_exclusions": {
+                "modal_added": 14,
+                "n": 89,
+                "predicted_difference": {
+                  "min": 9,
+                  "median": 9,
+                  "max": 68
+                },
+                "offset_median_subset": 62,
+                "offset_median_rest": 62,
+                "observed_difference": 0
+              }
+            }
+          },
+          "A|B": {
+            "offset": {
+              "n": 6,
+              "median": 66,
+              "q1": 66,
+              "q3": 66,
+              "iqr": 0,
+              "min": 66,
+              "max": 66,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "cf_guardrails_offset": {
+              "n": 6,
+              "median": -21,
+              "q1": -22,
+              "q3": -17,
+              "iqr": 5,
+              "min": -30,
+              "max": -6,
+              "within_k_of_median": {
+                "0": 0.0,
+                "1": 0.5,
+                "2": 0.5,
+                "5": 0.6666666666666666,
+                "10": 0.8333333333333334
+              }
+            },
+            "cf_exclusions_offset": {
+              "n": 6,
+              "median": 52,
+              "q1": 52,
+              "q3": 52,
+              "iqr": 0,
+              "min": 43,
+              "max": 52,
+              "within_k_of_median": {
+                "0": 0.8333333333333334,
+                "1": 0.8333333333333334,
+                "2": 0.8333333333333334,
+                "5": 0.8333333333333334,
+                "10": 1.0
+              }
+            },
+            "median_shift": {
+              "cf_guardrails": -87,
+              "cf_exclusions": -14
+            },
+            "added_tokens": {
+              "cf_guardrails": {
+                "min": 72,
+                "median": 87,
+                "max": 96
+              },
+              "cf_exclusions": {
+                "min": 14,
+                "median": 14,
+                "max": 23
+              }
+            },
+            "slope_offset_on_added": {
+              "cf_guardrails": 0,
+              "cf_exclusions": 0
+            },
+            "informative_subset": {
+              "cf_guardrails": {
+                "modal_added": 88,
+                "n": 3,
+                "predicted_difference": {
+                  "min": -16,
+                  "median": -6,
+                  "max": 8
+                },
+                "offset_median_subset": 66,
+                "offset_median_rest": 66,
+                "observed_difference": 0
+              },
+              "cf_exclusions": {
+                "modal_added": 14,
+                "n": 1,
+                "predicted_difference": {
+                  "min": 9,
+                  "median": 9,
+                  "max": 9
+                },
+                "offset_median_subset": 66,
+                "offset_median_rest": 66,
+                "observed_difference": 0
+              }
+            }
+          }
+        }
+      },
+      "call1": {
+        "offset": {
+          "n": 500,
+          "median": -275,
+          "q1": -282,
+          "q3": -269,
+          "iqr": 13,
+          "min": -320,
+          "max": 74,
+          "within_k_of_median": {
+            "0": 0.054,
+            "1": 0.158,
+            "2": 0.234,
+            "5": 0.432,
+            "10": 0.68
+          }
+        },
+        "by_function_calls": {
+          "0": {
+            "offset": {
+              "n": 3,
+              "median": 74,
+              "q1": 74,
+              "q3": 74,
+              "iqr": 0,
+              "min": 74,
+              "max": 74,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "twice_logged_minus_reconstructed": {
+              "741": 1,
+              "768": 1,
+              "778": 1
+            }
+          },
+          "1": {
+            "offset": {
+              "n": 6,
+              "median": 74,
+              "q1": 74,
+              "q3": 74,
+              "iqr": 0,
+              "min": 74,
+              "max": 74,
+              "within_k_of_median": {
+                "0": 1.0,
+                "1": 1.0,
+                "2": 1.0,
+                "5": 1.0,
+                "10": 1.0
+              }
+            },
+            "twice_logged_minus_reconstructed": {
+              "748": 1,
+              "752": 1,
+              "755": 1,
+              "757": 1,
+              "787": 1,
+              "848": 1
+            }
+          },
+          "2": {
+            "offset": {
+              "n": 491,
+              "median": -276,
+              "q1": -282,
+              "q3": -269.5,
+              "iqr": 12.5,
+              "min": -320,
+              "max": -238,
+              "within_k_of_median": {
+                "0": 0.048879837067209775,
+                "1": 0.1446028513238289,
+                "2": 0.24032586558044808,
+                "5": 0.43584521384928715,
+                "10": 0.7067209775967414
+              }
+            },
+            "twice_logged_minus_reconstructed": {
+              "73": 219,
+              "74": 272
+            }
+          }
+        }
+      }
+    }
+  },
+  "multi_call_records": [
+    {
+      "model": "gpt-4o-mini-2024-07-18",
+      "case_id": "CASE_004",
+      "structure": "A|B",
+      "calls": [
+        {
+          "file": "CASE_004_response1.json",
+          "input_items": 2,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 742,
+          "reconstructed": 673,
+          "offset": 69,
+          "twice_logged_minus_reconstructed": 811
+        },
+        {
+          "file": "CASE_004_response2.json",
+          "input_items": 5,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 996,
+          "reconstructed": 905,
+          "offset": 91,
+          "twice_logged_minus_reconstructed": 1087
+        },
+        {
+          "file": "CASE_004_final.json",
+          "input_items": 8,
+          "tool_schema_sent": false,
+          "function_calls_emitted": 0,
+          "logged": 1391,
+          "reconstructed": 1336,
+          "offset": 55,
+          "twice_logged_minus_reconstructed": 1446
+        }
+      ]
+    },
+    {
+      "model": "gpt-5-nano-2025-08-07",
+      "case_id": "CASE_099",
+      "structure": "A|B",
+      "calls": [
+        {
+          "file": "CASE_099_response1.json",
+          "input_items": 2,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 681,
+          "reconstructed": 607,
+          "offset": 74,
+          "twice_logged_minus_reconstructed": 755
+        },
+        {
+          "file": "CASE_099_response2.json",
+          "input_items": 5,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 882,
+          "reconstructed": 780,
+          "offset": 102,
+          "twice_logged_minus_reconstructed": 984
+        },
+        {
+          "file": "CASE_099_final.json",
+          "input_items": 8,
+          "tool_schema_sent": false,
+          "function_calls_emitted": 0,
+          "logged": 1194,
+          "reconstructed": 1128,
+          "offset": 66,
+          "twice_logged_minus_reconstructed": 1260
+        }
+      ]
+    },
+    {
+      "model": "gpt-5-nano-2025-08-07",
+      "case_id": "CASE_105",
+      "structure": "A|B",
+      "calls": [
+        {
+          "file": "CASE_105_response1.json",
+          "input_items": 2,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 774,
+          "reconstructed": 700,
+          "offset": 74,
+          "twice_logged_minus_reconstructed": 848
+        },
+        {
+          "file": "CASE_105_response2.json",
+          "input_items": 5,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 1019,
+          "reconstructed": 917,
+          "offset": 102,
+          "twice_logged_minus_reconstructed": 1121
+        },
+        {
+          "file": "CASE_105_final.json",
+          "input_items": 8,
+          "tool_schema_sent": false,
+          "function_calls_emitted": 0,
+          "logged": 1383,
+          "reconstructed": 1317,
+          "offset": 66,
+          "twice_logged_minus_reconstructed": 1449
+        }
+      ]
+    },
+    {
+      "model": "gpt-5-nano-2025-08-07",
+      "case_id": "CASE_228",
+      "structure": "-|AB",
+      "calls": [
+        {
+          "file": "CASE_228_response1.json",
+          "input_items": 2,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 0,
+          "logged": 704,
+          "reconstructed": 630,
+          "offset": 74,
+          "twice_logged_minus_reconstructed": 778
+        },
+        {
+          "file": "CASE_228_response2.json",
+          "input_items": 3,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 2,
+          "logged": 365,
+          "reconstructed": 653,
+          "offset": -288,
+          "twice_logged_minus_reconstructed": 77
+        },
+        {
+          "file": "CASE_228_final.json",
+          "input_items": 8,
+          "tool_schema_sent": false,
+          "function_calls_emitted": 0,
+          "logged": 1301,
+          "reconstructed": 1235,
+          "offset": 66,
+          "twice_logged_minus_reconstructed": 1367
+        }
+      ]
+    },
+    {
+      "model": "gpt-5-nano-2025-08-07",
+      "case_id": "CASE_260",
+      "structure": "-|AB",
+      "calls": [
+        {
+          "file": "CASE_260_response1.json",
+          "input_items": 2,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 0,
+          "logged": 694,
+          "reconstructed": 620,
+          "offset": 74,
+          "twice_logged_minus_reconstructed": 768
+        },
+        {
+          "file": "CASE_260_response2.json",
+          "input_items": 3,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 2,
+          "logged": 360,
+          "reconstructed": 643,
+          "offset": -283,
+          "twice_logged_minus_reconstructed": 77
+        },
+        {
+          "file": "CASE_260_final.json",
+          "input_items": 8,
+          "tool_schema_sent": false,
+          "function_calls_emitted": 0,
+          "logged": 1251,
+          "reconstructed": 1185,
+          "offset": 66,
+          "twice_logged_minus_reconstructed": 1317
+        }
+      ]
+    },
+    {
+      "model": "gpt-5-nano-2025-08-07",
+      "case_id": "CASE_302",
+      "structure": "A|B",
+      "calls": [
+        {
+          "file": "CASE_302_response1.json",
+          "input_items": 2,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 713,
+          "reconstructed": 639,
+          "offset": 74,
+          "twice_logged_minus_reconstructed": 787
+        },
+        {
+          "file": "CASE_302_response2.json",
+          "input_items": 5,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 936,
+          "reconstructed": 834,
+          "offset": 102,
+          "twice_logged_minus_reconstructed": 1038
+        },
+        {
+          "file": "CASE_302_final.json",
+          "input_items": 8,
+          "tool_schema_sent": false,
+          "function_calls_emitted": 0,
+          "logged": 1277,
+          "reconstructed": 1211,
+          "offset": 66,
+          "twice_logged_minus_reconstructed": 1343
+        }
+      ]
+    },
+    {
+      "model": "gpt-5-nano-2025-08-07",
+      "case_id": "CASE_328",
+      "structure": "A|B",
+      "calls": [
+        {
+          "file": "CASE_328_response1.json",
+          "input_items": 2,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 683,
+          "reconstructed": 609,
+          "offset": 74,
+          "twice_logged_minus_reconstructed": 757
+        },
+        {
+          "file": "CASE_328_response2.json",
+          "input_items": 5,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 906,
+          "reconstructed": 804,
+          "offset": 102,
+          "twice_logged_minus_reconstructed": 1008
+        },
+        {
+          "file": "CASE_328_final.json",
+          "input_items": 8,
+          "tool_schema_sent": false,
+          "function_calls_emitted": 0,
+          "logged": 1247,
+          "reconstructed": 1181,
+          "offset": 66,
+          "twice_logged_minus_reconstructed": 1313
+        }
+      ]
+    },
+    {
+      "model": "gpt-5-nano-2025-08-07",
+      "case_id": "CASE_356",
+      "structure": "A|B",
+      "calls": [
+        {
+          "file": "CASE_356_response1.json",
+          "input_items": 2,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 674,
+          "reconstructed": 600,
+          "offset": 74,
+          "twice_logged_minus_reconstructed": 748
+        },
+        {
+          "file": "CASE_356_response2.json",
+          "input_items": 5,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 879,
+          "reconstructed": 777,
+          "offset": 102,
+          "twice_logged_minus_reconstructed": 981
+        },
+        {
+          "file": "CASE_356_final.json",
+          "input_items": 8,
+          "tool_schema_sent": false,
+          "function_calls_emitted": 0,
+          "logged": 1203,
+          "reconstructed": 1137,
+          "offset": 66,
+          "twice_logged_minus_reconstructed": 1269
+        }
+      ]
+    },
+    {
+      "model": "gpt-5-nano-2025-08-07",
+      "case_id": "CASE_377",
+      "structure": "-|AB",
+      "calls": [
+        {
+          "file": "CASE_377_response1.json",
+          "input_items": 2,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 0,
+          "logged": 667,
+          "reconstructed": 593,
+          "offset": 74,
+          "twice_logged_minus_reconstructed": 741
+        },
+        {
+          "file": "CASE_377_response2.json",
+          "input_items": 3,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 2,
+          "logged": 347,
+          "reconstructed": 616,
+          "offset": -269,
+          "twice_logged_minus_reconstructed": 78
+        },
+        {
+          "file": "CASE_377_final.json",
+          "input_items": 8,
+          "tool_schema_sent": false,
+          "function_calls_emitted": 0,
+          "logged": 1128,
+          "reconstructed": 1062,
+          "offset": 66,
+          "twice_logged_minus_reconstructed": 1194
+        }
+      ]
+    },
+    {
+      "model": "gpt-5-nano-2025-08-07",
+      "case_id": "CASE_464",
+      "structure": "A|B",
+      "calls": [
+        {
+          "file": "CASE_464_response1.json",
+          "input_items": 2,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 678,
+          "reconstructed": 604,
+          "offset": 74,
+          "twice_logged_minus_reconstructed": 752
+        },
+        {
+          "file": "CASE_464_response2.json",
+          "input_items": 5,
+          "tool_schema_sent": true,
+          "function_calls_emitted": 1,
+          "logged": 880,
+          "reconstructed": 778,
+          "offset": 102,
+          "twice_logged_minus_reconstructed": 982
+        },
+        {
+          "file": "CASE_464_final.json",
+          "input_items": 8,
+          "tool_schema_sent": false,
+          "function_calls_emitted": 0,
+          "logged": 1203,
+          "reconstructed": 1137,
+          "offset": 66,
+          "twice_logged_minus_reconstructed": 1269
+        }
+      ]
+    }
+  ]
+}

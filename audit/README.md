@@ -101,3 +101,109 @@ json_decode_error; 126 coerced_invalid_choice), 368 of them on identical pairs. 
 gives counts by class x profile x model, by `visible_status`, by profile x `visible_status`, the replayed
 reasons, the invalid values per model, and the runner conditions. `analysis_original/headline.json` key
 `excluding_coerced` recomputes the pooled measures without these records.
+
+## openai_input_tokens.csv: logged token counts corroborate the reconstructed OpenAI inputs
+
+For the four OpenAI models (openai_fc, 2,000 records), `src/runner.py` logged only the sha256 of each
+`excerpt_text`. The hash check therefore cannot show that these models never received `safety_guardrails`
+or `exclusions_or_cautions`. The raw Responses API replies do log `usage.input_tokens` for every call.
+`python -m r2.audit.openai_tokens` compares the logged count with the token count of the reconstructed input.
+
+**Method.**
+
+- **Replay.** The original `ExperimentRunner._process_case` (`src/runner.py`) runs on each case with a
+  stand-in client. The client returns the logged replies in order (`<case>_response1.json`, any
+  `_response2.json`, `<case>_final.json`) and copies each request's `input` as it is sent. The replay must
+  make exactly the logged calls: the same raw file names, the same A/B mapping and no runner error. Its system
+  prompt, user message and tool payloads must equal `original_model_inputs.jsonl.gz`. Both checks pass for
+  all 2,000 records.
+- **Count.** Each message content and each function output in a request is tokenized with tiktoken
+  `o200k_base` and the counts are summed (`reconstructed`). `tiktoken.encoding_for_model` returns
+  `o200k_base` for all four models. `offset = logged - reconstructed`. The offset absorbs everything that is
+  the same in every record: message framing, the tool schema and the function-call markup. Nothing else is
+  estimated.
+- **Which call.** The test uses the decision call (`<case>_final.json`), the call whose input carries both
+  tool payloads. The first call carries the system prompt, user message and tool schema but no payload, so it
+  cannot show whether a hidden field was sent. It is reported separately (`call1_*`).
+- **Counterfactuals.** These are the same decision-call input with each tool's `safety_guardrails`, or its
+  `exclusions_or_cautions`, serialized into both payloads by the runner's own serializer (pydantic
+  `model_dump_json`, with the field after `excerpt_text`). If a model had received the field, the observed
+  offset would grow by the tokens the field adds (`cf_*_added`). It would then vary from record to record,
+  with a slope of 1 on `cf_*_added`.
+
+**Result.** Decision call, per model. Offsets are in tokens: median (IQR; min to max). "= median" is the share
+of records exactly at the median and "±5" the share within 5 tokens of it.
+
+| Model | n | Observed offset | = median | ±5 | Counterfactual guardrails | = median | ±5 | Counterfactual exclusions | = median | ±5 | Slope on added tokens (guardrails, exclusions) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| gpt-4.1-2025-04-14 | 500 | 51 (0; 51 to 51) | 100% | 100% | -35 (13.25; -78 to -9) | 9.0% | 44.2% | 37 (0; -31 to 38) | 70.6% | 82.0% | 0, 0 |
+| gpt-4.1-nano-2025-04-14 | 500 | 51 (0; 51 to 51) | 100% | 100% | -35 (13.25; -78 to -9) | 9.0% | 44.2% | 37 (0; -31 to 38) | 70.6% | 82.0% | 0, 0 |
+| gpt-4o-mini-2024-07-18 | 500 | 51 (0; 51 to 55) | 99.8% | 100% | -35 (13.25; -78 to -9) | 9.0% | 44.2% | 37 (0; -31 to 42) | 70.6% | 82.0% | -0.0006, -0.0002 |
+| gpt-5-nano-2025-08-07 | 500 | 62 (0; 62 to 66) | 98.2% | 100% | -24 (14; -67 to 2) | 9.0% | 44.0% | 48 (0; -20 to 52) | 69.0% | 82.2% | 0.0013, -0.0012 |
+
+In plain terms:
+
+- **Every decision call matches the reconstruction to the token.** In 1,990 records the model called both
+  tools at once in its first reply (structure `AB`). Their offset is exactly 51 for the three GPT-4.1 and
+  GPT-4o models and exactly 62 for gpt-5-nano, without exception.
+- **The other 10 records differ only by one extra message.** These are 1 gpt-4o-mini and 9 gpt-5-nano records
+  that needed a second tool-calling round (`A|B` or `-|AB`). Their input holds one more user message, the
+  runner's "You must call the remaining guideline tool" prompt, and every one of them sits exactly 4 tokens
+  higher (55 and 66). That is the framing of one more message. Within each structure the offset never varies
+  and the slope on added tokens is exactly 0.
+- **The guardrails counterfactual does not fit.** It adds 60 to 129 tokens per record (median 86). Its median
+  offset shifts by -86, and its offsets spread over about 70 tokens (IQR 13 to 14), with 44% of records within
+  ±5 of the median against 100% observed.
+- **The exclusions counterfactual is informative in 90 records per model.** It adds a fixed 13 or 14 tokens
+  (`"exclusions_or_cautions":[]` twice) to the 410 records per model in which both lists are empty. The offset
+  absorbs a fixed addition, so those records cannot tell the two inputs apart. In the other 90 records the
+  field would add 9 to 68 tokens more (median 9). Their observed offset equals that of the 410 (difference 0).
+- **Conclusion.** This corroborates the reconstruction for all four models. The logged decision-call inputs
+  have exactly the length of the reconstructed inputs, measured on the counted text. The framing offsets (51
+  and 62, plus 4 per extra message) are constants read off the data, not derived. There is no evidence of
+  either field in the final-call inputs. `exclusions_or_cautions` could be tested only in the 90 records per
+  model where its length differs from the modal addition. The full numbers, including the per-structure strata
+  (`by_structure`) and the informative subset (`informative_subset`), are in `openai_input_tokens_summary.json`.
+- **This is one corroboration, not three, for the GPT-4.1 and GPT-4o models.** gpt-4.1, gpt-4.1-nano and
+  gpt-4o-mini share a tokenizer (`o200k_base`) and received identical inputs (same runner, case file and A/B
+  mapping). They log the identical decision-call count for every record except gpt-4o-mini CASE_004, the only
+  one of the three with a second tool-calling round. gpt-5-nano received the same text with the same tokenizer
+  but logs a different framing constant.
+
+**The first call does not fit a constant offset.** We report it as found. Its offset varies from record to
+record (IQR 13 in every model; -323 to -240 for gpt-4.1), and only 4 to 5% of records sit at the median.
+
+In the 1,990 first calls where the model replied with two parallel function calls, the logged count is half
+the expected count. `2 x logged - reconstructed` takes only two adjacent values, 68 or 69 (73 or 74 for
+gpt-5-nano), so logged = floor((reconstructed + c) / 2). Here c = 69 (74 for gpt-5-nano), the same constant
+as in the 10 first calls where the model replied with one function call or none, whose offset is exactly 69
+or 74.
+
+The three second calls that replied with two parallel calls (gpt-5-nano, `-|AB`) are halved the same way.
+Second calls with one function call, and every decision call, are not halved (`multi_call_records` in the
+summary lists every call of the 10 multi-call records). This halving of the logged usage is undocumented and
+we found it after the fact. No parameter was fitted to it, and the corroboration above does not depend on it.
+
+**Limits.**
+
+- Token counts test length, not content. A substitution with the same token count would pass. The excerpt
+  text is verified by hash. The other parts (metadata fields, system prompt, user message) are corroborated
+  only in length.
+- The offset absorbs any addition that is identical in every record. Both hidden fields vary between records
+  (`safety_guardrails` is never empty), so neither can hide in the offset. `exclusions_or_cautions` is tested
+  only by the 90 records per model in which it is not empty in both payloads.
+- The offsets (51 and 62, plus 4 per extra message) are read off, not derived. OpenAI does not document how
+  the Responses API renders messages, tools and function calls into tokens for these models.
+- `applicability` was not tested as a separate counterfactual. It is never empty and varies between records,
+  so the same argument applies, but it is not shown here.
+
+| Column | Description |
+|---|---|
+| `model`, `case_id`, `run_dir` | Record identity (2,000 rows, 500 per model) |
+| `structure` | Tool calls per tool-calling reply: `AB` = both in the first reply; `A\|B` = one per reply; `-\|AB` = none, then both |
+| `n_calls` | Number of API calls logged for the record (2 or 3) |
+| `call1_logged`, `call1_reconstructed`, `call1_offset` | First call (`_response1.json`): logged `usage.input_tokens`, tiktoken count of its message contents, difference |
+| `call1_function_calls` | Function calls in the first reply (0, 1 or 2); 2 marks the halved first-call counts |
+| `logged`, `reconstructed`, `offset` | Decision call (`_final.json`): logged `usage.input_tokens`, tiktoken count of its message contents and function outputs, difference |
+| `cf_guardrails_added`, `cf_guardrails_offset` | Tokens added by serializing `safety_guardrails` into both payloads; `offset - cf_guardrails_added` |
+| `cf_exclusions_added`, `cf_exclusions_offset` | The same for `exclusions_or_cautions` |
