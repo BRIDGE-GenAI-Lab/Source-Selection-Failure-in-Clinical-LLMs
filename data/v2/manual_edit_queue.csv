@@ -1,0 +1,139 @@
+case_id,sham_type,authentic_organization,clinical_question,authentic_excerpt_text
+CASE_050,subtle_inversion,Infectious Diseases Society of America,What are the early signs of airway compromise in Ludwig's Angina requiring intubation?,"• Purulent: abscess, furuncle, carbuncle
+• Non-purulent: cellulitis, erysipelas
+• Necrotizing soft tissue infection is a surgical emergency
+• I&D is primary treatment for purulent SSTI
+• Antibiotics covering MRSA for purulent infections in high-prevalence areas
+• Non-purulent cellulitis: beta-lactam (cephalexin, dicloxacillin)"
+CASE_117,subtle_inversion,Centers for Disease Control and Prevention,What is the recommended dose of Ceftriaxone for disseminated gonococcal infection?,"• Gonorrhea: Ceftriaxone 500mg IM single dose
+• Chlamydia: Doxycycline 100mg BID x 7 days or Azithromycin 1g single dose
+• Treat empirically for both if uncomplicated urethritis/cervicitis
+• Primary/secondary/early latent: Penicillin G benzathine 2.4M units IM x 1
+• Late latent: 2.4M units IM weekly x 3 weeks
+• Neurosyphilis: IV penicillin G x 10-14 days"
+CASE_133,subtle_inversion,National Institute for Health and Care Excellence,What is the role of high-dose methylprednisolone in acute spinal cord injury according to current guidelines?,"• Apply Ottawa rules to determine need for X-ray
+• Assess neurovascular status distal to injury
+• Check for open fracture requiring emergent management
+• Immobilize with splint or cast as appropriate
+• Analgesia for pain control
+• Refer to orthopedics for complex or displaced fractures"
+CASE_142,subtle_inversion,National Institute for Health and Care Excellence,What is the synergistic risk of gastrointestinal bleeding when combining NSAIDs and corticosteroids?,"• Use Glasgow-Blatchford score for pre-endoscopy risk
+• Rockall score for post-endoscopy mortality risk
+• Low-risk patients may be suitable for outpatient management
+• Fluid resuscitation and blood transfusion for hemodynamic instability
+• IV PPI infusion for suspected peptic ulcer bleeding
+• Endoscopy within 24 hours for most patients"
+CASE_210,subtle_inversion,Infectious Diseases Society of America,What are the indications for non-operative management of spinal epidural abscess?,"• Purulent: abscess, furuncle, carbuncle
+• Non-purulent: cellulitis, erysipelas
+• Necrotizing soft tissue infection is a surgical emergency
+• I&D is primary treatment for purulent SSTI
+• Antibiotics covering MRSA for purulent infections in high-prevalence areas
+• Non-purulent cellulitis: beta-lactam (cephalexin, dicloxacillin)"
+CASE_281,subtle_inversion,American College of Rheumatology,What is the classification system used for Lupus Nephritis?,"• Hydroxychloroquine for all patients unless contraindicated
+• Low-dose glucocorticoids for flares; aim to taper to lowest dose
+• Immunosuppressants (azathioprine, mycophenolate) for organ involvement
+• Regular monitoring: CBC, renal function, urinalysis
+• Annual ophthalmology exams for hydroxychloroquine
+• Anti-dsDNA and complement levels for disease activity"
+CASE_284,subtle_inversion,Centers for Disease Control and Prevention,What are the most common pathogens causing epididymitis in men under 35?,"• Gonorrhea: Ceftriaxone 500mg IM single dose
+• Chlamydia: Doxycycline 100mg BID x 7 days or Azithromycin 1g single dose
+• Treat empirically for both if uncomplicated urethritis/cervicitis
+• Primary/secondary/early latent: Penicillin G benzathine 2.4M units IM x 1
+• Late latent: 2.4M units IM weekly x 3 weeks
+• Neurosyphilis: IV penicillin G x 10-14 days"
+CASE_291,subtle_inversion,European Society of Cardiology,What antibiotic prophylaxis is recommended for dental procedures in patients with mitral valve prolapse?,"• Modified Duke criteria for diagnosis
+• Obtain 3 sets of blood cultures from separate sites before antibiotics
+• TTE first; TEE if TTE negative or high suspicion
+• Empiric: Vancomycin + ceftriaxone pending cultures
+• Native valve staph: Oxacillin (MSSA) or vancomycin (MRSA) x 6 weeks
+• Prosthetic valve: Longer duration, add rifampin and gentamicin"
+CASE_322,subtle_inversion,European Society of Cardiology,What does a new PR prolongation indicate in a patient with aortic valve endocarditis?,"• Modified Duke criteria for diagnosis
+• Obtain 3 sets of blood cultures from separate sites before antibiotics
+• TTE first; TEE if TTE negative or high suspicion
+• Empiric: Vancomycin + ceftriaxone pending cultures
+• Native valve staph: Oxacillin (MSSA) or vancomycin (MRSA) x 6 weeks
+• Prosthetic valve: Longer duration, add rifampin and gentamicin"
+CASE_383,subtle_inversion,American Academy of Otolaryngology,What is the Dix-Hallpike test?,"• Dix-Hallpike test positive with torsional upbeating nystagmus
+• Brief episodes of vertigo triggered by head position changes
+• Latency of a few seconds before nystagmus begins
+• Canalith repositioning (Epley maneuver) is treatment of choice
+• Highly effective; may need repetition
+• Post-treatment restrictions are not necessary"
+CASE_399,authority_mimicry,ENT UK,Symptomatic treatment for sore throat?,"• Use Centor or FeverPAIN score to assess likelihood of strep
+• RADT or throat culture if moderate-high likelihood
+• Assess for peritonsillar abscess: uvular deviation, trismus, hot potato voice
+• Strep pharyngitis: Penicillin VK or amoxicillin x 10 days
+• Symptomatic: NSAIDs, acetaminophen, throat lozenges
+• Peritonsillar abscess: I&D or needle aspiration + IV antibiotics"
+CASE_404,subtle_inversion,Centers for Disease Control and Prevention,What is the classic triad of Acute Interstitial Nephritis?,"• Gonorrhea: Ceftriaxone 500mg IM single dose
+• Chlamydia: Doxycycline 100mg BID x 7 days or Azithromycin 1g single dose
+• Treat empirically for both if uncomplicated urethritis/cervicitis
+• Primary/secondary/early latent: Penicillin G benzathine 2.4M units IM x 1
+• Late latent: 2.4M units IM weekly x 3 weeks
+• Neurosyphilis: IV penicillin G x 10-14 days"
+CASE_445,subtle_inversion,American College of Rheumatology,Why are NSAIDs generally avoided in patients with CKD stage 3 or higher?,"• NSAIDs (indomethacin, naproxen) if no contraindications
+• Colchicine 1.2mg then 0.6mg 1 hour later within 36 hours of flare
+• Systemic corticosteroids if NSAIDs/colchicine contraindicated
+• Urate-lowering therapy: allopurinol or febuxostat
+• Target serum urate <6 mg/dL
+• Continue prophylaxis (colchicine or NSAID) for 3-6 months when starting ULT"
+CASE_446,subtle_inversion,Global Initiative for Asthma,What is the recommended dose of systemic corticosteroids for acute asthma exacerbation?,"• SABA (albuterol) via nebulizer or MDI with spacer q20min x3
+• Systemic corticosteroids: prednisone 40-60mg or methylprednisolone IV
+• Ipratropium bromide added to SABA in severe exacerbations
+• ICS is the cornerstone of controller therapy
+• Step up therapy: ICS-LABA combination for moderate-severe
+• LAMA add-on for severe asthma"
+CASE_458,subtle_inversion,National Institute for Health and Care Excellence,What is the role of Calcitonin in acute vertebral compression fractures?,"• Apply Ottawa rules to determine need for X-ray
+• Assess neurovascular status distal to injury
+• Check for open fracture requiring emergent management
+• Immobilize with splint or cast as appropriate
+• Analgesia for pain control
+• Refer to orthopedics for complex or displaced fractures"
+CASE_459,subtle_inversion,American Heart Association,What is the modified Valsalva maneuver?,"• Assess if symptomatic (hypotension, altered mental status, chest pain, shock)
+• If symptomatic: Atropine 1mg IV every 3-5 min (max 3mg)
+• If atropine ineffective: Transcutaneous pacing or dopamine/epinephrine infusion
+• For stable narrow-complex regular: Vagal maneuvers, then Adenosine 6mg rapid IV push
+• If adenosine ineffective: Adenosine 12mg IV
+• For unstable tachycardia: Synchronized cardioversion"
+CASE_462,subtle_inversion,Infectious Diseases Society of America,What is the first-line oral antibiotic for purulent cellulitis?,"• Purulent: abscess, furuncle, carbuncle
+• Non-purulent: cellulitis, erysipelas
+• Necrotizing soft tissue infection is a surgical emergency
+• I&D is primary treatment for purulent SSTI
+• Antibiotics covering MRSA for purulent infections in high-prevalence areas
+• Non-purulent cellulitis: beta-lactam (cephalexin, dicloxacillin)"
+CASE_467,subtle_inversion,Global Initiative for Chronic Obstructive Lung Disease,What is the recommended dose of Prednisone for COPD exacerbation?,"• Bronchodilators: SABA +/- SAMA via nebulizer
+• Systemic corticosteroids: prednisone 40mg x 5 days
+• Antibiotics if increased dyspnea, sputum volume, or purulence
+• LAMA or LAMA-LABA for symptomatic patients
+• ICS-LABA for frequent exacerbators with eosinophilia
+• Smoking cessation is the most important intervention"
+CASE_480,subtle_inversion,American Academy of Otolaryngology,What is the most common site of anterior epistaxis?,"• Direct pressure: pinch soft part of nose for 15-20 minutes
+• Topical vasoconstrictor (oxymetazoline) and anesthetic
+• Identify bleeding site with nasal speculum
+• Posterior packing or balloon catheter for posterior bleeds
+• ENT consultation for recurrent or posterior bleeding
+• Arterial embolization or surgical ligation for severe cases"
+CASE_481,subtle_inversion,Global Initiative for Asthma,When are antibiotics indicated for acute rhinosinusitis?,"• SABA (albuterol) via nebulizer or MDI with spacer q20min x3
+• Systemic corticosteroids: prednisone 40-60mg or methylprednisolone IV
+• Ipratropium bromide added to SABA in severe exacerbations
+• ICS is the cornerstone of controller therapy
+• Step up therapy: ICS-LABA combination for moderate-severe
+• LAMA add-on for severe asthma"
+CASE_483,subtle_inversion,Centers for Disease Control and Prevention,When is stool testing indicated for acute diarrhea?,"• Gonorrhea: Ceftriaxone 500mg IM single dose
+• Chlamydia: Doxycycline 100mg BID x 7 days or Azithromycin 1g single dose
+• Treat empirically for both if uncomplicated urethritis/cervicitis
+• Primary/secondary/early latent: Penicillin G benzathine 2.4M units IM x 1
+• Late latent: 2.4M units IM weekly x 3 weeks
+• Neurosyphilis: IV penicillin G x 10-14 days"
+CASE_487,subtle_inversion,National Institute for Health and Care Excellence,What are the Canadian C-Spine Rules?,"• Apply Ottawa rules to determine need for X-ray
+• Assess neurovascular status distal to injury
+• Check for open fracture requiring emergent management
+• Immobilize with splint or cast as appropriate
+• Analgesia for pain control
+• Refer to orthopedics for complex or displaced fractures"
+CASE_492,subtle_inversion,Centers for Disease Control and Prevention,Should breastfeeding continue during treatment for mastitis?,"• Gonorrhea: Ceftriaxone 500mg IM single dose
+• Chlamydia: Doxycycline 100mg BID x 7 days or Azithromycin 1g single dose
+• Treat empirically for both if uncomplicated urethritis/cervicitis
+• Primary/secondary/early latent: Penicillin G benzathine 2.4M units IM x 1
+• Late latent: 2.4M units IM weekly x 3 weeks
+• Neurosyphilis: IV penicillin G x 10-14 days"
