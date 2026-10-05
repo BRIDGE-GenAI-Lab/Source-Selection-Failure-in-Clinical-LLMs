@@ -151,13 +151,13 @@ def original_pipelines():
 # Context from docs/r2/AUTHOR_FACTS_EVIDENCE.md F5 (technical causes read from the run logs).
 RUN_NOTES = {
     "run_together_Qwen_Qwen2.5_1.5B_Instruct_20260115_163308":
-        "All 500 rows are API error stubs, none a model decision; the loader excludes this model by name",
-    "run_20260107_181353": "Run ended after 59 rows, no stop reason logged",
-    "run_20260107_181634": "Run ended after 116 rows, no stop reason logged",
-    "run_20260103_210559": "437 of 500 decisions are 'unclear'",
-    "run_gemma-3-270m_20260111_115639": ("Local pilot with 500 valid decisions; not in the 21-model set, "
-                                          "reason for exclusion not recorded"),
-    "run_groq_llama_3.1_8b_instant_20260115_092058": "Pilot of 50 cases; reason for exclusion not recorded",
+        "All 500 rows are API error stubs, none a model decision; the loader excludes this model by name (per AUTHOR_FACTS F5)",
+    "run_20260107_181353": "Run ended after 59 rows, no stop reason logged (per AUTHOR_FACTS F5)",
+    "run_20260107_181634": "Run ended after 116 rows, no stop reason logged (per AUTHOR_FACTS F5)",
+    "run_20260103_210559": "437 of 500 decisions are 'unclear' (per AUTHOR_FACTS F6)",
+    "run_gemma-3-270m_20260111_115639": ("Local pilot with 500 scored decisions; reason for exclusion "
+                                          "not recorded (per AUTHOR_FACTS F5)"),
+    "run_groq_llama_3.1_8b_instant_20260115_092058": "Pilot of 50 cases; reason for exclusion not recorded (per AUTHOR_FACTS F5)",
 }
 
 
@@ -197,23 +197,25 @@ def run_inventory(eval_root=None):
             if not is_canon:
                 bits = []
                 if model in canon_by_model:
-                    bits.append(f"model has a canonical run ({canon_by_model[model]})")
+                    bits.append(f"model has a canonical run ({canon_by_model[model]}) (per manifest)")
                 if valid == 0 and recs:
                     top = errs.most_common(1)
-                    bits.append("no usable decision" + (f"; logged error: {top[0][0]}" if top else ""))
+                    bits.append("no usable decision" + (f"; logged error: {top[0][0]}" if top else "")
+                                + " (per logged errors)")
                 elif not recs:
-                    bits.append("no records written")
+                    bits.append("no records written (per results.jsonl)")
                 elif len(recs) < 500 or valid < 500:
-                    bits.append(f"partial run ({len(recs)} rows, {valid} valid decisions of 500 cases)")
+                    bits.append(f"partial run ({len(recs)} rows, {valid} scored decisions of 500 cases) "
+                                "(per results.jsonl)")
                 if ihash != NOT_RECORDED and not ihash.startswith(CANONICAL_HASH_PREFIX):
-                    bits.append(f"earlier case file (input hash {ihash[:8]}...)")
+                    bits.append(f"earlier case file (input hash {ihash[:8]}...) (per AUTHOR_FACTS F6)")
                 if d.name in RUN_NOTES:
                     bits.append(RUN_NOTES[d.name])
-                if model not in canon_by_model and model != NOT_RECORDED:
-                    bits.append("model not in the 21-model set")
+                if not bits and model != NOT_RECORDED and model not in canon_by_model:
+                    bits.append("model not in the 21-model set (per manifest)")
                 reason = "; ".join(bits) or NOT_RECORDED
             rows.append({"results_tree": tree, "model": model, "run_dir": d.name, "records": len(recs),
-                         "valid_decisions": valid, "input_file_hash": ihash,
+                         "valid_decisions_scored": valid, "input_file_hash": ihash,
                          "canonical": "Y" if is_canon else "N", "reason_not_canonical": reason})
     return rows
 
@@ -349,10 +351,21 @@ def write_csv(path, rows):
         w.writerows(rows)
 
 
+README_TEXT = """Notes on the supplement tables (R2, pre-results pass)
+
+S_run_inventory.csv
+- valid_decisions_scored: records whose model_decision and selected_tool_correct are both non-null
+  (the definition used by load_canonical.py, _is_valid).
+- reason_not_canonical: each part states its source: logged errors, results.jsonl, manifest,
+  or docs/r2/AUTHOR_FACTS_EVIDENCE.md (AUTHOR_FACTS F5/F6).
+"""
+
+
 def write_all(out_dir=None):
     out_dir = Path(out_dir) if out_dir else OUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     written, pending = {}, {}
+    (out_dir / "README.txt").write_text(README_TEXT)
     for name, fn in AVAILABLE_TABLES.items():
         rows = fn()
         write_csv(out_dir / f"{name}.csv", rows)

@@ -69,15 +69,26 @@ def test_run_inventory_covers_every_results_dir(written):
     assert {(r["results_tree"], r["run_dir"]) for r in rows} == expected
     canon = [r for r in rows if r["canonical"] == "Y"]
     assert len(canon) == 21
-    assert sum(int(r["valid_decisions"]) for r in canon) >= 21 * 500
+    assert sum(int(r["valid_decisions_scored"]) for r in canon) >= 21 * 500
     for r in rows:
         assert r["canonical"] in ("Y", "N")
         if r["canonical"] == "N":
             assert r["reason_not_canonical"]
         assert r["input_file_hash"]
     q = [r for r in rows if "Qwen2.5_1.5B" in r["run_dir"]][0]
-    assert q["records"] == "500" and q["valid_decisions"] == "0"
+    assert q["records"] == "500" and q["valid_decisions_scored"] == "0"
     assert "non-serverless" in q["reason_not_canonical"]
+
+
+def test_inventory_reasons_attributed_and_not_redundant(written):
+    out, _ = written
+    for r in read(out, "S_run_inventory"):
+        reason = r["reason_not_canonical"]
+        if r["canonical"] == "N":
+            assert "(per " in reason, r["run_dir"]
+            if reason.count("; ") and "21-model" in reason:
+                raise AssertionError(reason)
+    assert (out / "README.txt").read_text().count("non-null") == 1
 
 
 def test_original_reanalysis_labeled_exploratory(written):
