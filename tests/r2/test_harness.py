@@ -1189,7 +1189,8 @@ def test_org_verification_replay_premature_resume_then_retry_persistent(tmp_path
     assert len(fin) == 6 and all(r["status"] == "ok" and "persistent_error" not in r for r in fin)
     reopened = [i for i in _incidents(SPEC, tmp_path) if i["kind"] == "reopened_persistent"]
     assert sorted((i["case_id"], i["order"]) for i in reopened) == sorted((c, o) for c in SUBSET3 for o in ORDERS)
-    assert all(i["prior_error"] == f"BadRequestError: {ORG_UNVERIFIED}"[:200] for i in reopened)
+    assert all(i["prior_error"] == f"BadRequestError: {ORG_UNVERIFIED}" for i in reopened)  # raw, unchanged
+    assert all(i["prior_error_key"] == harness.normalize_error(i["prior_error"])[:200] for i in reopened)
     lines = path.read_text().splitlines()
     assert all(json.loads(lines[i["prior_line"] - 1]).get("persistent_error") for i in reopened)
     (row,) = check(tmp_path, [SPEC], sorted(SUBSET3))
@@ -1366,3 +1367,65 @@ def test_read_records_on_a_torn_file_says_resume_first(tmp_path):
         fh.write(b'{"case_id": "CASE_00')
     with pytest.raises(CorruptResults, match=r"line 3 .*resume the model"):
         read_records(path)
+
+
+# ---- error_key: request ids, UUIDs, hex runs, timestamps and long digit runs are normalized before comparing ----
+def _openai_400(req):
+    return (f"Error code: 400 - {{'error': {{'message': 'Invalid prompt (request_id: {req}): your prompt was "
+            "flagged as potentially violating our usage policy. Please try again with a different prompt.', "
+            "'type': 'invalid_request_error', 'param': None, 'code': 'invalid_prompt'}}")
+
+
+REQ_1, REQ_2 = "req_7f3a9c21d4e84b0fa1c2d3e4f5a6b7c8", "req_0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e"
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("id 123e4567-e89b-12d3-a456-426614174000 failed", "id <uuid> failed"),
+    ("see req_7f3a9c21d4e84b0f now", "see <req> now"),
+    ("request_id: abc-123_XYZ; retry", "request_id: <id>; retry"),
+    ("Request ID 'f00ba5' (x)", "Request ID '<id>' (x)"),
+    ('"request_id": "2f1e0d"', '"request_id": "<id>"'),
+    ("trace 9f86d081884c7d65 end", "trace <hex> end"),
+    ("at 2026-10-05T12:34:56.789Z and 2026-10-05 12:34:56+02:00", "at <ts> and <ts>"),
+    ("job 1234567 queued", "job <n> queued"),
+])
+def test_normalize_error_replaces_volatile_tokens(raw, expected):
+    from r2.run.harness import normalize_error
+    assert normalize_error(raw) == expected
+
+
+@pytest.mark.parametrize("stable", [
+    "The model 'gpt-5-mini-2025-08-07' does not exist", "max_tokens is 8192 but limit is 32768",
+    "code 12345 and hex deadbee", "Request contains an invalid argument.", "Unable to access non-serverless model",
+    "Please include the request ID in your message if the error persists.",
+])
+def test_normalize_error_keeps_stable_text(stable):
+    from r2.run.harness import normalize_error
+    assert normalize_error(stable) == stable
+
+
+def test_openai_400s_differing_only_in_request_id_finalize_on_reattempt(tmp_path):
+    from r2.run.harness import final_records
+    assert _openai_400(REQ_1)[:200] != _openai_400(REQ_2)[:200]  # the raw texts differ inside the compared span
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad(_openai_400(REQ_1)), GOOD]), CTX, limit=1,
+              sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad(_openai_400(REQ_2))]), CTX, limit=1, sleep=lambda s: None)
+    first, last = [r for r in _recs(results_path(SPEC, tmp_path)) if r["order"] == "TS"]
+    assert last.get("persistent_error") is True
+    assert first["error"] == f"BadRequestError: {_openai_400(REQ_1)}"  # raw text stored unchanged
+    assert last["error"] == f"BadRequestError: {_openai_400(REQ_2)}"
+    assert first["error_key"] == last["error_key"] and "<req>" in first["error_key"]
+    assert REQ_1 not in first["error_key"] and len(first["error_key"]) <= 200
+    client = FakeClient([])
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=1, sleep=lambda s: None)
+    assert client.calls == [] and len(final_records(results_path(SPEC, tmp_path))) == 2
+
+
+def test_openai_400s_differing_only_in_request_id_count_as_the_same_text_for_the_breaker(tmp_path):
+    # Parse-failure non_responses between the errors reset the consecutive rule, so only the same-text rule trips.
+    reqs = [REQ_1, REQ_2, "req_aaaaaaaabbbbbbbbccccccccdddddddd"]
+    client = ScriptedClient([_bad(_openai_400(reqs[0])), "nope", "nope", _bad(_openai_400(reqs[1])), "nope", "nope",
+                             _bad(_openai_400(reqs[2])), GOOD])
+    with pytest.raises(ModelUnavailable, match="same error text 3x"):
+        run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(_recs(results_path(SPEC, tmp_path))) == 5

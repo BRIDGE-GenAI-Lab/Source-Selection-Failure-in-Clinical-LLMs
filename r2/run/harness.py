@@ -71,6 +71,31 @@ MODEL_ERRORS = {"AuthenticationError", "PermissionDeniedError", "NotFoundError"}
 # error-only record for the same cell is final: it is written with "persistent_error": true.
 BREAKER_LIMIT = 3
 ERROR_TEXT_CHARS = 200
+# Error texts are compared by error_key: the text with volatile tokens replaced (normalize_error), cut to
+# ERROR_TEXT_CHARS. The raw text is stored unchanged in "error"; the key is stored as "error_key".
+_HEX = "0-9a-fA-F"
+ERROR_NORMALIZERS = (
+    (re.compile(rf"(?<![{_HEX}])[{_HEX}]{{8}}-[{_HEX}]{{4}}-[{_HEX}]{{4}}-[{_HEX}]{{4}}-[{_HEX}]{{12}}(?![{_HEX}])"),
+     "<uuid>"),
+    (re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?"), "<ts>"),
+    (re.compile(r"\breq_[A-Za-z0-9]+"), "<req>"),
+    (re.compile(r"""(\brequest[ _-]?id["']?\s*[:=]?\s*["']?)(?!<)(?=[A-Za-z_-]*\d)[A-Za-z0-9_-]+""", re.I),
+     r"\1<id>"),  # a value with at least one digit, so "request ID in your message" is left alone
+    (re.compile(rf"(?<![0-9A-Za-z])[{_HEX}]{{8,}}(?![0-9A-Za-z])"), "<hex>"),
+    (re.compile(r"\d{6,}"), "<n>"),
+)
+
+
+def normalize_error(text):
+    """The error text with UUIDs, ISO timestamps, req_ ids, request_id / request id values, hex runs of 8 or
+    more characters and digit runs of 6 or more replaced by fixed tokens."""
+    for pattern, token in ERROR_NORMALIZERS:
+        text = pattern.sub(token, text)
+    return text
+
+
+def error_key(text):
+    return normalize_error(text)[:ERROR_TEXT_CHARS]
 
 
 def _error_kind(exc):
@@ -168,8 +193,9 @@ def unresolved_cells(path):
     return sorted((r["case_id"], r["order"]) for r in final_records(path) if is_unresolved(r))
 
 
-def _error_text(r):
-    return r["error"][:ERROR_TEXT_CHARS]
+def _error_key(r):
+    """The comparison key of a record's error, recomputed from the raw text (the stored error_key is for audit)."""
+    return error_key(r["error"])
 
 
 def read_records(path):
@@ -208,13 +234,13 @@ class _Breaker:
             self.consecutive = 0
             return
         self.consecutive += 1
-        text = _error_text(rec)
-        self.same = self.same + 1 if text == self.text else 1
-        self.text = text
+        key = _error_key(rec)
+        self.same = self.same + 1 if key == self.text else 1
+        self.text = key
         if self.consecutive >= BREAKER_LIMIT or self.same >= BREAKER_LIMIT:
             raise ModelUnavailable(
                 f"{self.spec['model_id']}: circuit breaker ({self.consecutive} consecutive cell errors, "
-                f"same error text {self.same}x in a row): {text}")
+                f"same error text {self.same}x in a row): {rec['error'][:ERROR_TEXT_CHARS]}")
 
 
 def normalize_selected(value):
@@ -355,7 +381,8 @@ def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=N
         "finished_at": datetime.now(timezone.utc).isoformat(),
     }
     if error:
-        rec["error"] = error
+        rec["error"] = error  # raw, unchanged
+        rec["error_key"] = error_key(error)  # what the persistent-error rule and the breaker compare
         rec["request"] = failed_request  # the call that failed (error records carry no response)
     return rec
 
@@ -445,9 +472,9 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False, retry_p
     """Validate every stored record; the LAST record of each cell decides its state. Returns
     (done, error_texts, reopen):
     - done: cells whose last record completes them (is_done), except persistent cells under retry_persistent;
-    - error_texts: per cell, the first ERROR_TEXT_CHARS characters of every error-only record (persistent rule);
-    - reopen: with retry_persistent, {cell: (prior error text, 1-based line)} for each cell whose last record
-      is a persistent_error record."""
+    - error_texts: per cell, the error_key of every error-only record (persistent rule);
+    - reopen: with retry_persistent, {cell: (prior raw error text, 1-based line)} for each cell whose last
+      record is a persistent_error record."""
     last, error_texts = {}, {}
     lines = path.read_bytes().split(b"\n") if path.exists() else []
     if lines and lines[-1] == b"":
@@ -486,11 +513,11 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False, retry_p
                                     "recorded": recorded, "current": current})
         last[key] = (r, i + 1)
         if is_error_only(r):
-            error_texts.setdefault(key, set()).add(_error_text(r))
+            error_texts.setdefault(key, set()).add(_error_key(r))
     done, reopen = set(), {}
     for key, (r, line_no) in last.items():
         if retry_persistent and r.get("persistent_error") is True:
-            reopen[key] = (_error_text(r), line_no)
+            reopen[key] = (r["error"], line_no)
         elif is_done(r):
             done.add(key)
     return done, error_texts, reopen
@@ -542,25 +569,27 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
                     if cell in reopen:
                         prior, line_no = reopen[cell]
                         print(f"REOPEN {spec['original_name']} {cid} {order}: persistent_error at line {line_no}: "
-                              f"{prior}", flush=True)
+                              f"{prior[:ERROR_TEXT_CHARS]}", flush=True)
                         _log_incident(out_dir, spec, {"kind": "reopened_persistent", "model_id": spec["model_id"],
                                                       "original_name": spec["original_name"], "case_id": cid,
                                                       "order": order, "prior_error": prior,
+                                                      "prior_error_key": error_key(prior),
                                                       "prior_line": line_no, **context})
                     rec = execute_cell(client, spec, cases[cid], order, context, sleep=sleep,
                                        out_dir=out_dir)
                     earlier = error_texts.get(cell)
-                    if earlier and is_error_only(rec) and _error_text(rec) in earlier:
+                    if earlier and is_error_only(rec) and _error_key(rec) in earlier:
                         rec["persistent_error"] = True
                         print(f"FINAL {spec['original_name']} {cid} {order}: same error as an earlier "
-                              f"attempt, recorded as persistent_error: {_error_text(rec)}", flush=True)
+                              f"attempt, recorded as persistent_error: {rec['error'][:ERROR_TEXT_CHARS]}", flush=True)
                     fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
                     fh.flush()
                     os.fsync(fh.fileno())
                     if rec.get("persistent_error"):
                         _log_incident(out_dir, spec, {"kind": "persistent_error", "model_id": spec["model_id"],
                                                       "original_name": spec["original_name"], "case_id": cid,
-                                                      "order": order, "error": rec["error"], **context})
+                                                      "order": order, "error": rec["error"],
+                                                      "error_key": rec["error_key"], **context})
                     if not earlier:  # re-attempted cells count toward neither breaker rule
                         breaker.observe(rec)
         except ModelMismatch:
