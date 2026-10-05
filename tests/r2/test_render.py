@@ -104,3 +104,49 @@ def test_full_vignette_fields_present():
 def test_rejects_bad_order():
     with pytest.raises(ValueError):
         render_messages(CASES["CASE_001"], "AB")
+
+
+# ---- Task DM item 5: robustness of render; none of these may change an existing packet ----
+from r2.stimuli.render import render_vignette  # noqa: E402
+
+
+def test_render_tool_handles_metadata_none_and_missing_fields():
+    out = render_tool({"metadata": None, "excerpt_text": "x"}, "A")
+    for k in ("organization", "document_title", "version", "publication_year"):
+        assert out[k] == "not stated"
+    out = render_tool({"metadata": {"organization": "Org", "publication_year": 2020}, "excerpt_text": "x"}, "A")
+    assert out["organization"] == "Org" and out["publication_year"] == 2020
+    assert out["document_title"] == "not stated" and out["version"] == "not stated"
+    assert render_tool({"excerpt_text": "x"}, "A")["organization"] == "not stated"
+
+
+@pytest.mark.parametrize("demo, expected", [
+    ({"age": 50, "sex": "F"}, "Patient: 50-year-old F"),
+    ({"sex": "F"}, "Patient: age not stated, F"),
+    ({"age": 50}, "Patient: 50-year-old, sex not stated"),
+    ({}, "Patient: age not stated, sex not stated"),
+    (None, "Patient: age not stated, sex not stated"),
+    ({"age": 50, "sex": "F", "weight_kg": 0}, "Patient: 50-year-old F, 0 kg"),
+    ({"age": 50, "sex": "F", "weight_kg": 70}, "Patient: 50-year-old F, 70 kg"),
+    ({"age": 50, "sex": "F", "weight_kg": None}, "Patient: 50-year-old F"),
+])
+def test_vignette_patient_line(demo, expected):
+    assert expected in render_vignette({"demographics": demo}).splitlines()
+
+
+def test_vitals_render_in_fixed_key_order():
+    a = render_vignette({"vitals": {"spo2": 97, "hr": 80, "temp_c": 37.0}})
+    b = render_vignette({"vitals": {"temp_c": 37.0, "spo2": 97, "hr": 80}})
+    assert a == b
+    assert "Vital signs: Temp (C) 37.0, HR 80, SpO2 (%) 97" in a.splitlines()
+
+
+def test_render_changes_leave_every_round1_packet_unchanged():
+    """Physicians review round-1 forms bound by packet_sha256; the manifest written with those forms
+    must still equal the hashes recomputed with the current renderer."""
+    from r2.verify.build_packets import packet_rows
+    manifest = json.loads((Path(__file__).resolve().parents[2] / "verification" / "round1"
+                           / "packets_manifest.json").read_text())["packets"]
+    current = {r["case_id"]: r["packet_sha256"] for r in packet_rows()}
+    assert {cid: current[cid] for cid in manifest} == manifest
+    assert len(manifest) == 477
