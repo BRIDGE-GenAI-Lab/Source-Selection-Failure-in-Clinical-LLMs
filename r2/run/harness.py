@@ -1,6 +1,7 @@
 """Unified runner for the repeated experiment: one prompt (r2.stimuli.render), both orders,
 one code path for every provider (OpenAI-compatible endpoints), full request/response logs."""
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -8,6 +9,7 @@ import re
 import subprocess
 import time
 from collections import Counter
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,6 +43,10 @@ class StaleRecords(RuntimeError):
 
 
 class CorruptResults(RuntimeError):
+    pass
+
+
+class RunLocked(RuntimeError):
     pass
 
 
@@ -271,21 +277,20 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
     done = set()
     if not path.exists():
         return done
-    raw = path.read_bytes()
-    lines = raw.decode("utf-8").split("\n")
-    if lines and lines[-1] == "":
+    lines = path.read_bytes().split(b"\n")
+    if lines and lines[-1] == b"":
         lines.pop()
-    good, kept = [], 0
+    offset = 0
     for i, line in enumerate(lines):
+        start, offset = offset, offset + len(line) + 1
         if not line.strip():
             continue
         try:
-            r = json.loads(line)
-        except json.JSONDecodeError:
+            r = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
             if i == len(lines) - 1:
-                dropped = len(line.encode("utf-8"))
-                print(f"WARNING: dropped torn final line ({dropped} bytes) in {path}", flush=True)
-                path.write_text("".join(g + "\n" for g in good))
+                print(f"WARNING: dropped torn final line ({len(line)} bytes) in {path}", flush=True)
+                os.truncate(path, start)  # keeps every earlier byte; nothing is rewritten
                 return done
             raise CorruptResults(f"{path}: unparseable line {i + 1}")
         key = (r["case_id"], r["order"])
@@ -303,32 +308,48 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
             _log_incident(out_dir, {"kind": "accepted_spec_change", "model_id": spec["model_id"],
                                     "file": path.name, "case_id": key[0], "order": key[1], "field": field,
                                     "recorded": recorded, "current": current})
-        good.append(line)
         if not is_error_only(r):
             done.add(key)
     return done
+
+
+@contextmanager
+def _model_lock(out_dir, spec):
+    """Exclusive, non-blocking lock on <out_dir>/<safe_name>.lock for the whole of run_model."""
+    lock_path = Path(out_dir) / f"{safe_name(spec['model_id'])}.lock"
+    fh = open(lock_path, "a")
+    try:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RunLocked(f"{lock_path} is held by another process: "
+                            f"{spec['model_id']} is already running") from exc
+        yield
+    finally:
+        fh.close()  # closing the descriptor releases the lock
 
 
 def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.sleep, accept_spec_change=False):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = results_path(spec, out_dir)
-    done = _done(path, cases, context, spec, out_dir, accept_spec_change)
-    ids = sorted(cases)[:limit] if limit else sorted(cases)
-    if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
-        with open(path, "a") as fh:
-            fh.write("\n")
-    breaker = _Breaker(spec)
-    with open(path, "a") as fh:
-        for cid in ids:
-            for order in ORDERS:
-                if (cid, order) in done:
-                    continue
-                rec = execute_cell(client, spec, cases[cid], order, context, sleep=sleep)
-                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                fh.flush()
-                os.fsync(fh.fileno())
-                breaker.observe(rec)
+    with _model_lock(out_dir, spec):
+        done = _done(path, cases, context, spec, out_dir, accept_spec_change)
+        ids = sorted(cases)[:limit] if limit else sorted(cases)
+        if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write("\n")
+        breaker = _Breaker(spec)
+        with open(path, "a", encoding="utf-8") as fh:
+            for cid in ids:
+                for order in ORDERS:
+                    if (cid, order) in done:
+                        continue
+                    rec = execute_cell(client, spec, cases[cid], order, context, sleep=sleep)
+                    fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                    breaker.observe(rec)
     return path
 
 
@@ -367,7 +388,7 @@ def main():
         try:
             run_model(spec, cases, args.out, make_client(spec["provider"]), context, limit=args.limit,
                       accept_spec_change=args.accept_spec_change)
-        except (ModelMismatch, ModelUnavailable) as exc:
+        except (ModelMismatch, ModelUnavailable, RunLocked) as exc:
             print(f"STOPPED {spec['original_name']}: {exc}", flush=True)
 
 

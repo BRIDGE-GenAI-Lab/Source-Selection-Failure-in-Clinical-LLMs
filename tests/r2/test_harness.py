@@ -359,3 +359,49 @@ def test_load_specs_rejects_duplicates(tmp_path, models):
 def test_load_specs_current_file_is_unique():
     from r2.run.harness import load_specs
     assert len(load_specs()) == 21
+
+
+# ---- I3 / M6: per-model lock, atomic torn-tail repair, byte-level line split ----
+def test_second_lock_attempt_raises_run_locked(tmp_path):
+    import fcntl
+
+    from r2.run.harness import RunLocked, safe_name
+    holder = open(tmp_path / f"{safe_name(SPEC['model_id'])}.lock", "a")
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        client = FakeClient([GOOD] * 4)
+        with pytest.raises(RunLocked):
+            run_model(SPEC, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
+        assert client.calls == [] and not results_path(SPEC, tmp_path).exists()
+    finally:
+        holder.close()
+    run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+def test_lock_released_when_run_model_raises(tmp_path):
+    with pytest.raises(ModelMismatch):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD], served="prov/other"), CTX, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
+
+
+def test_torn_tail_repair_keeps_earlier_bytes_identical(tmp_path):
+    path, _ = _first_record(tmp_path)
+    before = path.read_bytes()
+    with open(path, "ab") as fh:
+        fh.write(b'{"case_id": "CASE_00')
+    run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 2), CTX, sleep=lambda s: None)
+    after = path.read_bytes()
+    assert after.startswith(before) and b'{"case_id": "CASE_00{' not in after
+    assert len(after.splitlines()) == 4
+
+
+def test_torn_multibyte_tail_is_handled_as_torn(tmp_path):
+    path, recs = _first_record(tmp_path)
+    before = path.read_bytes()
+    tail = json.dumps({**recs[0], "note": "• bullet"}, ensure_ascii=False).encode("utf-8")
+    cut = tail.index("•".encode("utf-8")) + 1  # inside the 3-byte bullet
+    with open(path, "ab") as fh:
+        fh.write(tail[:cut])
+    run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 2), CTX, sleep=lambda s: None)
+    assert path.read_bytes().startswith(before)
+    assert all(json.loads(l) for l in path.read_text(encoding="utf-8").splitlines())
