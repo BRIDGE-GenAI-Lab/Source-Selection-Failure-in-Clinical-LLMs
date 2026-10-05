@@ -5,7 +5,7 @@ import re
 
 import pandas as pd
 
-from r2.analysis.stats import CATEGORY, cluster_bootstrap_mean, fdr, gee_logit, position_summary
+from r2.analysis.stats import CATEGORY, cluster_bootstrap_mean, cluster_bootstrap_paa, fdr, gee_logit, position_summary
 from r2.original_runs import load_original, sham_position
 from r2.paths import AUDIT_DIR, REPO
 from r2.profiles import profile_for
@@ -81,6 +81,7 @@ def run(write=True):
         s["acc_lo"], s["acc_hi"] = cluster_bootstrap_mean(sub, "correct")
         s["says_identical"] = float(sub.says_identical.mean())
         # case-cluster bootstrap CIs for the other pooled rates (position rates use their own rows)
+        s["position_averaged_accuracy_lo"], s["position_averaged_accuracy_hi"] = cluster_bootstrap_paa(sub)
         for rate, rows, col in (("primacy", sub, "selected_first"),
                                 ("acc_sham_first", sub[sub.sham_first], "correct"),
                                 ("acc_sham_second", sub[~sub.sham_first], "correct"),

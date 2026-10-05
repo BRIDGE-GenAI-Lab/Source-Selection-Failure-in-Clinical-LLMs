@@ -67,7 +67,7 @@ def test_pooled_position_rates_have_cluster_bootstrap_cis(tmp_path, monkeypatch)
     h = oc.run(write=False)
     for name in ("all", "discriminable", "identical"):
         s = h[name]
-        for rate in ("primacy", "acc_sham_first", "acc_sham_second", "says_identical"):
+        for rate in ("primacy", "acc_sham_first", "acc_sham_second", "says_identical", "position_averaged_accuracy"):
             assert s[f"{rate}_lo"] < s[rate] < s[f"{rate}_hi"], (name, rate)
         for k, v in _OLD[name].items():
             assert s[k] == v, (name, k)
