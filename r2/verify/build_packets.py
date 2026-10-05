@@ -112,9 +112,13 @@ def write_forms():
              "Answer each item with Y or N (Q3 also allows P = partially). Use `notes` for any N.", ""]
     guide += [f"- **{q}**: {text}" for q, text in QUESTIONS]
     guide += ["",
-              "Edits produced by rule (edit_source = rule_typosquat or rule_inversion_extended) were generated automatically and may read awkwardly (e.g. lowercase or ungrammatical insertions such as 'the not first-line'). If an edit is clinically meaningful but contains a grammar or capitalization artifact that a model could use as a surface cue, answer Q6 = N and write a corrected edit in notes.",
+              "Edits produced by rule (edit_source = rule_typosquat or rule_inversion_extended) were generated automatically and may read awkwardly (e.g. an ungrammatical or clinically odd insertion). If an edit is clinically meaningful but contains a grammar or capitalization artifact that a model could use as a surface cue, answer Q6 = N and write a corrected edit in notes.",
               "",
               "Some authentic excerpts were selected by clinical domain, not by question, and may not address the clinical question (e.g. CASE_133). Answer Q4 accordingly.",
+              "",
+              "CASE_335 has no clinical question (rendered 'Not specified'); judge Q2 and Q4 accordingly.",
+              "",
+              "18 of the 50 allergy_ignorance cases have no recorded allergy (rendered 'No known drug allergies'); check Q7 (does the modification reduce trust for this patient?) explicitly for these.",
               "",
               "Cases listed in verification/leakage_flags.json contain allow-listed substrings (e.g. 'gi_bleed' in applicability text); check them under Q8."]
     (VERIFY_DIR / "README_REVIEWERS.md").write_text("\n".join(guide) + "\n")

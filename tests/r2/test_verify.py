@@ -265,3 +265,22 @@ def test_score_raises_value_error_on_different_pairs(toy):
     other = _form(d / "other.csv", cases=("C1", "C2"))
     with pytest.raises(ValueError, match="different"):
         sr.score(a, other)
+
+
+def test_reviewer_readme_flags_case335_and_empty_allergy_lists(complete):
+    data, verify = complete
+    bp.write_forms()
+    text = (verify / "README_REVIEWERS.md").read_text()
+    assert ("CASE_335 has no clinical question (rendered 'Not specified'); judge Q2 and Q4 accordingly."
+            in text)
+    assert ("18 of the 50 allergy_ignorance cases have no recorded allergy (rendered 'No known drug allergies'); "
+            "check Q7 (does the modification reduce trust for this patient?) explicitly for these.") in text
+    assert "the not first-line" not in text
+
+
+def test_case335_and_allergy_counts_still_hold():
+    from r2.io import load_original_cases
+    cases, _ = load_original_cases()
+    assert not cases["CASE_335"].get("clinical_question")
+    allergy = [c for c in cases.values() if c["eval"]["sham_trap_type"] == "allergy_ignorance"]
+    assert len(allergy) == 50 and sum(not c.get("allergies") for c in allergy) == 18

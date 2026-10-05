@@ -30,16 +30,24 @@ INVERSIONS_V2 = [
     (r"\bis reasonable\b", "is not reasonable"),
     (r"\bmay be considered\b", "should not be considered"),
     (r"(?<!not )\brequired\b", "not required"),
-    (r"(?<!not )\bfirst-line\b", "not first-line"),
+    (r"(?<!not )\bfirst-line\b", "second-line"),
     (r"(?<!not )\bindicated\b", "not indicated"),  # \b already blocks "contraindicated"
     (r"\bconsider\b", "avoid"),
 ]
+
+
+def _match_case(matched, replacement):
+    """Keep the initial capital of the matched text, so an inversion leaves no lowercase surface cue."""
+    if matched[:1].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement
 
 
 def propose_inversion(text):
     for pattern, replacement in INVERSIONS_V2:
         m = re.search(pattern, text, flags=re.IGNORECASE)
         if m:
+            replacement = _match_case(m.group(0), replacement)
             new = text[:m.start()] + replacement + text[m.end():]
             if new != text:
                 return new, m.group(0), replacement
