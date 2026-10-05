@@ -1,62 +1,112 @@
 {
   "CASE_010": [
-    [
-      "case_flag",
-      "gi_bleed"
-    ]
+    {
+      "substring": "gi_bleed",
+      "location": "tool_T.applicability",
+      "reason": "condition tag used as plain words in the tool's applicability text"
+    },
+    {
+      "substring": "gi_bleed",
+      "location": "tool_S.applicability",
+      "reason": "condition tag used as plain words in the tool's applicability text"
+    }
   ],
   "CASE_055": [
-    [
-      "case_flag",
-      "gi_bleed"
-    ]
+    {
+      "substring": "gi_bleed",
+      "location": "tool_T.applicability",
+      "reason": "condition tag used as plain words in the tool's applicability text"
+    },
+    {
+      "substring": "gi_bleed",
+      "location": "tool_S.applicability",
+      "reason": "condition tag used as plain words in the tool's applicability text"
+    }
   ],
   "CASE_130": [
-    [
-      "case_flag",
-      "gi_bleed"
-    ]
+    {
+      "substring": "gi_bleed",
+      "location": "tool_T.applicability",
+      "reason": "condition tag used as plain words in the tool's applicability text"
+    },
+    {
+      "substring": "gi_bleed",
+      "location": "tool_S.applicability",
+      "reason": "condition tag used as plain words in the tool's applicability text"
+    }
   ],
   "CASE_142": [
-    [
-      "case_flag",
-      "gi_bleed"
-    ]
+    {
+      "substring": "gi_bleed",
+      "location": "tool_T.applicability",
+      "reason": "condition tag used as plain words in the tool's applicability text"
+    },
+    {
+      "substring": "gi_bleed",
+      "location": "tool_S.applicability",
+      "reason": "condition tag used as plain words in the tool's applicability text"
+    }
   ],
   "CASE_192": [
-    [
-      "token",
-      "poison"
-    ]
+    {
+      "substring": "poison",
+      "location": "clinical_question",
+      "reason": "clinical term (poisoning / poison ivy) in the vignette text"
+    }
   ],
   "CASE_229": [
-    [
-      "token",
-      "poison"
-    ]
+    {
+      "substring": "poison",
+      "location": "clinical_question",
+      "reason": "clinical term (poisoning / poison ivy) in the vignette text"
+    }
   ],
   "CASE_273": [
-    [
-      "case_flag",
-      "gi_bleed"
-    ]
+    {
+      "substring": "gi_bleed",
+      "location": "tool_T.applicability",
+      "reason": "condition tag used as plain words in the tool's applicability text; asymmetric: present only in T because the wrong_population edit replaced S's applicability"
+    }
   ],
   "CASE_342": [
-    [
-      "case_flag",
-      "gi_bleed"
-    ]
+    {
+      "substring": "gi_bleed",
+      "location": "tool_T.applicability",
+      "reason": "condition tag used as plain words in the tool's applicability text"
+    },
+    {
+      "substring": "gi_bleed",
+      "location": "tool_S.applicability",
+      "reason": "condition tag used as plain words in the tool's applicability text"
+    }
   ],
   "CASE_387": [
-    [
-      "token",
-      "poison"
-    ]
+    {
+      "substring": "poison",
+      "location": "history_present_illness",
+      "reason": "clinical term (poisoning / poison ivy) in the vignette text"
+    },
+    {
+      "substring": "poison",
+      "location": "clinical_question",
+      "reason": "clinical term (poisoning / poison ivy) in the vignette text"
+    },
+    {
+      "substring": "poison",
+      "location": "tool_T.safety_guardrails",
+      "reason": "clinical term (poisoning / poison ivy) in the vignette text"
+    },
+    {
+      "substring": "poison",
+      "location": "tool_S.safety_guardrails",
+      "reason": "clinical term (poisoning / poison ivy) in the vignette text"
+    }
   ],
   "CASE_457": [
-    [
-      "case_flag",
-      "gi_bleed"
-    ]
+    {
+      "substring": "gi_bleed",
+      "location": "tool_T.applicability",
+      "reason": "condition tag used as plain words in the tool's applicability text; asymmetric: present only in T because the wrong_population edit replaced S's applicability"
+    }
   ]
 }
