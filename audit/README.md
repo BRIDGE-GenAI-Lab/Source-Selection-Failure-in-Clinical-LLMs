@@ -159,20 +159,30 @@ In plain terms:
   absorbs a fixed addition, so those records cannot tell the two inputs apart. In the other 90 records the
   field would add 9 to 68 tokens more (median 9). Their observed offset equals that of the 410 (difference 0).
 - **Conclusion.** This corroborates the reconstruction for all four models. The logged decision-call inputs
-  have exactly the length of the reconstructed inputs, and neither hidden field was in them. The full numbers,
-  including the per-structure strata (`by_structure`) and the informative subset (`informative_subset`), are in
-  `openai_input_tokens_summary.json`.
+  have exactly the length of the reconstructed inputs, measured on the counted text. The framing offsets (51
+  and 62, plus 4 per extra message) are constants read off the data, not derived. There is no evidence of
+  either field in the final-call inputs. `exclusions_or_cautions` could be tested only in the 90 records per
+  model where its length differs from the modal addition. The full numbers, including the per-structure strata
+  (`by_structure`) and the informative subset (`informative_subset`), are in `openai_input_tokens_summary.json`.
+- **This is one corroboration, not three, for the GPT-4.1 and GPT-4o models.** gpt-4.1, gpt-4.1-nano and
+  gpt-4o-mini share a tokenizer (`o200k_base`) and received identical inputs (same runner, case file and A/B
+  mapping). They log the identical decision-call count for every record except gpt-4o-mini CASE_004, the only
+  one of the three with a second tool-calling round. gpt-5-nano received the same text with the same tokenizer
+  but logs a different framing constant.
 
 **The first call does not fit a constant offset.** We report it as found. Its offset varies from record to
-record (IQR 13 in every model; -323 to -240 for gpt-4.1), and only 4 to 5% of records sit at the median. In the 1,990 first calls where the model replied
-with two parallel function calls, the logged count is half the expected count. `2 x logged - reconstructed`
-takes only two adjacent values, 68 or 69 (73 or 74 for gpt-5-nano), so logged = floor((reconstructed + c) / 2).
-Here c = 69 (74 for gpt-5-nano), the same constant as in the 10 first calls where the model replied with one
-function call or none, whose offset is exactly 69 or 74. The three second calls that replied with two parallel
-calls (gpt-5-nano, `-|AB`) are halved the same way. Second calls with one function call, and every decision
-call, are not halved (`multi_call_records` in the summary lists every call of the 10 multi-call records). This
-halving of the logged usage is undocumented and we found it after the fact. No parameter was fitted to it, and
-the corroboration above does not depend on it.
+record (IQR 13 in every model; -323 to -240 for gpt-4.1), and only 4 to 5% of records sit at the median.
+
+In the 1,990 first calls where the model replied with two parallel function calls, the logged count is half
+the expected count. `2 x logged - reconstructed` takes only two adjacent values, 68 or 69 (73 or 74 for
+gpt-5-nano), so logged = floor((reconstructed + c) / 2). Here c = 69 (74 for gpt-5-nano), the same constant
+as in the 10 first calls where the model replied with one function call or none, whose offset is exactly 69
+or 74.
+
+The three second calls that replied with two parallel calls (gpt-5-nano, `-|AB`) are halved the same way.
+Second calls with one function call, and every decision call, are not halved (`multi_call_records` in the
+summary lists every call of the 10 multi-call records). This halving of the logged usage is undocumented and
+we found it after the fact. No parameter was fitted to it, and the corroboration above does not depend on it.
 
 **Limits.**
 
