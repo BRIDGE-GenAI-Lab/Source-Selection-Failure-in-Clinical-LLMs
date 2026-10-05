@@ -1,0 +1,62 @@
+{
+  "CASE_010": [
+    [
+      "case_flag",
+      "gi_bleed"
+    ]
+  ],
+  "CASE_055": [
+    [
+      "case_flag",
+      "gi_bleed"
+    ]
+  ],
+  "CASE_130": [
+    [
+      "case_flag",
+      "gi_bleed"
+    ]
+  ],
+  "CASE_142": [
+    [
+      "case_flag",
+      "gi_bleed"
+    ]
+  ],
+  "CASE_192": [
+    [
+      "token",
+      "poison"
+    ]
+  ],
+  "CASE_229": [
+    [
+      "token",
+      "poison"
+    ]
+  ],
+  "CASE_273": [
+    [
+      "case_flag",
+      "gi_bleed"
+    ]
+  ],
+  "CASE_342": [
+    [
+      "case_flag",
+      "gi_bleed"
+    ]
+  ],
+  "CASE_387": [
+    [
+      "token",
+      "poison"
+    ]
+  ],
+  "CASE_457": [
+    [
+      "case_flag",
+      "gi_bleed"
+    ]
+  ]
+}
