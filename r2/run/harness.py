@@ -292,15 +292,26 @@ def _create(client, kwargs, sleep, tries=RETRY_TRIES):
             sleep(delay)
 
 
+def first_messages(rendered):
+    """The messages of a cell's first attempt, from render_messages output."""
+    return [{"role": "system", "content": rendered["system"]}, {"role": "user", "content": rendered["user"]}]
+
+
+def request_kwargs(spec, messages):
+    """The chat.completions.create arguments for a spec: the only builder (harness and probe)."""
+    kwargs = {"model": spec["model_id"], "messages": messages,
+              spec.get("token_param", "max_tokens"): spec["max_tokens"]}
+    if spec.get("temperature") is not None:
+        kwargs["temperature"] = spec["temperature"]
+    return kwargs
+
+
 def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=None):
     msgs = render_messages(case, order)
-    messages = [{"role": "system", "content": msgs["system"]}, {"role": "user", "content": msgs["user"]}]
+    messages = first_messages(msgs)
     attempts, decision, error = [], None, None
     for _ in range(2):
-        kwargs = {"model": spec["model_id"], "messages": messages,
-                  spec.get("token_param", "max_tokens"): spec["max_tokens"]}
-        if spec.get("temperature") is not None:
-            kwargs["temperature"] = spec["temperature"]
+        kwargs = request_kwargs(spec, messages)
         t0 = time.time()
         try:
             resp = _create(client, kwargs, sleep).model_dump()
