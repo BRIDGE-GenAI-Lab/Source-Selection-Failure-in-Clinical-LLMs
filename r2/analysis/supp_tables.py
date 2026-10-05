@@ -5,6 +5,7 @@ and reports the pending ones. A pending table raises `PendingData` naming the mi
 """
 import csv
 import json
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -197,8 +198,8 @@ RUN_NOTES = {
     "run_together_Qwen_Qwen2.5_1.5B_Instruct_20260115_163308":
         ("All 500 rows are API error stubs, none a model decision (per run logs); the authors' canonical "
          "loader (load_canonical.py) excludes this model by name (per author record)"),
-    "run_20260107_181353": "Run ended after 59 rows, no stop reason logged (per run logs)",
-    "run_20260107_181634": "Run ended after 116 rows, no stop reason logged (per run logs)",
+    "run_20260107_181353": "no stop reason logged (per run logs)",
+    "run_20260107_181634": "no stop reason logged (per run logs)",
     "run_20260103_210559": "437 of 500 decisions are 'unclear' (per run logs)",
     "run_gemma-3-270m_20260111_115639": ("Local pilot with 500 scored decisions (per run logs); reason for "
                                           "exclusion not recorded (per author record)"),
@@ -239,6 +240,28 @@ def _scan_run(path):
     return cfg, recs, errs
 
 
+_STATUS_RE = re.compile(r"^(?:API call failed: )?(?:Error code: )?(\d{3})\b")
+
+
+def _error_bit(errs, n_rows):
+    """Dominant logged error of a run, counted from the `errors` field of its results.jsonl rows.
+    Messages that start with the same HTTP status are one group."""
+    if not errs:
+        return None
+    groups, sample = Counter(), {}
+    for msg, k in errs.items():
+        m = _STATUS_RE.match(msg)
+        key = m.group(1) if m else msg
+        groups[key] += k
+        sample.setdefault(key, msg)
+    key, k = groups.most_common(1)[0]
+    if key == "429":
+        what = "returned 429 rate-limit errors"
+    else:
+        what = f"logged the error: {_quote_error(sample[key])}"
+    return f"(run logs) {k} of {n_rows} rows {what}"
+
+
 def run_inventory(eval_root=None):
     eval_root = Path(eval_root) if eval_root else LEGACY_EVAL
     manifest = json.loads((ORIGINAL_RUNS_DIR / "manifest.json").read_text())
@@ -258,14 +281,15 @@ def run_inventory(eval_root=None):
                 if model in canon_by_model:
                     bits.append(f"model has a canonical run ({canon_by_model[model]}) (per manifest)")
                 if valid == 0 and recs:
-                    top = errs.most_common(1)
-                    bits.append("no usable decision" + (f"; logged error: {_quote_error(top[0][0])}" if top else "")
-                                + " (per logged errors)")
+                    bits.append("no usable decision (per run logs)")
                 elif not recs:
                     bits.append("no records written (per results.jsonl)")
                 elif len(recs) < 500 or valid < 500:
                     bits.append(f"partial run ({len(recs)} rows, {valid} scored decisions of 500 cases) "
                                 "(per results.jsonl)")
+                eb = _error_bit(errs, len(recs))
+                if eb:
+                    bits.append(eb)
                 if ihash != NOT_RECORDED and not ihash.startswith(CANONICAL_HASH_PREFIX):
                     bits.append(f"earlier case file (input hash {ihash[:8]}...) (per run logs)")
                 if d.name in RUN_NOTES:

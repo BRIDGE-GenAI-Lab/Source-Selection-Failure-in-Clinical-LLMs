@@ -192,10 +192,10 @@ def test_inventory_quotes_logged_errors_whole_or_at_a_word_boundary(written):
     seen = 0
     for r in read(out, "S_run_inventory"):
         reason = r["reason_not_canonical"]
-        if "logged error: " not in reason:
+        if "logged the error: " not in reason:
             continue
         seen += 1
-        quoted = reason.split("logged error: ", 1)[1].split(" (per logged errors)")[0]
+        quoted = reason.split("logged the error: ", 1)[1].split("; ")[0]
         lines = (LEGACY_EVAL / r["results_tree"] / r["run_dir"] / "results.jsonl").read_text().splitlines()
         recs = [json.loads(l) for l in lines if l.strip()]
         fulls = Counter(str(x["errors"][0]) for x in recs if x.get("errors") and not
@@ -276,3 +276,27 @@ def test_coerced_choices_reads_token_limit_from_the_audit_csv_not_raw_files(monk
     assert rows["ServiceNow-AI/Apriel-1.6-15b-Thinker"]["parse_failures_at_token_limit"] == 37
     assert rows["deepseek-reasoner"]["runner_max_tokens"] == 8192
     assert rows["gemini-2.5-flash-lite"]["runner_max_tokens"] == "not set"
+
+
+@pytest.mark.skipif(not all(t.exists() for t in RESULT_TREES), reason="legacy results tree not mounted")
+def test_inventory_error_counts_come_from_the_logs(written):
+    out, _ = written
+    rows = {r["run_dir"]: r for r in read(out, "S_run_inventory")}
+    for tree in RESULT_TREES:
+        for d in tree.iterdir():
+            if d.name.startswith("._") or not d.is_dir():
+                continue
+            recs = [json.loads(l) for l in (d / "results.jsonl").read_text().splitlines() if l.strip()] \
+                if (d / "results.jsonl").exists() else []
+            n429 = sum(1 for r in recs if r.get("model_decision") is None
+                       and str((r.get("errors") or [""])[0]).startswith("429"))
+            row = rows[d.name]
+            if n429:
+                assert f"(run logs) {n429} of {len(recs)} rows returned 429 rate-limit errors" in \
+                    row["reason_not_canonical"], d.name
+            n_err = sum(1 for r in recs if r.get("model_decision") is None and r.get("errors"))
+            if row["canonical"] == "N" and n_err:
+                assert f"(run logs) {n_err} of {len(recs)} rows" in row["reason_not_canonical"], d.name
+    g = rows["run_20260107_181353"]["reason_not_canonical"]
+    assert "28 of 59 rows returned 429 rate-limit errors" in g and "no stop reason logged" in g
+    assert "74 of 116 rows returned 429" in rows["run_20260107_181634"]["reason_not_canonical"]
