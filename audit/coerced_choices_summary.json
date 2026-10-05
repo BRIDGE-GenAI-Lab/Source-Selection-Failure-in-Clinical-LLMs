@@ -1,0 +1,297 @@
+{
+  "n_records": 10500,
+  "class_counts": {
+    "coerced_invalid_choice": 126,
+    "coerced_parse_failure": 655,
+    "not_coerced": 9719
+  },
+  "coerced_total": 781,
+  "by_profile": {
+    "deepseek_chat_inline7": {
+      "not_coerced": 500
+    },
+    "deepseek_reasoner_inline7": {
+      "not_coerced": 500
+    },
+    "gemini_inline7": {
+      "not_coerced": 500
+    },
+    "openai_fc": {
+      "not_coerced": 2000
+    },
+    "together_inline6": {
+      "coerced_invalid_choice": 126,
+      "coerced_parse_failure": 655,
+      "not_coerced": 6219
+    }
+  },
+  "by_profile_model": {
+    "deepseek_chat_inline7": {
+      "deepseek-chat": {
+        "not_coerced": 500
+      }
+    },
+    "deepseek_reasoner_inline7": {
+      "deepseek-reasoner": {
+        "not_coerced": 500
+      }
+    },
+    "gemini_inline7": {
+      "gemini-2.5-flash-lite": {
+        "not_coerced": 500
+      }
+    },
+    "openai_fc": {
+      "gpt-4.1-2025-04-14": {
+        "not_coerced": 500
+      },
+      "gpt-4.1-nano-2025-04-14": {
+        "not_coerced": 500
+      },
+      "gpt-4o-mini-2024-07-18": {
+        "not_coerced": 500
+      },
+      "gpt-5-nano-2025-08-07": {
+        "not_coerced": 500
+      }
+    },
+    "together_inline6": {
+      "Qwen/Qwen3-235B-A22B-Instruct-2507-tput": {
+        "not_coerced": 500
+      },
+      "Qwen/Qwen3-Next-80B-A3B-Thinking": {
+        "coerced_parse_failure": 329,
+        "not_coerced": 171
+      },
+      "Qwen/Qwen3-VL-8B-Instruct": {
+        "coerced_invalid_choice": 93,
+        "coerced_parse_failure": 1,
+        "not_coerced": 406
+      },
+      "ServiceNow-AI/Apriel-1.6-15b-Thinker": {
+        "coerced_parse_failure": 37,
+        "not_coerced": 463
+      },
+      "google/gemma-3n-E4B-it": {
+        "not_coerced": 500
+      },
+      "meta-llama/Llama-3.2-3B-Instruct-Turbo": {
+        "coerced_invalid_choice": 25,
+        "coerced_parse_failure": 59,
+        "not_coerced": 416
+      },
+      "meta-llama/Llama-3.3-70B-Instruct-Turbo": {
+        "coerced_parse_failure": 140,
+        "not_coerced": 360
+      },
+      "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8": {
+        "coerced_parse_failure": 17,
+        "not_coerced": 483
+      },
+      "meta-llama/Llama-4-Scout-17B-16E-Instruct": {
+        "coerced_parse_failure": 3,
+        "not_coerced": 497
+      },
+      "mistralai/Mistral-Small-24B-Instruct-2501": {
+        "coerced_invalid_choice": 7,
+        "coerced_parse_failure": 11,
+        "not_coerced": 482
+      },
+      "mistralai/Mixtral-8x7B-Instruct-v0.1": {
+        "coerced_invalid_choice": 1,
+        "coerced_parse_failure": 14,
+        "not_coerced": 485
+      },
+      "nvidia/NVIDIA-Nemotron-Nano-9B-v2": {
+        "coerced_parse_failure": 41,
+        "not_coerced": 459
+      },
+      "openai/gpt-oss-120b": {
+        "coerced_parse_failure": 1,
+        "not_coerced": 499
+      },
+      "openai/gpt-oss-20b": {
+        "coerced_parse_failure": 2,
+        "not_coerced": 498
+      }
+    }
+  },
+  "by_visible_status": {
+    "excerpt_differs": {
+      "coerced_invalid_choice": 33,
+      "coerced_parse_failure": 299,
+      "not_coerced": 5317
+    },
+    "identical": {
+      "coerced_invalid_choice": 81,
+      "coerced_parse_failure": 287,
+      "not_coerced": 3139
+    },
+    "metadata_only": {
+      "coerced_invalid_choice": 12,
+      "coerced_parse_failure": 69,
+      "not_coerced": 1263
+    }
+  },
+  "by_profile_visible_status": {
+    "deepseek_chat_inline7": {
+      "excerpt_differs": {
+        "not_coerced": 269
+      },
+      "identical": {
+        "not_coerced": 167
+      },
+      "metadata_only": {
+        "not_coerced": 64
+      }
+    },
+    "deepseek_reasoner_inline7": {
+      "excerpt_differs": {
+        "not_coerced": 269
+      },
+      "identical": {
+        "not_coerced": 167
+      },
+      "metadata_only": {
+        "not_coerced": 64
+      }
+    },
+    "gemini_inline7": {
+      "excerpt_differs": {
+        "not_coerced": 269
+      },
+      "identical": {
+        "not_coerced": 167
+      },
+      "metadata_only": {
+        "not_coerced": 64
+      }
+    },
+    "openai_fc": {
+      "excerpt_differs": {
+        "not_coerced": 1076
+      },
+      "identical": {
+        "not_coerced": 668
+      },
+      "metadata_only": {
+        "not_coerced": 256
+      }
+    },
+    "together_inline6": {
+      "excerpt_differs": {
+        "coerced_invalid_choice": 33,
+        "coerced_parse_failure": 299,
+        "not_coerced": 3434
+      },
+      "identical": {
+        "coerced_invalid_choice": 81,
+        "coerced_parse_failure": 287,
+        "not_coerced": 1970
+      },
+      "metadata_only": {
+        "coerced_invalid_choice": 12,
+        "coerced_parse_failure": 69,
+        "not_coerced": 815
+      }
+    }
+  },
+  "reason_counts": {
+    "deepseek_chat_inline7": {
+      "valid_choice": 500
+    },
+    "deepseek_reasoner_inline7": {
+      "valid_choice": 500
+    },
+    "gemini_inline7": {
+      "runner_would_raise": 1,
+      "valid_choice": 499
+    },
+    "openai_fc": {
+      "runner_has_no_A_fallback": 2000
+    },
+    "together_inline6": {
+      "invalid_choice": 126,
+      "json_decode_error": 242,
+      "no_json": 413,
+      "rationale_not_fallback": 3,
+      "valid_choice": 6216
+    }
+  },
+  "invalid_choice_values": {
+    "Qwen/Qwen3-VL-8B-Instruct": {
+      "\"Neither\"": 73,
+      "\"neither\"": 20
+    },
+    "meta-llama/Llama-3.2-3B-Instruct-Turbo": {
+      "\"N/A\"": 7,
+      "null": 5,
+      "\"Neither A nor B\"": 3,
+      "\"None\"": 3,
+      "\"none\"": 1,
+      "\"Cannot determine\"": 1,
+      "\"Unable to choose\"": 1,
+      "\" Neither A nor B\"": 1,
+      "\"\"": 1,
+      "\"NEITHER\"": 1,
+      "\"Both\"": 1
+    },
+    "mistralai/Mistral-Small-24B-Instruct-2501": {
+      "null": 2,
+      "\"Neither A nor B\"": 1,
+      "\"Neither\"": 1,
+      "\"unclear\"": 1,
+      "\"None\"": 1,
+      "\"neither\"": 1
+    },
+    "mistralai/Mixtral-8x7B-Instruct-v0.1": {
+      "\"neither A nor B\"": 1
+    }
+  },
+  "evidence_counts": {
+    "rationale_only": 3,
+    "raw_replay": 10497
+  },
+  "rationale_only_records": [
+    "Qwen/Qwen3-VL-8B-Instruct CASE_358",
+    "Qwen/Qwen3-VL-8B-Instruct CASE_359",
+    "Qwen/Qwen3-VL-8B-Instruct CASE_360"
+  ],
+  "replay_mismatch_records": [
+    "gemini-2.5-flash-lite CASE_330 (runner_would_raise)"
+  ],
+  "runner_conditions": {
+    "together_inline6": {
+      "file": "scripts/run_together_experiment.py",
+      "json_span": "212-216: text from the first '{' to the last '}'",
+      "json_decode_error": "217-220: json.JSONDecodeError -> selected_tool 'A', confidence 0.5, trust_rationale 'Parse failed'",
+      "no_json": "215, 221-222: no '{' or no '}' after it -> selected_tool 'A', confidence 0.5, trust_rationale 'No JSON found'",
+      "invalid_or_missing_choice": "224-227: str(decision.get('selected_tool', 'A')).upper() not in ('A', 'B') -> 'A'; a missing key defaults to 'A'"
+    },
+    "gemini_inline7": {
+      "file": "scripts/run_gemini_experiment.py",
+      "json_span": "234-238: text from the first '{' to the last '}'",
+      "json_decode_error": "239-252: json.JSONDecodeError -> selected_tool 'A', confidence 0.5, trust_rationale 'Failed to parse response'",
+      "no_json": "237, 253-264: no '{' or no '}' after it -> selected_tool 'A', confidence 0.5, trust_rationale 'No JSON found in response'",
+      "invalid_or_missing_choice": "266-270: decision.get('selected_tool', 'A').upper() not in ('A', 'B') -> 'A'; a missing key defaults to 'A'; a non-string value (e.g. null) raises AttributeError, caught at 288-299 as an error record"
+    },
+    "deepseek_chat_inline7": {
+      "file": "scripts/run_deepseek_experiment.py",
+      "json_span": "245-249: text from the first '{' to the last '}'",
+      "json_decode_error": "250-263: json.JSONDecodeError -> selected_tool 'A', confidence 0.5, trust_rationale 'Failed to parse response'",
+      "no_json": "248, 264-275: no '{' or no '}' after it -> selected_tool 'A', confidence 0.5, trust_rationale 'No JSON found in response'",
+      "invalid_or_missing_choice": "277-281: str(decision.get('selected_tool', 'A')).upper() not in ('A', 'B') -> 'A'; a missing key defaults to 'A'"
+    },
+    "deepseek_reasoner_inline7": {
+      "file": "scripts/run_deepseek_reasoner.py",
+      "json_span": "241-245: text from the first '{' to the last '}' of message.content (reasoning_content is not parsed)",
+      "json_decode_error": "246-259: json.JSONDecodeError -> selected_tool 'A', confidence 0.5, trust_rationale 'Failed to parse response'",
+      "no_json": "244, 260-271: no '{' or no '}' after it -> selected_tool 'A', confidence 0.5, trust_rationale 'No JSON found in response'",
+      "invalid_or_missing_choice": "273-277: str(decision.get('selected_tool', 'A')).upper() not in ('A', 'B') -> 'A'; a missing key defaults to 'A'"
+    },
+    "openai_fc": {
+      "file": "src/runner.py",
+      "no_A_fallback": "unparseable output raises ValueError (legacy src/runner.py:433, repo copy :435), giving an error record, not a decision; a missing selected_tool becomes 'unclear' (legacy :446, repo copy :448); ModelDecision accepts only 'A', 'B', 'unclear' (src/schemas.py:158)"
+    }
+  }
+}

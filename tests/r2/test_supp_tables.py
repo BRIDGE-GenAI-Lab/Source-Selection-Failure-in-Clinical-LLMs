@@ -1,5 +1,6 @@
 import csv
 import json
+from collections import Counter
 
 import pytest
 
@@ -146,3 +147,64 @@ def test_system_prompt_cites_point_at_the_prompt_string():
         assert "You are a clinical decision support evaluator" in lines[lo - 1], r["profile"]
         assert lines[hi - 1].rstrip().endswith('"""'), r["profile"]
         assert not any("defended" in l.lower() or "POTENTIALLY MALICIOUS" in l for l in lines[lo - 1:hi]), r["profile"]
+
+
+ALLOWED_SOURCES = {"manifest", "results.jsonl", "logged errors", "run logs", "author record"}
+
+
+def test_inventory_reasons_use_plain_sources_not_internal_labels(written):
+    import re
+    out, _ = written
+    for r in read(out, "S_run_inventory"):
+        reason = r["reason_not_canonical"]
+        assert "AUTHOR_FACTS" not in reason, r["run_dir"]
+        assert set(re.findall(r"\(per ([^)]*)\)", reason)) <= ALLOWED_SOURCES, reason
+    readme = (out / "README.txt").read_text()
+    assert "AUTHOR_FACTS" not in readme
+    assert "run logs" in readme and "author record" in readme
+
+
+def test_quote_error_keeps_short_messages_whole():
+    assert st._quote_error("Request timed out.") == "Request timed out."
+    msg = "x " * 80  # exactly 160 characters
+    assert st._quote_error(msg) == msg
+
+
+def test_quote_error_cuts_long_messages_at_a_word_boundary():
+    msg = "404 models/gemini-2.5-flash-lite-preview-06-17 is not found for API version v1beta, or is " \
+          "not supported for generateContent. Call ListModels to see the list of available models and " \
+          "their supported methods."
+    q = st._quote_error(msg)
+    assert q.endswith("…") and len(q) <= 161
+    stem = q[:-1]
+    assert msg.startswith(stem) and msg[len(stem)].isspace() and not stem[-1].isspace()
+    assert q == msg[:msg.rfind(" ", 0, 161)] + "…"
+
+
+def test_quote_error_never_cuts_a_single_long_token():
+    token = "a" * 200
+    assert st._quote_error(token) == token
+
+
+@pytest.mark.skipif(not all(t.exists() for t in RESULT_TREES), reason="legacy results tree not mounted")
+def test_inventory_quotes_logged_errors_whole_or_at_a_word_boundary(written):
+    out, _ = written
+    seen = 0
+    for r in read(out, "S_run_inventory"):
+        reason = r["reason_not_canonical"]
+        if "logged error: " not in reason:
+            continue
+        seen += 1
+        quoted = reason.split("logged error: ", 1)[1].split(" (per logged errors)")[0]
+        lines = (LEGACY_EVAL / r["results_tree"] / r["run_dir"] / "results.jsonl").read_text().splitlines()
+        recs = [json.loads(l) for l in lines if l.strip()]
+        fulls = Counter(str(x["errors"][0]) for x in recs if x.get("errors") and not
+                        (x.get("model_decision") is not None and x.get("selected_tool_correct") is not None))
+        full = fulls.most_common(1)[0][0]
+        if quoted.endswith("…"):
+            stem = quoted[:-1]
+            assert len(full) > 160 and len(stem) <= 160, r["run_dir"]
+            assert full.startswith(stem) and full[len(stem)].isspace(), r["run_dir"]
+        else:
+            assert quoted == full, r["run_dir"]
+    assert seen >= 10

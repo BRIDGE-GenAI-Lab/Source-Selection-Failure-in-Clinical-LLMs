@@ -148,17 +148,33 @@ def original_pipelines():
 
 # ---------------------------------------------------------------- S_run_inventory
 
-# Context from docs/r2/AUTHOR_FACTS_EVIDENCE.md F5 (technical causes read from the run logs).
+# Per-run notes. Each part names its source: "run logs" (the run's config.json, results.jsonl and its
+# `errors` field) or "author record" (the authors' own files, e.g. the canonical loader load_canonical.py).
 RUN_NOTES = {
     "run_together_Qwen_Qwen2.5_1.5B_Instruct_20260115_163308":
-        "All 500 rows are API error stubs, none a model decision; the loader excludes this model by name (per AUTHOR_FACTS F5)",
-    "run_20260107_181353": "Run ended after 59 rows, no stop reason logged (per AUTHOR_FACTS F5)",
-    "run_20260107_181634": "Run ended after 116 rows, no stop reason logged (per AUTHOR_FACTS F5)",
-    "run_20260103_210559": "437 of 500 decisions are 'unclear' (per AUTHOR_FACTS F6)",
-    "run_gemma-3-270m_20260111_115639": ("Local pilot with 500 scored decisions; reason for exclusion "
-                                          "not recorded (per AUTHOR_FACTS F5)"),
-    "run_groq_llama_3.1_8b_instant_20260115_092058": "Pilot of 50 cases; reason for exclusion not recorded (per AUTHOR_FACTS F5)",
+        ("All 500 rows are API error stubs, none a model decision (per run logs); the authors' canonical "
+         "loader (load_canonical.py) excludes this model by name (per author record)"),
+    "run_20260107_181353": "Run ended after 59 rows, no stop reason logged (per run logs)",
+    "run_20260107_181634": "Run ended after 116 rows, no stop reason logged (per run logs)",
+    "run_20260103_210559": "437 of 500 decisions are 'unclear' (per run logs)",
+    "run_gemma-3-270m_20260111_115639": ("Local pilot with 500 scored decisions (per run logs); reason for "
+                                          "exclusion not recorded (per author record)"),
+    "run_groq_llama_3.1_8b_instant_20260115_092058": ("Pilot of 50 cases (per run logs); reason for exclusion "
+                                                      "not recorded (per author record)"),
 }
+
+ERROR_QUOTE_LIMIT = 160
+
+
+def _quote_error(msg, limit=ERROR_QUOTE_LIMIT):
+    """A logged error message, whole. Over `limit` characters it is cut at the last word boundary within
+    the limit and marked with an ellipsis; a message with no such boundary stays whole (never cut mid-word)."""
+    if len(msg) <= limit:
+        return msg
+    cut = msg.rfind(" ", 0, limit + 1)
+    if cut <= 0:
+        return msg
+    return msg[:cut].rstrip() + "\u2026"
 
 
 def _is_valid(r):
@@ -176,7 +192,7 @@ def _scan_run(path):
                     recs.append(json.loads(line))
                 except ValueError:
                     pass
-    errs = Counter(str((r.get("errors") or [""])[0])[:160] for r in recs if not _is_valid(r) and r.get("errors"))
+    errs = Counter(str((r.get("errors") or [""])[0]) for r in recs if not _is_valid(r) and r.get("errors"))
     return cfg, recs, errs
 
 
@@ -200,7 +216,7 @@ def run_inventory(eval_root=None):
                     bits.append(f"model has a canonical run ({canon_by_model[model]}) (per manifest)")
                 if valid == 0 and recs:
                     top = errs.most_common(1)
-                    bits.append("no usable decision" + (f"; logged error: {top[0][0]}" if top else "")
+                    bits.append("no usable decision" + (f"; logged error: {_quote_error(top[0][0])}" if top else "")
                                 + " (per logged errors)")
                 elif not recs:
                     bits.append("no records written (per results.jsonl)")
@@ -208,7 +224,7 @@ def run_inventory(eval_root=None):
                     bits.append(f"partial run ({len(recs)} rows, {valid} scored decisions of 500 cases) "
                                 "(per results.jsonl)")
                 if ihash != NOT_RECORDED and not ihash.startswith(CANONICAL_HASH_PREFIX):
-                    bits.append(f"earlier case file (input hash {ihash[:8]}...) (per AUTHOR_FACTS F6)")
+                    bits.append(f"earlier case file (input hash {ihash[:8]}...) (per run logs)")
                 if d.name in RUN_NOTES:
                     bits.append(RUN_NOTES[d.name])
                 if not bits and model != NOT_RECORDED and model not in canon_by_model:
@@ -345,7 +361,7 @@ AVAILABLE_TABLES = {
 
 
 def write_csv(path, rows):
-    with open(path, "w", newline="") as fh:
+    with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
@@ -356,8 +372,11 @@ README_TEXT = """Notes on the supplement tables (R2, pre-results pass)
 S_run_inventory.csv
 - valid_decisions_scored: records whose model_decision and selected_tool_correct are both non-null
   (the definition used by load_canonical.py, _is_valid).
-- reason_not_canonical: each part states its source: logged errors, results.jsonl, manifest,
-  or docs/r2/AUTHOR_FACTS_EVIDENCE.md (AUTHOR_FACTS F5/F6).
+- reason_not_canonical: each part states its source: manifest, results.jsonl, logged errors,
+  run logs (the run's config.json, results.jsonl and its errors field), or author record (the
+  authors' own files, e.g. the canonical loader load_canonical.py).
+- Logged error messages are quoted whole. A message longer than 160 characters is cut at a word
+  boundary and marked with an ellipsis.
 """
 
 

@@ -65,3 +65,37 @@ did nothing and logged nothing), and the 50 `outdated_version` pairs whose only 
 Related outputs: `pair_audit_by_type.csv` (tabulation of raw_status and visible_status by sham_type),
 `pair_audit_summary.json` (overall counts, `claim_status_by_type` and `unclaimed_changes_by_type` as nested
 counts `{sham_type: {category: n}}`, `claimed_not_observed_by_type`, and the CASE_022 detail).
+
+## coerced_choices.csv: choices the original runner, not the model, set to "A"
+
+The four inline runner families replaced a missing or invalid model choice with "A" and scored it as the
+model's choice. `python -m r2.audit.coerced_choices` classifies each of the 10,500 canonical records by
+replaying the runner's own parse step on the raw response file it wrote (`results/<run>/raw/<case>_response.json`)
+and checking the replay against the stored decision. A replay that disagrees with the stored record raises
+an error; nothing is inferred.
+
+| Profile | Runner (line numbers hold for `scripts/` and the legacy originals) | Condition that writes "A" |
+|---|---|---|
+| together_inline6 | `scripts/run_together_experiment.py` | no `{`...`}` span (215, 221-222, rationale "No JSON found"); `json.loads` fails (217-220, "Parse failed"); `str(selected_tool).upper()` not A/B, or key missing (224-227) |
+| gemini_inline7 | `scripts/run_gemini_experiment.py` | no span (237, 253-264, "No JSON found in response"); `json.loads` fails (239-252, "Failed to parse response"); `selected_tool.upper()` not A/B, or key missing (266-270); a non-string value raises (error record, not "A") |
+| deepseek_chat_inline7 | `scripts/run_deepseek_experiment.py` | no span (248, 264-275); `json.loads` fails (250-263); not A/B or missing (277-281); same rationales as gemini |
+| deepseek_reasoner_inline7 | `scripts/run_deepseek_reasoner.py` | no span (244, 260-271); `json.loads` fails (246-259); not A/B or missing (273-277); same rationales as gemini |
+| openai_fc | `src/runner.py` | none: unparseable output raises (legacy :433), a missing choice becomes "unclear" (legacy :446) |
+
+| Column | Values | Description |
+|---|---|---|
+| `model`, `profile`, `case_id` | | Record identity; `profile` from `r2/profiles.py` |
+| `sham_position` | A, B | Position of the modified tool |
+| `visible_status` | identical, metadata_only, excerpt_differs | From `pair_audit.csv` |
+| `class` | coerced_parse_failure, coerced_invalid_choice, not_coerced | coerced_parse_failure = no JSON object found or `json.loads` failed, so the runner wrote its fallback decision; coerced_invalid_choice = the reply parsed but `selected_tool` was missing or not A/B after upper-casing, so the runner wrote "A"; not_coerced = all other records |
+| `reason` | no_json, json_decode_error, invalid_choice, missing_choice, valid_choice, runner_would_raise, rationale_not_fallback, runner_has_no_A_fallback | The replayed outcome. runner_would_raise: gemini CASE_330, where the reply gave `null`, the runner would have raised, and the stored record (written outside the runner code) holds `null`, scored incorrect, not "A". rationale_not_fallback: no raw file, stored rationale is the model's own |
+| `raw_selected_tool` | JSON-encoded value | The value the model gave (e.g. `"Neither"`, `null`, `""`); empty when nothing parsed or the key was missing |
+| `stored_selected_tool` | A, B, null | The choice in `data/original_runs/` |
+| `evidence` | raw_replay, rationale_only | rationale_only: 3 Qwen3-VL-8B re-run records (CASE_358-360) have no raw file, so only the stored rationale is checked and an invalid choice cannot be detected there |
+| `replay_matches_stored` | True, False, empty | The replayed decision (choice and rationale; for openai_fc, the original `_parse_decision` on `*_final.json`) equals the stored one; False only for gemini CASE_330; empty when there is no raw file |
+
+Counts: 781 coerced records, all in together_inline6 (655 coerced_parse_failure: 413 no_json + 242
+json_decode_error; 126 coerced_invalid_choice), 368 of them on identical pairs. `coerced_choices_summary.json`
+gives counts by class x profile x model, by `visible_status`, by profile x `visible_status`, the replayed
+reasons, the invalid values per model, and the runner conditions. `analysis_original/headline.json` key
+`excluding_coerced` recomputes the pooled measures without these records.

@@ -71,3 +71,37 @@ def test_pooled_position_rates_have_cluster_bootstrap_cis(tmp_path, monkeypatch)
             assert s[f"{rate}_lo"] < s[rate] < s[f"{rate}_hi"], (name, rate)
         for k, v in _OLD[name].items():
             assert s[k] == v, (name, k)
+
+
+# Pre-Task-3b headline.json (commit 509ef05). Every key it held must keep its value byte for byte.
+_HEADLINE_BEFORE_3B_SHA256 = "0a909c12fe953f29a3cbbaf7e3c27a27e1f786f1bcb5f27d0cdb73a793b4f9fb"
+_MEASURES = ("accuracy", "primacy", "acc_sham_first", "acc_sham_second", "position_averaged_accuracy")
+
+
+def test_no_existing_headline_value_changes():
+    import hashlib
+    import json
+    h = run(write=False)
+    old = {k: v for k, v in h.items() if k != "excluding_coerced"}
+    assert hashlib.sha256(json.dumps(old, indent=2).encode()).hexdigest() == _HEADLINE_BEFORE_3B_SHA256
+
+
+def test_excluding_coerced_block():
+    import csv
+
+    from r2.paths import AUDIT_DIR
+    with open(AUDIT_DIR / "coerced_choices.csv", newline="") as fh:
+        coerced = [r for r in csv.DictReader(fh) if r["class"] != "not_coerced"]
+    n_coerced = {"all": len(coerced),
+                 "identical": sum(r["visible_status"] == "identical" for r in coerced),
+                 "discriminable": sum(r["visible_status"] != "identical" for r in coerced)}
+    h = run(write=False)
+    ex = h["excluding_coerced"]
+    for name in ("all", "discriminable", "identical"):
+        b = ex[name]
+        assert b["n_coerced_excluded"] == n_coerced[name], name
+        assert b["n"] == h[name]["n"] - n_coerced[name], name
+        for m in _MEASURES:
+            assert b[f"{m}_lo"] < b[m] < b[f"{m}_hi"], (name, m)
+    assert ex["all"]["n"] == 10500 - 781 and ex["identical"]["n"] == 3507 - 368
+    assert abs(ex["identical"]["primacy"] - 0.866) < 0.0005  # review figure: 86.6%

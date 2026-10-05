@@ -65,5 +65,64 @@
   "types_without_valid_pairs": [
     "contraindication_violation",
     "missing_warning"
-  ]
+  ],
+  "excluding_coerced": {
+    "all": {
+      "n": 9719,
+      "n_coerced_excluded": 781,
+      "accuracy": 0.6032513633089824,
+      "accuracy_lo": 0.5750417051755526,
+      "accuracy_hi": 0.6310438434636748,
+      "primacy": 0.7055252598003909,
+      "primacy_lo": 0.6825755216920528,
+      "primacy_hi": 0.7281722454250789,
+      "acc_sham_first": 0.39819746005735357,
+      "acc_sham_first_lo": 0.36454758729019976,
+      "acc_sham_first_hi": 0.4335646984613847,
+      "acc_sham_second": 0.8102129419061401,
+      "acc_sham_second_lo": 0.7895925167279412,
+      "acc_sham_second_hi": 0.831365420002681,
+      "position_averaged_accuracy": 0.6042052009817469,
+      "position_averaged_accuracy_lo": 0.5842045445962988,
+      "position_averaged_accuracy_hi": 0.6243887931175748
+    },
+    "discriminable": {
+      "n": 6580,
+      "n_coerced_excluded": 413,
+      "accuracy": 0.6559270516717325,
+      "accuracy_lo": 0.6295468392993147,
+      "accuracy_hi": 0.6833194704649719,
+      "primacy": 0.6288753799392097,
+      "primacy_lo": 0.6001811316376024,
+      "primacy_hi": 0.6586541270334558,
+      "acc_sham_first": 0.5270188221007893,
+      "acc_sham_first_lo": 0.49118676406534983,
+      "acc_sham_first_hi": 0.5655966079238135,
+      "acc_sham_second": 0.7851491174680463,
+      "acc_sham_second_lo": 0.7563695107510645,
+      "acc_sham_second_hi": 0.8144432749747573,
+      "position_averaged_accuracy": 0.6560839697844179,
+      "position_averaged_accuracy_lo": 0.6341458919261618,
+      "position_averaged_accuracy_hi": 0.6803118119894586
+    },
+    "identical": {
+      "n": 3139,
+      "n_coerced_excluded": 368,
+      "accuracy": 0.49283211213762346,
+      "accuracy_lo": 0.4334304630317497,
+      "accuracy_hi": 0.5538283231207222,
+      "primacy": 0.866199426568971,
+      "primacy_lo": 0.8493903750827386,
+      "primacy_hi": 0.8832930708627588,
+      "acc_sham_first": 0.1309823677581864,
+      "acc_sham_first_lo": 0.10829548850249004,
+      "acc_sham_first_hi": 0.15472773721808517,
+      "acc_sham_second": 0.8633139909735654,
+      "acc_sham_second_lo": 0.8371786420566908,
+      "acc_sham_second_hi": 0.8861182631276661,
+      "position_averaged_accuracy": 0.4971481793658759,
+      "position_averaged_accuracy_lo": 0.4808017995462984,
+      "position_averaged_accuracy_hi": 0.5139599457229338
+    }
+  }
 }

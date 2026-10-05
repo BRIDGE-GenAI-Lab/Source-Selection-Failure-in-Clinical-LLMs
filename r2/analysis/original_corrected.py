@@ -16,8 +16,16 @@ SAYS_IDENTICAL = re.compile(
     re.I)
 
 
+def _coerced_keys():
+    """(model, case_id) of every record whose choice the original runner set to "A" (audit/coerced_choices.csv)."""
+    cc = pd.read_csv(AUDIT_DIR / "coerced_choices.csv", usecols=["model", "case_id", "class"])
+    assert len(cc) == 10500, len(cc)
+    return set(cc.loc[cc["class"] != "not_coerced", ["model", "case_id"]].itertuples(index=False, name=None))
+
+
 def original_frame():
     audit = pd.read_csv(AUDIT_DIR / "pair_audit.csv").set_index("case_id")
+    coerced = _coerced_keys()
     rows = []
     for r in load_original():
         d = r.get("model_decision") or {}
@@ -30,6 +38,7 @@ def original_frame():
             "says_identical": bool(SAYS_IDENTICAL.search(rationale)),
             "visible_status": audit.loc[r["case_id"], "visible_status"],
             "raw_status": audit.loc[r["case_id"], "raw_status"],
+            "coerced": (r["model_name"], r["case_id"]) in coerced,
         })
     return pd.DataFrame(rows)
 
@@ -71,6 +80,24 @@ def _by_profile(sub):
     return pd.DataFrame({p: _pooled(g) for p, g in sub.groupby("profile")}).T
 
 
+def _excluding_coerced(sub):
+    """Sensitivity: the pooled measures recomputed without the records whose choice the original runner
+    coerced to "A" (audit/coerced_choices.csv), with case-cluster bootstrap CIs."""
+    kept = sub[~sub.coerced]
+    s = position_summary(kept)
+    out = {"n": s["n"], "n_coerced_excluded": int(sub.coerced.sum())}
+    for measure, rows, col in (("accuracy", kept, "correct"),
+                               ("primacy", kept, "selected_first"),
+                               ("acc_sham_first", kept[kept.sham_first], "correct"),
+                               ("acc_sham_second", kept[~kept.sham_first], "correct")):
+        out[measure] = s[measure]
+        out[f"{measure}_lo"], out[f"{measure}_hi"] = cluster_bootstrap_mean(
+            rows.assign(**{col: rows[col].astype(float)}), col)
+    out["position_averaged_accuracy"] = s["position_averaged_accuracy"]
+    out["position_averaged_accuracy_lo"], out["position_averaged_accuracy_hi"] = cluster_bootstrap_paa(kept)
+    return out
+
+
 def run(write=True):
     df = original_frame()
     subsets = {"all": df, "discriminable": df[df.visible_status != "identical"],
@@ -89,6 +116,7 @@ def run(write=True):
             s[f"{rate}_lo"], s[f"{rate}_hi"] = cluster_bootstrap_mean(rows.assign(**{col: rows[col].astype(float)}), col)
         head[name] = s
     head["types_without_valid_pairs"] = sorted(set(df.sham_type) - set(subsets["discriminable"].sham_type))
+    head["excluding_coerced"] = {name: _excluding_coerced(sub) for name, sub in subsets.items()}
     if write:
         OUT.mkdir(exist_ok=True)
         formula = "correct ~ sham_first + C(category, Treatment('metadata')) + C(model)"

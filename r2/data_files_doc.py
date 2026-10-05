@@ -12,6 +12,7 @@ import subprocess
 from r2.paths import REPO
 
 DIRS = ["data", "audit", "verification", "analysis_original"]
+FILES = ["docs/r2/vignette_generation_prompt.md"]  # single tracked files outside DIRS
 OUT = REPO / "docs" / "DATA_FILES.md"
 PEND = "produced after the repeated experiment"
 LEG = "Legacy, as run in Jan 2026"
@@ -65,7 +66,11 @@ RULES = [
      "repeated experiment (physician edit queue)",
      "The 23 pairs for which no automatic edit could be made; each needs an edit written by a physician"),
     (r"audit/README\.md$", "authored", "audit documentation",
-     "Describes the input reconstruction, what is verified against logged values, and every `pair_audit.csv` column"),
+     "Describes the input reconstruction, what is verified against logged values, every `pair_audit.csv` column, and the coerced-choice audit (`coerced_choices.csv`: runner conditions with file:line, columns, counts)"),
+    (r"audit/coerced_choices\.csv$", "`python -m r2.audit.coerced_choices`", "audit; analysis_original (`excluding_coerced`)",
+     "One row per original record (10,500): whether the runner, not the model, set the choice to \"A\" (`class`: coerced_parse_failure / coerced_invalid_choice / not_coerced), from a replay of the runner's parse step on its raw response file, checked against the stored decision. 781 coerced, all in the 14 Together-hosted runs (655 unparseable + 126 invalid choices such as \"Neither\"), 368 of them on identical pairs; none in the other 7 runs"),
+    (r"audit/coerced_choices_summary\.json$", "`python -m r2.audit.coerced_choices`", "audit",
+     "Counts of `coerced_choices.csv` by class x profile x model, by `visible_status` and by profile x `visible_status`; replayed reasons; invalid choice values per model; the three records checked by rationale only; the one record whose stored decision was not written by the runner (gemini CASE_330); runner conditions with file:line"),
     (r"audit/original_model_inputs\.jsonl\.gz$", "`python -m r2.audit.original_inputs`",
      f"audit; {ORIG}",
      "Rebuilt system prompt, user message and tool payloads for each of the 10,500 original evaluations (original runner code run on the as-run case file), with `hash_status` and `verification_scope`. Joins `data/original_runs/` on model and `case_id`"),
@@ -77,6 +82,11 @@ RULES = [
      "Tabulation of `raw_status` and `visible_status` by sham type"),
     (r"audit/pair_audit_summary\.json$", "`python -m r2.audit.pair_audit`", "audit; README correction notice",
      "Overall counts: `visible_status` identical 167 / metadata_only 64 / excerpt_differs 269; `raw_status` visible 333 / hidden_only 110 / no_edit 57; 69 distinct authentic excerpts"),
+    (r"analysis_original/headline\.json$", "`python -m r2.analysis.original_corrected`", "analysis of the original runs (exploratory)",
+     "Pooled measures for all, discriminable and identical pairs (accuracy, primacy, accuracy by sham position, position-averaged accuracy) with case-cluster bootstrap CIs, and `excluding_coerced`: the same measures without the 781 records whose choice the original runner coerced to \"A\" (`audit/coerced_choices.csv`). Inferential results are exploratory, not pre-specified"),
+    (r"docs/r2/vignette_generation_prompt\.md$", "copied byte for byte from the original `supplementary_appendix.md` lines 1442-1542, under a 3-line provenance header",
+     "documentation of the original stimulus generation; supplement",
+     "Zero-shot prompt used in Google AI Studio with Gemini 3 Pro to generate the vignettes. `tests/r2/test_vignette_prompt.py` pins the body to the source lines"),
     (r"analysis_original/", "`python -m r2.analysis.original_corrected`", "analysis of the original runs (exploratory)",
      "Corrected reanalysis of the original 10,500 records, split by pair status (all pairs vs discriminable pairs). Inferential results are exploratory, not pre-specified"),
     (r"verification/leakage_flags\.json$", "`r2.verify` (located leakage allow-list)", "repeated experiment; physician verification",
@@ -91,7 +101,7 @@ RULES = [
 
 
 def _tracked():
-    out = subprocess.run(["git", "ls-files", "-z", "--", *DIRS], cwd=REPO, capture_output=True,
+    out = subprocess.run(["git", "ls-files", "-z", "--", *DIRS, *FILES], cwd=REPO, capture_output=True,
                          text=True, check=True).stdout
     return sorted(p for p in out.split("\0") if p and not p.rsplit("/", 1)[-1].startswith("._"))
 
@@ -119,7 +129,7 @@ def _row(path):
 def build():
     head = """# Data files: what each file is, who made it, who uses it
 
-Every tracked file under `data/`, `data/original/`, `data/original_runs/`, `data/v2/`, `audit/`, `verification/` (including `round1/`) and `analysis_original/` has one row. `tests/r2/test_data_files.py` fails if a file is missing here or a SHA-256 does not match. Regenerate with `python -m r2.data_files_doc`.
+Every tracked file under `data/`, `data/original/`, `data/original_runs/`, `data/v2/`, `audit/`, `verification/` (including `round1/`) and `analysis_original/`, plus `docs/r2/vignette_generation_prompt.md`, has one row. `tests/r2/test_data_files.py` fails if a file is missing here or a SHA-256 does not match. Regenerate with `python -m r2.data_files_doc`.
 
 - **Created by:** the script or process, and the commit that last changed the file (`git log -1 --format=%h -- <path>`).
 - **Date:** date of that commit. Dates inside the data (`generated_utc`) are noted in the role where they matter.

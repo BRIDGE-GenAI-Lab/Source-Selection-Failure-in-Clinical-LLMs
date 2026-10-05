@@ -7,6 +7,7 @@ from r2.paths import REPO
 
 DOC = REPO / "docs" / "DATA_FILES.md"
 DIRS = ["data", "audit", "verification", "analysis_original"]
+FILES = ["docs/r2/vignette_generation_prompt.md"]
 PENDING = ["analysis_repeated/", "r2_runs/", "data/v2/results_repeated.csv",
            "verification/excluded_pairs.json"]
 ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|(.*)\|\s*$")
@@ -30,7 +31,7 @@ def _rows():
 
 
 def _tracked():
-    out = subprocess.run(["git", "ls-files", "-z", "--", *DIRS], cwd=REPO, capture_output=True,
+    out = subprocess.run(["git", "ls-files", "-z", "--", *DIRS, *FILES], cwd=REPO, capture_output=True,
                          text=True, check=True).stdout
     return [p for p in out.split("\0") if p and not p.rsplit("/", 1)[-1].startswith("._")]
 
@@ -76,6 +77,13 @@ def test_required_legacy_rows_are_described():
     assert "pilot" in rows["data/100cases_with_tools.json"].lower()
     assert "five" in rows["data/500cases.json"].lower()
     assert "10,500" in rows["data/results_10500.csv"]
+
+
+def test_task3b_outputs_are_described():
+    rows = _rows()
+    assert "781" in rows["audit/coerced_choices.csv"]
+    assert "excluding_coerced" in rows["analysis_original/headline.json"]
+    assert "Gemini 3 Pro" in rows["docs/r2/vignette_generation_prompt.md"]
 
 
 def test_legacy_index_covers_every_script():
