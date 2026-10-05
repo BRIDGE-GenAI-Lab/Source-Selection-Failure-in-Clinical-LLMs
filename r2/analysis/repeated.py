@@ -34,16 +34,20 @@ def noticed(differences, snippets, k=3):
     return False
 
 
+def _side(x):
+    if x is None:
+        return []
+    if isinstance(x, str):
+        return x.splitlines() if "\n" in x else [x]
+    if isinstance(x, (list, tuple, set)):
+        return [str(i) for i in x]
+    return [str(x)]
+
+
 def _snippets(case):
     out = []
     for ch in case["edit_record"]["changes"]:
-        before, after = ch["before"], ch["after"]
-        if isinstance(before, list) or isinstance(after, list):
-            out += [str(x) for x in set(map(str, before or [])) ^ set(map(str, after or []))]
-        elif isinstance(before, str) and isinstance(after, str) and "\n" in before + after:
-            out += list(set(before.splitlines()) ^ set(after.splitlines()))
-        else:
-            out += [str(before), str(after)]
+        out += list(set(_side(ch["before"])) ^ set(_side(ch["after"])))
     return [s for s in out if s.strip()]
 
 
@@ -66,6 +70,7 @@ def repeated_frame(out_dir=RUNS_V2 / "main"):
                 "differences": d.get("differences_found") or [],
             })
     df = pd.DataFrame(rows)
+    df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce")
     df["sham_type"] = df.case_id.map(lambda c: pairs[c]["eval"]["sham_trap_type"])
     df["category"] = df.sham_type.map(CATEGORY)
     df["excluded"] = df.case_id.isin(excluded)
@@ -96,10 +101,34 @@ def _ok(df):
 
 
 def sensitivity_non_response(df):
+    """Non-responses scored incorrect. Selection is undefined for them, so only n, accuracy and
+    position-averaged accuracy are meaningful; primacy and the content test are set to NaN."""
     d = df.copy()
     d["correct"] = d.correct.fillna(0).astype(int)
     d["selected_first"] = d.selected_first.fillna(False).astype(bool)
-    return position_summary(d)
+    s = position_summary(d)
+    s.update({"primacy": float("nan"), "content_z": float("nan"), "content_p": float("nan")})
+    return s
+
+
+def per_model_table(analysis):
+    nan = float("nan")
+    per_model = []
+    for model, g in analysis.groupby("model"):
+        s = position_summary(g)
+        s["paa_lo"], s["paa_hi"] = cluster_bootstrap_paa(g)
+        conf = g.dropna(subset=["confidence"])
+        cal = calibration(conf.confidence, conf.correct) if len(conf) else {
+            k: nan for k in ("ece", "mce", "brier", "auroc", "mean_conf", "accuracy")}
+        cal = {("accuracy_conf" if k == "accuracy" else k): v for k, v in cal.items()}
+        s.update({"model": model, **cal})
+        per_model.append(s)
+    pm = pd.DataFrame(per_model)
+    pm["content_p_fdr"] = float("nan")
+    valid = pm.content_p.notna()
+    if valid.any():
+        pm.loc[valid, "content_p_fdr"] = fdr(pm.loc[valid, "content_p"])
+    return pm
 
 
 def _summary(df):
@@ -116,6 +145,7 @@ def run(out_dir=RUNS_V2 / "main", write=True):
         "primary": _summary(analysis),
         "n_models": int(analysis.model.nunique()), "n_pairs": int(analysis.case_id.nunique()),
         "n_excluded_pairs": int(df[df.excluded].case_id.nunique()),
+        "models_without_ok_cells": sorted(set(df.model) - set(analysis.model)),
         "non_response": int((df[~df.excluded].status == "non_response").sum()),
         "invariant_correct": float(pairs.invariant_correct.mean()),
         "position_driven": float(pairs.position_driven.mean()),
@@ -129,14 +159,7 @@ def run(out_dir=RUNS_V2 / "main", write=True):
     }
     if write:
         OUT.mkdir(exist_ok=True)
-        per_model = []
-        for model, g in analysis.groupby("model"):
-            s = position_summary(g)
-            s["paa_lo"], s["paa_hi"] = cluster_bootstrap_paa(g)
-            s.update({"model": model, **calibration(g.confidence.fillna(0.5), g.correct)})
-            per_model.append(s)
-        pm = pd.DataFrame(per_model)
-        pm["content_p_fdr"] = fdr(pm.content_p)
+        pm = per_model_table(analysis)
         pm.sort_values("position_averaged_accuracy", ascending=False).to_csv(OUT / "per_model.csv", index=False)
         for col, name in (("sham_type", "per_type"), ("category", "per_category")):
             rows = []

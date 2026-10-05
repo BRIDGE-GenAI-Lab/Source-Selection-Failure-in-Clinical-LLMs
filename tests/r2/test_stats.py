@@ -57,3 +57,12 @@ def test_cluster_bootstrap_one_arm_returns_nan():
     df = _frame(lambda sham_first: not sham_first)
     lo, hi = cluster_bootstrap_paa(df[df.sham_first], n_boot=50)
     assert np.isnan(lo) and np.isnan(hi)
+
+
+def test_position_summary_one_orientation_is_nan_not_error():
+    df = _frame(lambda sf: True)
+    df = df[df.sham_first]
+    s = position_summary(df)
+    assert s["n"] == len(df) and s["primacy"] == 1.0
+    for k in ("acc_sham_second", "position_averaged_accuracy", "content_z", "content_p"):
+        assert np.isnan(s[k])

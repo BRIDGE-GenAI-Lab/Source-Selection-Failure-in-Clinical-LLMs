@@ -3,7 +3,8 @@ import json
 import pandas as pd
 
 from r2.analysis import repeated
-from r2.analysis.repeated import _ok, noticed, pair_level, repeated_frame, sensitivity_non_response
+from r2.analysis.repeated import (_ok, _snippets, noticed, pair_level, per_model_table, repeated_frame,
+                                  sensitivity_non_response)
 
 
 def _df(rule):
@@ -31,6 +32,7 @@ def test_non_response_sensitivity():
     df.loc[0, ["status", "correct", "selected_first"]] = ["non_response", None, None]
     s = sensitivity_non_response(df)
     assert s["n"] == 20 and abs(s["accuracy"] - 19 / 20) < 1e-9
+    assert pd.isna(s["primacy"]) and pd.isna(s["content_z"]) and pd.isna(s["content_p"])
 
 
 def test_noticed():
@@ -66,3 +68,36 @@ def test_repeated_frame_tolerates_error_cells(tmp_path, monkeypatch):
     row = df[df.case_id == c2].iloc[0]
     assert row.status == "non_response" and pd.isna(row.correct)
     assert len(_ok(df)) == 1
+
+
+def test_snippets_mixed_str_and_list():
+    case = {"edit_record": {"changes": [{"before": "abc def ghi",
+                                         "after": ["abc def ghi", "new bullet text here"]}]}}
+    sn = _snippets(case)
+    assert "new bullet text here" in sn
+    assert all(len(x) > 1 for x in sn)
+
+
+def _model_frame(model, content_rule, n=40, conf=0.8):
+    rows = []
+    for i in range(n):
+        for sf in (True, False):
+            sel = content_rule(sf)
+            rows.append({"model": model, "case_id": f"{model}{i}", "sham_first": sf,
+                         "selected_first": sel, "correct": int(sel != sf), "confidence": conf})
+    return pd.DataFrame(rows)
+
+
+def test_per_model_table_nan_p_does_not_poison_fdr_and_calibration_drops_nan():
+    good = _model_frame("good", lambda sf: not sf)
+    bad = _model_frame("bad", lambda sf: True)
+    one_arm = _model_frame("arm", lambda sf: True)
+    one_arm = one_arm[one_arm.sham_first]
+    nanconf = _model_frame("nc", lambda sf: not sf)
+    nanconf.loc[nanconf.index[:10], "confidence"] = float("nan")
+    allnan = _model_frame("an", lambda sf: not sf, conf=float("nan"))
+    pm = per_model_table(pd.concat([good, bad, one_arm, nanconf, allnan])).set_index("model")
+    assert pd.isna(pm.loc["arm", "content_p"]) and pd.isna(pm.loc["arm", "content_p_fdr"])
+    assert pm.loc[["good", "bad", "nc", "an"], "content_p_fdr"].notna().all()
+    assert abs(pm.loc["nc", "mean_conf"] - 0.8) < 1e-9
+    assert pd.isna(pm.loc["an", "ece"]) and pd.isna(pm.loc["an", "mean_conf"])

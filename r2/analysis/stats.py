@@ -23,6 +23,8 @@ def wilson(k, n):
 
 
 def two_prop_z(k1, n1, k2, n2):
+    if n1 == 0 or n2 == 0:
+        return float("nan"), float("nan")
     p1, p2 = k1 / n1, k2 / n2
     pooled = (k1 + k2) / (n1 + n2)
     se = math.sqrt(pooled * (1 - pooled) * (1 / n1 + 1 / n2))
@@ -34,7 +36,9 @@ def two_prop_z(k1, n1, k2, n2):
 
 def position_summary(df):
     sf, ss = df[df.sham_first], df[~df.sham_first]
-    acc_sf, acc_ss = sf.correct.mean(), ss.correct.mean()
+    nan = float("nan")
+    acc_sf = sf.correct.mean() if len(sf) else nan
+    acc_ss = ss.correct.mean() if len(ss) else nan
     # content sensitivity: P(select first | sham second) vs P(select first | sham first)
     z, p = two_prop_z(int(ss.selected_first.sum()), len(ss), int(sf.selected_first.sum()), len(sf))
     return {
