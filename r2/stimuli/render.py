@@ -40,18 +40,26 @@ VITAL_LABELS = {"temp_c": "Temp (C)", "hr": "HR", "bp_systolic": "SBP", "bp_dias
                 "rr": "RR", "spo2": "SpO2 (%)"}
 
 
+NOT_STATED = "not stated"
+
+
 def _sha256_json(obj):
     return hashlib.sha256(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 def render_tool(tool, label):
-    meta = tool.get("metadata", {})
+    meta = tool.get("metadata") or {}
+
+    def stated(key):
+        value = meta.get(key)
+        return NOT_STATED if value is None else value
+
     return {
         "label": label,
-        "organization": meta.get("organization"),
-        "document_title": meta.get("guideline_title"),
-        "version": meta.get("version_label"),
-        "publication_year": meta.get("publication_year"),
+        "organization": stated("organization"),
+        "document_title": stated("guideline_title"),
+        "version": stated("version_label"),
+        "publication_year": stated("publication_year"),
         "excerpt_text": tool.get("excerpt_text", ""),
         "safety_guardrails": list(tool.get("safety_guardrails") or []),
         "applicability": list(tool.get("applicability") or []),
@@ -72,8 +80,13 @@ def _join(items, empty):
 
 def render_vignette(case):
     demo = case.get("demographics") or {}
-    patient = f"{demo.get('age', 'unknown')}-year-old {demo.get('sex', 'unknown')}"
-    if demo.get("weight_kg"):
+    age, sex = demo.get("age"), demo.get("sex")
+    if age is not None and sex is not None:
+        patient = f"{age}-year-old {sex}"
+    else:
+        patient = ", ".join([f"{age}-year-old" if age is not None else "age not stated",
+                             str(sex) if sex is not None else "sex not stated"])
+    if demo.get("weight_kg") not in (None, ""):
         patient += f", {demo['weight_kg']} kg"
     lines = [
         f"Setting: {case.get('setting') or 'Not specified'}",
@@ -85,7 +98,7 @@ def render_vignette(case):
         f"Allergies: {_join(case.get('allergies'), 'No known drug allergies')}",
     ]
     vitals = case.get("vitals") or {}
-    vit = [f"{VITAL_LABELS[k]} {v}" for k, v in vitals.items() if k in VITAL_LABELS and v is not None]
+    vit = [f"{label} {vitals[k]}" for k, label in VITAL_LABELS.items() if vitals.get(k) is not None]
     if vit:
         lines.append("Vital signs: " + ", ".join(vit))
     labs = case.get("key_labs") or {}

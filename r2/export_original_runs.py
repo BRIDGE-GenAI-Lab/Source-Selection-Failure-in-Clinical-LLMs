@@ -23,7 +23,7 @@ def select_canonical_runs(lc):
         cfg = os.path.join(run_dir, "config.json")
         model = os.path.basename(run_dir)
         if os.path.exists(cfg):
-            model = json.load(open(cfg)).get("model", model)
+            model = _read_json(cfg).get("model", model)
         recs = lc._records(run_dir)
         if model not in best or len(recs) >= best[model][0]:
             best[model] = (len(recs), run_dir, recs)
@@ -40,34 +40,51 @@ def _sha256(path):
         return hashlib.sha256(fh.read()).hexdigest()
 
 
-def main():
-    lc = _legacy_loader()
+def _read_json(path):
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def build_export(lc):
+    """Everything main() writes, computed in memory: (manifest, {file name: bytes}, got_keys)."""
     runs = select_canonical_runs(lc)
     reference, _ = lc.load_canonical()
     ref_keys = {(r["model_name"], r["case_id"], json.dumps(r["model_decision"], sort_keys=True)) for r in reference}
-    ORIGINAL_RUNS_DIR.mkdir(parents=True, exist_ok=True)
     manifest = {"selection_rule": lc.__doc__.strip(), "runs": []}
-    got_keys = set()
+    files, got_keys = {}, set()
     for model in sorted(runs):
         run_dir, recs = runs[model]
         name = os.path.basename(run_dir)
-        dest = ORIGINAL_RUNS_DIR / (name + ".results.jsonl")
-        with open(dest, "w") as fh:
-            for r in recs:
-                r = {k: v for k, v in r.items() if k != "model_name"}
-                fh.write(json.dumps(r, sort_keys=True) + "\n")
-                got_keys.add((model, r["case_id"], json.dumps(r["model_decision"], sort_keys=True)))
+        dest_name = name + ".results.jsonl"
+        lines = []
+        for r in recs:
+            r = {k: v for k, v in r.items() if k != "model_name"}
+            lines.append(json.dumps(r, sort_keys=True) + "\n")
+            got_keys.add((model, r["case_id"], json.dumps(r["model_decision"], sort_keys=True)))
+        data = "".join(lines).encode("utf-8")
+        files[dest_name] = data
         cfg_path = os.path.join(run_dir, "config.json")
         manifest["runs"].append({
             "model": model,
             "run_dir": name,
-            "file": dest.name,
+            "file": dest_name,
             "n_records": len(recs),
             "source_results_sha256": _sha256(os.path.join(run_dir, "results.jsonl")),
-            "config": json.load(open(cfg_path)) if os.path.exists(cfg_path) else {},
+            "exported_sha256": hashlib.sha256(data).hexdigest(),
+            "config": _read_json(cfg_path) if os.path.exists(cfg_path) else {},
         })
-    assert got_keys == ref_keys, "export differs from load_canonical() output"
-    (ORIGINAL_RUNS_DIR / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    if got_keys != ref_keys:
+        raise RuntimeError("export differs from load_canonical() output: "
+                           f"{len(got_keys - ref_keys)} extra and {len(ref_keys - got_keys)} missing record keys")
+    return manifest, files, got_keys
+
+
+def main():
+    manifest, files, got_keys = build_export(_legacy_loader())  # raises before anything is written
+    ORIGINAL_RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    for name, data in files.items():
+        (ORIGINAL_RUNS_DIR / name).write_bytes(data)
+    (ORIGINAL_RUNS_DIR / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"exported {len(manifest['runs'])} runs, {len(got_keys)} records")
 
 

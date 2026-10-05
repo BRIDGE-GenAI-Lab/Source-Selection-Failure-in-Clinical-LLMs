@@ -5,9 +5,11 @@ import csv
 import gzip
 import hashlib
 import importlib.util
+import contextlib
 import json
 import os
 import sys
+import warnings
 from collections import Counter, defaultdict
 
 from r2.io import load_original_cases
@@ -47,15 +49,37 @@ def _sha_json(obj):
     return _sha(json.dumps(obj, sort_keys=True))
 
 
+_PLACEHOLDER_KEYS = ("TOGETHER_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY",
+                     "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY")
+
+
+@contextlib.contextmanager
+def _scoped_environment(placeholder_keys=False, repo_on_path=False):
+    """Apply the os.environ / sys.path changes the original runners need at import time, and restore
+    both exactly on exit, so nothing leaks into the calling process."""
+    saved_env, saved_path = dict(os.environ), list(sys.path)
+    try:
+        if placeholder_keys:
+            for var in _PLACEHOLDER_KEYS:
+                os.environ.setdefault(var, "unused-for-reconstruction")
+        if repo_on_path and str(REPO) not in sys.path:
+            sys.path.insert(0, str(REPO))
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(saved_env)
+        sys.path[:] = saved_path
+
+
 def load_runner(rel_path):
     if rel_path not in _MODULES:
-        for var in ("TOGETHER_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY",
-                    "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY"):
-            os.environ.setdefault(var, "unused-for-reconstruction")
         path = REPO / rel_path
         spec = importlib.util.spec_from_file_location("orig_" + path.stem, path)
         mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+        with _scoped_environment(placeholder_keys=True), warnings.catch_warnings():
+            # google.generativeai announces its end of support with a FutureWarning on import
+            warnings.filterwarnings("ignore", message=r"(?s).*google[.-]generativeai", category=FutureWarning)
+            spec.loader.exec_module(mod)
         _MODULES[rel_path] = mod
     return _MODULES[rel_path]
 
@@ -81,7 +105,8 @@ def reconstruct_inline(profile, case, mapping):
     rel = PROFILES[profile]
     mod = load_runner(rel)
     tool_a, tool_b, got = mod.sanitize_for_case(case, FixedDraw(mapping))
-    assert got == mapping, (case["case_id"], got, mapping)
+    if got != mapping:
+        raise ValueError(f"{case['case_id']}: sanitizer assigned {got}, the run logged {mapping}")
     try:
         system_prompt = mod.get_system_prompt("baseline")
     except TypeError:
@@ -98,20 +123,19 @@ def reconstruct_inline(profile, case, mapping):
 
 
 def load_case_models():
-    if str(REPO) not in sys.path:
-        sys.path.insert(0, str(REPO))
-    from src.load_cases import load_cases
-    return {c.case_id: c for c in load_cases(ORIGINAL_CASES)}
+    with _scoped_environment(repo_on_path=True):
+        from src.load_cases import load_cases
+        return {c.case_id: c for c in load_cases(ORIGINAL_CASES)}
 
 
 def reconstruct_openai_fc(case_model, mapping):
-    if str(REPO) not in sys.path:
-        sys.path.insert(0, str(REPO))
-    from src.prompts import format_user_prompt, get_system_prompt
-    from src.runner import GUIDELINE_TOOLS
-    from src.sanitize_tools import sanitize_for_case
-    tool_a, tool_b, got = sanitize_for_case(case_model, FixedDraw(mapping))
-    assert (got.A, got.B) == (mapping["A"], mapping["B"])
+    with _scoped_environment(repo_on_path=True):
+        from src.prompts import format_user_prompt, get_system_prompt
+        from src.runner import GUIDELINE_TOOLS
+        from src.sanitize_tools import sanitize_for_case
+        tool_a, tool_b, got = sanitize_for_case(case_model, FixedDraw(mapping))
+    if (got.A, got.B) != (mapping["A"], mapping["B"]):
+        raise ValueError(f"{case_model.case_id}: sanitizer assigned {(got.A, got.B)}, the run logged {mapping}")
     return {
         "system": get_system_prompt("baseline"),
         "user": format_user_prompt(case_model),
@@ -125,8 +149,11 @@ def reconstruct_openai_fc(case_model, mapping):
 def _logged_prefix(run_dir, case_id):
     path = LEGACY_RESULTS / run_dir / "raw" / f"{case_id}_response.json"
     if not path.exists():
-        return None
-    return json.loads(path.read_text()).get("prompt")
+        return None  # no raw response file: not checkable
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if "prompt" not in raw:
+        raise KeyError(f"{path}: raw response file exists but has no 'prompt' key")
+    return raw["prompt"]
 
 
 def build_all(write=True):

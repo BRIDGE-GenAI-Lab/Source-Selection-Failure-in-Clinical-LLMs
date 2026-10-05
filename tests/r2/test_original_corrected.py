@@ -13,13 +13,15 @@ def test_headline_numbers():
     assert set(h["types_without_valid_pairs"]) == {"contraindication_violation", "missing_warning"}
 
 
-def test_profile_interaction_is_estimable():
+def test_profile_interaction_is_estimable(tmp_path, monkeypatch):
     import numpy as np
     import pandas as pd
 
-    from r2.analysis.original_corrected import OUT
+    import r2.analysis.original_corrected as oc
 
-    run(write=True)
+    monkeypatch.setattr(oc, "OUT", tmp_path / "out")  # never write into the committed analysis_original/
+    oc.run(write=True)
+    OUT = oc.OUT
     for name in ("all", "discriminable"):
         g = pd.read_csv(OUT / f"gee_profile_interaction_{name}.csv", index_col=0)
         row = g.loc["sham_first_x_inline"]
@@ -53,11 +55,14 @@ def test_per_type_and_by_profile_are_cluster_aware():
 _OLD = {
     "all": {"n": 10500, "accuracy": 0.5938095238095238, "primacy": 0.7274285714285714,
             "acc_sham_first": 0.3674163674163674, "acc_sham_second": 0.8237665578805913,
-            "acc_lo": 0.5644738095238095, "acc_hi": 0.6225761904761904},
+            "acc_lo": 0.5644738095238095, "acc_hi": 0.6225761904761904,
+            "position_averaged_accuracy": 0.5955914626484793, "says_identical": 0.5743809523809524},
     "discriminable": {"n": 6993, "accuracy": 0.6457886457886458, "primacy": 0.6507936507936508,
-                      "acc_sham_first": 0.49500998003992014, "acc_sham_second": 0.7974756167527252},
+                      "acc_sham_first": 0.49500998003992014, "acc_sham_second": 0.7974756167527252,
+                      "position_averaged_accuracy": 0.6462427983963226, "says_identical": 0.45145145145145144},
     "identical": {"n": 3507, "primacy": 0.8802395209580839,
-                  "acc_sham_first": 0.11659192825112108, "acc_sham_second": 0.8769587928032502},
+                  "acc_sham_first": 0.11659192825112108, "acc_sham_second": 0.8769587928032502,
+                  "position_averaged_accuracy": 0.4967753605271856, "says_identical": 0.8195038494439693},
 }
 
 
