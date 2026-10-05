@@ -93,6 +93,8 @@ an error; nothing is inferred.
 | `stored_selected_tool` | A, B, null | The choice in `data/original_runs/` |
 | `evidence` | raw_replay, rationale_only | rationale_only: 3 Qwen3-VL-8B re-run records (CASE_358-360) have no raw file, so only the stored rationale is checked and an invalid choice cannot be detected there |
 | `replay_matches_stored` | True, False, empty | The replayed decision (choice and rationale; for openai_fc, the original `_parse_decision` on `*_final.json`) equals the stored one; False only for gemini CASE_330; empty when there is no raw file |
+| `hit_token_limit` | True, False | True when the stored raw response records `usage.completion_tokens` equal to the `max_tokens` the runner sent (Together and DeepSeek-chat 2048, DeepSeek-reasoner 8192; `scripts/run_together_experiment.py:191`, `run_deepseek_experiment.py:224`, `run_deepseek_reasoner.py:214`). True for 381 coerced_parse_failure records (Qwen3-Next-Thinking 329, Apriel 37, Nemotron 15) and for 8 not_coerced records (Apriel 7, Nemotron 1: replies cut off at the limit in which the runner's first-`{`-to-last-`}` span still parsed); 0 coerced_invalid_choice |
+| `token_limit_evidence` | usage, no_runner_limit, no_raw_file | How `hit_token_limit` was set: usage = compared from the raw file; no_runner_limit = the runner sent no output limit (gemini_inline7, openai_fc; all 2,000 openai_fc final responses have status "completed"), so False; no_raw_file = the 3 Qwen3-VL-8B re-run records, so False and not determinable |
 
 Counts: 781 coerced records, all in together_inline6 (655 coerced_parse_failure: 413 no_json + 242
 json_decode_error; 126 coerced_invalid_choice), 368 of them on identical pairs. `coerced_choices_summary.json`

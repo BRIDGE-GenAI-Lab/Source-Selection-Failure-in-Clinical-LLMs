@@ -257,8 +257,7 @@ def test_coerced_choices_table_matches_the_audit_summary(written):
         assert int(r["parse_failures_at_token_limit"]) <= int(r["coerced_no_json"]) + int(r["coerced_json_decode_error"])
 
 
-@pytest.mark.skipif(not all(t.exists() for t in RESULT_TREES), reason="legacy results tree not mounted")
-def test_coerced_parse_failures_at_the_token_limit(written):
+def test_coerced_parse_failures_at_the_token_limit(written):  # from audit/coerced_choices.csv; no volume needed
     out, _ = written
     rows = {r["model"]: r for r in read(out, "S_coerced_choices")}
     assert sum(int(r["parse_failures_at_token_limit"]) for r in rows.values()) == 381
@@ -266,3 +265,14 @@ def test_coerced_parse_failures_at_the_token_limit(written):
     assert int(q["parse_failures_at_token_limit"]) == int(q["coerced_no_json"]) + int(q["coerced_json_decode_error"]) == 329
     assert rows["Qwen/Qwen3-Next-80B-A3B-Thinking"]["runner_max_tokens"] == "2048"
     assert rows["gpt-4.1-2025-04-14"]["runner_max_tokens"] == "not set"
+
+
+def test_coerced_choices_reads_token_limit_from_the_audit_csv_not_raw_files(monkeypatch, tmp_path):
+    monkeypatch.setattr(st, "LEGACY_EVAL", tmp_path / "not-mounted")
+    monkeypatch.setattr(st, "LEGACY_RESULTS", tmp_path / "not-mounted" / "results", raising=False)
+    rows = {r["model"]: r for r in st.coerced_choices()}
+    assert sum(r["parse_failures_at_token_limit"] for r in rows.values()) == 381
+    assert rows["Qwen/Qwen3-Next-80B-A3B-Thinking"]["parse_failures_at_token_limit"] == 329
+    assert rows["ServiceNow-AI/Apriel-1.6-15b-Thinker"]["parse_failures_at_token_limit"] == 37
+    assert rows["deepseek-reasoner"]["runner_max_tokens"] == 8192
+    assert rows["gemini-2.5-flash-lite"]["runner_max_tokens"] == "not set"

@@ -6,7 +6,7 @@ from collections import Counter
 import pytest
 
 from r2.audit import coerced_choices as cc
-from r2.paths import AUDIT_DIR, LEGACY_RESULTS
+from r2.paths import AUDIT_DIR, LEGACY_RESULTS, REPO
 
 INLINE = ("together_inline6", "gemini_inline7", "deepseek_chat_inline7", "deepseek_reasoner_inline7")
 COERCED = (cc.COERCED_PARSE, cc.COERCED_INVALID)
@@ -186,3 +186,57 @@ def test_committed_summary_matches_csv():
     for vs, counts in s["by_visible_status"].items():
         assert counts == dict(sorted(Counter(r["class"] for r in data if r["visible_status"] == vs).items()))
     assert set(s["runner_conditions"]) == set(cc.RUNNER_CONDITIONS)
+
+
+# ------------------------------------------------------------------ token limit (follow-up)
+
+@pytest.mark.parametrize("profile,doc,expected", [
+    ("together_inline6", {"usage": {"completion_tokens": 2048}}, (True, "usage")),
+    ("together_inline6", {"usage": {"completion_tokens": 2047}}, (False, "usage")),
+    ("deepseek_reasoner_inline7", {"usage": {"completion_tokens": 2048}}, (False, "usage")),
+    ("deepseek_reasoner_inline7", {"usage": {"completion_tokens": 8192}}, (True, "usage")),
+    ("together_inline6", {"usage": None}, (False, "no_usage")),
+    ("together_inline6", None, (False, "no_raw_file")),
+    ("gemini_inline7", {"response_text": "x"}, (False, "no_runner_limit")),
+    ("openai_fc", None, (False, "no_runner_limit")),
+])
+def test_token_limit_from_stored_usage(profile, doc, expected):
+    assert cc.token_limit(profile, doc) == expected
+
+
+def test_runner_max_tokens_match_the_runner_source():
+    for profile, cite in cc.RUNNER_MAX_TOKENS_CITE.items():
+        limit = cc.RUNNER_MAX_TOKENS[profile]
+        path, _, line = cite.partition(":")
+        text = (REPO / path).read_text()
+        if limit is None:
+            assert "max_tokens=" not in text and "max_output_tokens=" not in text, profile
+        else:
+            assert f"max_tokens={limit}," in text.splitlines()[int(line) - 1], profile
+    assert set(cc.RUNNER_MAX_TOKENS) == set(cc.RUNNER_CONDITIONS)
+
+
+@mounted
+def test_hit_token_limit_counts(rows):
+    hit = Counter((r["model"], r["class"]) for r in rows if r["hit_token_limit"])
+    assert sum(n for (_, c), n in hit.items() if c == cc.COERCED_PARSE) == 381
+    assert sum(n for (_, c), n in hit.items() if c == cc.COERCED_INVALID) == 0
+    # the data say otherwise outside parse failures: 8 parsed replies also used the full 2,048 tokens
+    assert {k: n for k, n in hit.items() if k[1] == cc.NOT_COERCED} == {
+        ("ServiceNow-AI/Apriel-1.6-15b-Thinker", cc.NOT_COERCED): 7,
+        ("nvidia/NVIDIA-Nemotron-Nano-9B-v2", cc.NOT_COERCED): 1}
+    ev = Counter((r["profile"], r["token_limit_evidence"]) for r in rows)
+    assert ev[("together_inline6", "no_raw_file")] == 3
+    assert ev[("gemini_inline7", "no_runner_limit")] == 500 and ev[("openai_fc", "no_runner_limit")] == 2000
+
+
+def test_committed_csv_carries_hit_token_limit():
+    data = _csv()
+    assert {r["hit_token_limit"] for r in data} == {"True", "False"}
+    hit = Counter(r["class"] for r in data if r["hit_token_limit"] == "True")
+    assert hit == {cc.COERCED_PARSE: 381, cc.NOT_COERCED: 8}
+    s = json.loads((AUDIT_DIR / "coerced_choices_summary.json").read_text())
+    for prof, counts in s["hit_token_limit_by_profile"].items():
+        got = Counter(r["class"] for r in data if r["profile"] == prof and r["hit_token_limit"] == "True")
+        assert {k: v for k, v in counts.items() if v} == dict(got), prof
+    assert s["hit_token_limit_by_profile"]["together_inline6"][cc.COERCED_PARSE] == 381

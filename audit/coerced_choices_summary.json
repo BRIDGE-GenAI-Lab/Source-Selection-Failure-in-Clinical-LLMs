@@ -293,5 +293,72 @@
       "file": "src/runner.py",
       "no_A_fallback": "unparseable output raises ValueError (legacy src/runner.py:433, repo copy :435), giving an error record, not a decision; a missing selected_tool becomes 'unclear' (legacy :446, repo copy :448); ModelDecision accepts only 'A', 'B', 'unclear' (src/schemas.py:158)"
     }
+  },
+  "hit_token_limit_by_profile": {
+    "deepseek_chat_inline7": {
+      "coerced_parse_failure": 0,
+      "coerced_invalid_choice": 0,
+      "not_coerced": 0
+    },
+    "deepseek_reasoner_inline7": {
+      "coerced_parse_failure": 0,
+      "coerced_invalid_choice": 0,
+      "not_coerced": 0
+    },
+    "gemini_inline7": {
+      "coerced_parse_failure": 0,
+      "coerced_invalid_choice": 0,
+      "not_coerced": 0
+    },
+    "openai_fc": {
+      "coerced_parse_failure": 0,
+      "coerced_invalid_choice": 0,
+      "not_coerced": 0
+    },
+    "together_inline6": {
+      "coerced_parse_failure": 381,
+      "coerced_invalid_choice": 0,
+      "not_coerced": 8
+    }
+  },
+  "token_limit_evidence_counts": {
+    "deepseek_chat_inline7": {
+      "usage": 500
+    },
+    "deepseek_reasoner_inline7": {
+      "usage": 500
+    },
+    "gemini_inline7": {
+      "no_runner_limit": 500
+    },
+    "openai_fc": {
+      "no_runner_limit": 2000
+    },
+    "together_inline6": {
+      "no_raw_file": 3,
+      "usage": 6997
+    }
+  },
+  "runner_max_tokens": {
+    "deepseek_chat_inline7": {
+      "max_tokens": 2048,
+      "source": "scripts/run_deepseek_experiment.py:224"
+    },
+    "deepseek_reasoner_inline7": {
+      "max_tokens": 8192,
+      "source": "scripts/run_deepseek_reasoner.py:214"
+    },
+    "gemini_inline7": {
+      "max_tokens": null,
+      "source": "scripts/run_gemini_experiment.py"
+    },
+    "openai_fc": {
+      "max_tokens": null,
+      "source": "src/runner.py"
+    },
+    "together_inline6": {
+      "max_tokens": 2048,
+      "source": "scripts/run_together_experiment.py:191"
+    }
   }
 }

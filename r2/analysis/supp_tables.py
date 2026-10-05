@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from r2 import profiles
+from r2.audit.coerced_choices import RUNNER_MAX_TOKENS
 from r2.paths import AUDIT_DIR, DATA_V2, LEGACY_EVAL, ORIGINAL_RUNS_DIR, REPO, RUNS_V2
 
 OUT_DIR = Path("/Volumes/Lexar/LLM_Tool_use/npj_R2_WORKING/tables")
@@ -164,35 +165,18 @@ def original_pipelines():
 COERCED_CLASSES = ("coerced_parse_failure", "coerced_invalid_choice")
 
 
-def _runner_max_tokens(profile):
-    """max_tokens set in the runner's request, or None when the runner sets none."""
-    import re
-    src = (REPO / profiles.PROFILES[profile]).read_text()
-    m = re.findall(r"max_tokens=(\d+)", src)
-    return int(m[0]) if len(set(m)) == 1 else None
-
-
-def coerced_choices(eval_root=None):
-    """Per model: original records whose A/B choice was written by the runner, not the model
-    (audit/coerced_choices.csv), and how many parse failures stopped at the runner's token limit."""
-    eval_root = Path(eval_root) if eval_root else LEGACY_EVAL
+def coerced_choices():
+    """Per model: original records whose A/B choice was written by the runner, not the model, and how many
+    parse failures stopped at the runner's token limit; all read from audit/coerced_choices.csv."""
     rows = _read_csv(AUDIT_DIR / "coerced_choices.csv")
-    run_dir = {r["model"]: r["run_dir"]
-               for r in json.loads((ORIGINAL_RUNS_DIR / "manifest.json").read_text())["runs"]}
     out = []
     for prof in profiles.PROFILES:
-        limit = _runner_max_tokens(prof)
+        limit = RUNNER_MAX_TOKENS[prof]
         for model in sorted({r["model"] for r in rows if r["profile"] == prof}):
             mine = [r for r in rows if r["model"] == model]
             reasons = Counter(r["reason"] for r in mine if r["class"] in COERCED_CLASSES)
             coerced = [r for r in mine if r["class"] in COERCED_CLASSES]
-            at_limit = 0
-            for r in mine:
-                if r["class"] != "coerced_parse_failure":
-                    continue
-                raw = eval_root / "results" / run_dir[model] / "raw" / f"{r['case_id']}_response.json"
-                usage = json.loads(raw.read_text()).get("usage") or {}
-                at_limit += limit is not None and usage.get("completion_tokens") == limit
+            at_limit = sum(r["class"] == "coerced_parse_failure" and r["hit_token_limit"] == "True" for r in mine)
             out.append({"profile": prof, "model": model, "records": len(mine),
                         "coerced_no_json": reasons["no_json"],
                         "coerced_json_decode_error": reasons["json_decode_error"],
@@ -445,7 +429,8 @@ S_coerced_choices.csv
 - One row per model, from audit/coerced_choices.csv: records whose A/B choice the original runner wrote
   (no JSON object, JSON that did not parse, or a choice missing or not A/B), and how many of them were on
   pairs identical at the model input. parse_failures_at_token_limit counts parse failures whose raw reply
-  used exactly the runner's max_tokens (usage.completion_tokens in results/<run>/raw/<case>_response.json).
+  used exactly the runner's max_tokens: column hit_token_limit of audit/coerced_choices.csv, derived there
+  from usage.completion_tokens in results/<run>/raw/<case>_response.json.
 """
 
 

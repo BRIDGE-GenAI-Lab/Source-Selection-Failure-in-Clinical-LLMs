@@ -85,6 +85,33 @@ RUNNER_CONDITIONS = {
 }
 
 
+# max_tokens each runner sent with every request (None: the runner set no output limit).
+RUNNER_MAX_TOKENS = {"together_inline6": 2048, "deepseek_chat_inline7": 2048, "deepseek_reasoner_inline7": 8192,
+                     "gemini_inline7": None, "openai_fc": None}
+RUNNER_MAX_TOKENS_CITE = {
+    "together_inline6": "scripts/run_together_experiment.py:191",
+    "deepseek_chat_inline7": "scripts/run_deepseek_experiment.py:224",
+    "deepseek_reasoner_inline7": "scripts/run_deepseek_reasoner.py:214",
+    "gemini_inline7": "scripts/run_gemini_experiment.py",
+    "openai_fc": "src/runner.py",
+}
+
+
+def token_limit(profile, raw_doc):
+    """(hit_token_limit, evidence): True when the stored raw response records usage.completion_tokens equal
+    to the max_tokens the runner sent. Evidence is "usage", or why it cannot be shown: "no_runner_limit",
+    "no_raw_file", "no_usage" (hit_token_limit is then False)."""
+    limit = RUNNER_MAX_TOKENS[profile]
+    if limit is None:
+        return False, "no_runner_limit"
+    if raw_doc is None:
+        return False, "no_raw_file"
+    used = (raw_doc.get("usage") or {}).get("completion_tokens")
+    if used is None:
+        return False, "no_usage"
+    return used == limit, "usage"
+
+
 class EvidenceConflict(ValueError):
     """The replayed runner decision and the stored decision disagree."""
 
@@ -152,11 +179,11 @@ def classify(profile, stored, raw_text, openai_fc_replay=None):
             "raw_selected_tool": rep["raw_selected_tool"], "replay_matches_stored": matches}
 
 
-def _raw_text(run_dir, case_id):
+def _raw_doc(run_dir, case_id):
     path = LEGACY_RESULTS / run_dir / "raw" / f"{case_id}_response.json"
     if not path.exists():
         return None
-    return json.loads(path.read_text()).get("response_text")
+    return json.loads(path.read_text())
 
 
 _PARSER = []
@@ -188,16 +215,20 @@ def classify_all():
         profile = profile_for(r["model_name"])
         stored = r.get("model_decision") or {}
         if profile == "openai_fc":
+            doc = None
             out = classify(profile, stored, None, openai_fc_replay=_openai_fc_replay(r))
         else:
-            out = classify(profile, stored, _raw_text(r["run_dir"], r["case_id"]))
+            doc = _raw_doc(r["run_dir"], r["case_id"])
+            out = classify(profile, stored, None if doc is None else doc.get("response_text"))
+        hit, hit_evidence = token_limit(profile, doc)
         st = stored.get("selected_tool")
         rows.append({"model": r["model_name"], "profile": profile, "case_id": r["case_id"],
                      "sham_position": sham_position(r), "visible_status": visible[r["case_id"]],
                      "class": out["class"], "reason": out["reason"],
                      "raw_selected_tool": out["raw_selected_tool"],
                      "stored_selected_tool": "null" if st is None else st,
-                     "evidence": out["evidence"], "replay_matches_stored": out["replay_matches_stored"]})
+                     "evidence": out["evidence"], "replay_matches_stored": out["replay_matches_stored"],
+                     "hit_token_limit": hit, "token_limit_evidence": hit_evidence})
     return rows
 
 
@@ -236,11 +267,20 @@ def summarize(rows):
         "replay_mismatch_records": sorted(f"{r['model']} {r['case_id']} ({r['reason']})" for r in rows
                                           if r["replay_matches_stored"] is False),
         "runner_conditions": RUNNER_CONDITIONS,
+        "hit_token_limit_by_profile": {
+            p: {c: sum(1 for r in v if r["class"] == c and r["hit_token_limit"])
+                for c in (COERCED_PARSE, COERCED_INVALID, NOT_COERCED)}
+            for p, v in sorted(by_profile.items())},
+        "token_limit_evidence_counts": {p: dict(sorted(Counter(r["token_limit_evidence"] for r in v).items()))
+                                        for p, v in sorted(by_profile.items())},
+        "runner_max_tokens": {p: {"max_tokens": RUNNER_MAX_TOKENS[p], "source": RUNNER_MAX_TOKENS_CITE[p]}
+                              for p in sorted(RUNNER_MAX_TOKENS)},
     }
 
 
 COLUMNS = ["model", "profile", "case_id", "sham_position", "visible_status", "class", "reason",
-           "raw_selected_tool", "stored_selected_tool", "evidence", "replay_matches_stored"]
+           "raw_selected_tool", "stored_selected_tool", "evidence", "replay_matches_stored",
+           "hit_token_limit", "token_limit_evidence"]
 
 
 def run(write=True):
