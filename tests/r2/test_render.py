@@ -7,9 +7,13 @@ from r2.io import load_original_cases
 from r2.stimuli.render import render_messages, render_tool, visible_content
 
 CASES, _ = load_original_cases()
+REPO_ROOT = Path(__file__).resolve().parents[2]
+# The corrected set, including rule-generated and physician-authored edits, is leakage-tested too.
+V2_CASES = {c["case_id"]: c for c in json.loads((REPO_ROOT / "data" / "v2" / "pairs_v2.json").read_text())["cases"]}
+LEAKAGE_CASES = [("original", cid) for cid in sorted(CASES)] + [("v2", cid) for cid in sorted(V2_CASES)]
 
 # Reviewed benign leakage-token matches: {case_id: [{substring, location, reason}]}.
-FLAGS = json.loads((Path(__file__).resolve().parents[2] / "verification" / "leakage_flags.json").read_text())
+FLAGS = json.loads((REPO_ROOT / "verification" / "leakage_flags.json").read_text())
 VIGNETTE_FIELDS = ("setting", "chief_complaint", "history_present_illness", "clinical_question")
 TOOL_KEYS = {"label", "organization", "document_title", "version", "publication_year", "excerpt_text",
              "safety_guardrails", "applicability", "exclusions_or_cautions"}
@@ -39,9 +43,9 @@ def test_hidden_fields_are_now_rendered_for_case022():
     assert visible_content(CASES["CASE_022"]["tools"]["T"]) != visible_content(CASES["CASE_022"]["tools"]["S"])
 
 
-@pytest.mark.parametrize("cid", sorted(CASES))
-def test_no_leakage_fields(cid):
-    case = CASES[cid]
+@pytest.mark.parametrize("source,cid", LEAKAGE_CASES)
+def test_no_leakage_fields(source, cid):
+    case = (CASES if source == "original" else V2_CASES)[cid]
     user = render_messages(case, "TS")["user"]
     allowed = _allowed(cid)
     ctx = (case.get("assessment_context") or "").strip()
