@@ -263,3 +263,17 @@ def test_the_synthetic_flag_reaches_every_output(run):
         assert p.read_text().startswith(synthetic.SYNTHETIC_BANNER), p.name
 
 
+
+
+
+def test_expected_outputs_name_the_markers_sourced_elsewhere():
+    out = {m["marker"] for m in EXPECTED["out_of_scope"]}
+    for key in ("verif_n_reviewed", "verif_kappa_range", "verif_n_excluded", "verif_n_flagged", "freeze_date",
+                "release_tag", "zenodo_new_doi", "v2_identical_all500", "v2_n_physician_edits"):
+        assert any(key in m for m in out), key
+    keys = EXPECTED["outputs"]["analysis_repeated/headline.json"]["keys"]
+    for k in ("substitutions", "n_api_errors", "n_flagged_analyzed_pairs", "gee_converged", "rep_call_dates.per_model"):
+        assert k in keys, k
+    sens = EXPECTED["outputs"]["analysis_repeated/sensitivity.json"]["keys"]
+    for k in ("primacy", "acc_sham_first", "acc_sham_second"):
+        assert f"<S>.{k}_lo" in sens and f"<S>.{k}_hi" in sens, k

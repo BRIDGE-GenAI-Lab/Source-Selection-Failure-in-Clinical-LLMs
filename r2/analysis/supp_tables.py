@@ -498,7 +498,7 @@ def sensitivity(root=None):
     out = []
     for key, desc, s in rows:
         row = {"analysis": key, "description": desc}
-        row.update({c: _fmt(s.get(c)) for c in SENSITIVITY_COLS})
+        row.update({c: _fmt(s[c]) for c in SENSITIVITY_COLS})  # a missing key is an error, not a blank cell
         row["excluded_models"] = "; ".join(s.get("excluded_models") or [])
         out.append(row)
     return out
@@ -588,6 +588,8 @@ AVAILABLE_TABLES = {
 
 
 def write_csv(path, rows):
+    if not rows:
+        raise ValueError(f"{Path(path).name}: no rows to write (its input has no matching entries)")
     with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]))
         w.writeheader()

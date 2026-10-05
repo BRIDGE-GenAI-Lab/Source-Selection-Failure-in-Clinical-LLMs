@@ -5,7 +5,8 @@
     "The documents name one key exactly (analysis_repeated/headline.json primary.position_averaged_accuracy, paa_lo, paa_hi); the other keys follow the names of analysis_original/headline.json, which edits/numbers.py already reads, so one reader serves both experiments.",
     "Paths: analysis_repeated/* is relative to the analysis output directory (repeated.OUT by default); figures/* to the figures output directory; tables/* to the tables output directory.",
     "json keys are dotted paths. csv entries list required columns, and for gee.csv the required row labels (first column).",
-    "tests/r2/test_repeated_outputs.py runs the whole pipeline on a synthetic world (r2/analysis/synthetic.py) and checks that every key below is produced."
+    "tests/r2/test_repeated_outputs.py runs the whole pipeline on a synthetic world (r2/analysis/synthetic.py) and checks that every key below is produced.",
+    "Markers that need a number from outside the repeated-experiment outputs are listed under out_of_scope with their source, for the post-results numbers.py reader."
   ],
   "markers": {
     "R01": {
@@ -25,7 +26,7 @@
       ]
     },
     "R03": {
-      "text": "served model identifiers and substitutions",
+      "text": "served model identifiers and substitutions (substitutions: r2/run/models_v2.json substituted_for)",
       "where": [
         "manuscript Methods / Models",
         "response AE item 4 (quoted manuscript text)",
@@ -332,10 +333,12 @@
           "R21"
         ],
         "n_excluded_pairs": [
-          "R05"
+          "R05",
+          "S7"
         ],
         "n_flagged_pairs": [
-          "R05"
+          "R05",
+          "S7"
         ],
         "n_cells": [
           "R05"
@@ -389,6 +392,30 @@
           "R07",
           "R09",
           "R13"
+        ],
+        "n_api_errors": [
+          "R05"
+        ],
+        "n_flagged_analyzed_pairs": [
+          "R05",
+          "S8"
+        ],
+        "substitutions": [
+          "R03",
+          "R23",
+          "S2"
+        ],
+        "gee_converged": [
+          "R02",
+          "R06",
+          "R17",
+          "S12"
+        ],
+        "rep_call_dates.per_model": [
+          "R04"
+        ],
+        "rep_call_dates.basis": [
+          "R04"
         ]
       }
     },
@@ -456,6 +483,24 @@
           "R19"
         ],
         "S4_excluding_substituted.excluded_models": [
+          "S8"
+        ],
+        "<S>.primacy_lo": [
+          "S8"
+        ],
+        "<S>.primacy_hi": [
+          "S8"
+        ],
+        "<S>.acc_sham_first_lo": [
+          "S8"
+        ],
+        "<S>.acc_sham_first_hi": [
+          "S8"
+        ],
+        "<S>.acc_sham_second_lo": [
+          "S8"
+        ],
+        "<S>.acc_sham_second_hi": [
           "S8"
         ]
       }
@@ -997,53 +1042,314 @@
       ]
     },
     "tables/S_models_repeated.csv": {
-      "type": "file",
+      "type": "csv",
       "writer": "r2.analysis.supp_tables.write_all",
-      "markers": [
-        "S2"
-      ]
+      "columns": {
+        "model": [
+          "S2"
+        ],
+        "requested_model_id": [
+          "S2"
+        ],
+        "served_model_id": [
+          "S2",
+          "R03",
+          "R23"
+        ],
+        "provider": [
+          "S2"
+        ],
+        "reasoning": [
+          "S2"
+        ],
+        "decoding": [
+          "S2"
+        ],
+        "substituted_for": [
+          "S2",
+          "R03",
+          "R23"
+        ],
+        "availability": [
+          "S2"
+        ],
+        "ok": [
+          "S2"
+        ],
+        "non_responses": [
+          "S2"
+        ],
+        "errors": [
+          "S2"
+        ]
+      }
     },
     "tables/S_physician_verification.csv": {
-      "type": "file",
+      "type": "csv",
       "writer": "r2.analysis.supp_tables.write_all",
-      "markers": [
-        "S7"
-      ]
+      "columns": {
+        "item": [
+          "S7"
+        ],
+        "question": [
+          "S7"
+        ],
+        "role": [
+          "S7"
+        ],
+        "agreement": [
+          "S7"
+        ],
+        "kappa": [
+          "S7"
+        ],
+        "pairs_excluded": [
+          "S7"
+        ],
+        "pairs_flagged": [
+          "S7"
+        ],
+        "pairs_reviewed": [
+          "S7"
+        ]
+      }
     },
     "tables/S_sensitivity.csv": {
-      "type": "file",
+      "type": "csv",
       "writer": "r2.analysis.supp_tables.write_all",
-      "markers": [
-        "S8"
-      ]
+      "columns": {
+        "analysis": [
+          "S8"
+        ],
+        "description": [
+          "S8"
+        ],
+        "n": [
+          "S8"
+        ],
+        "n_models": [
+          "S8"
+        ],
+        "n_pairs": [
+          "S8"
+        ],
+        "position_averaged_accuracy": [
+          "S8"
+        ],
+        "paa_lo": [
+          "S8"
+        ],
+        "paa_hi": [
+          "S8"
+        ],
+        "accuracy": [
+          "S8"
+        ],
+        "acc_lo": [
+          "S8"
+        ],
+        "acc_hi": [
+          "S8"
+        ],
+        "primacy": [
+          "S8"
+        ],
+        "primacy_lo": [
+          "S8"
+        ],
+        "primacy_hi": [
+          "S8"
+        ],
+        "acc_sham_first": [
+          "S8"
+        ],
+        "acc_sham_first_lo": [
+          "S8"
+        ],
+        "acc_sham_first_hi": [
+          "S8"
+        ],
+        "acc_sham_second": [
+          "S8"
+        ],
+        "acc_sham_second_lo": [
+          "S8"
+        ],
+        "acc_sham_second_hi": [
+          "S8"
+        ],
+        "excluded_models": [
+          "S8"
+        ]
+      }
     },
     "tables/S_per_type_repeated.csv": {
-      "type": "file",
+      "type": "csv",
       "writer": "r2.analysis.supp_tables.write_all",
-      "markers": [
-        "S11"
-      ]
+      "columns": {
+        "stratum": [
+          "S11"
+        ],
+        "level": [
+          "S11"
+        ],
+        "category": [
+          "S11"
+        ],
+        "n": [
+          "S11"
+        ],
+        "n_pairs": [
+          "S11"
+        ],
+        "failures": [
+          "S11"
+        ],
+        "failure_rate": [
+          "S11"
+        ],
+        "lo": [
+          "S11"
+        ],
+        "hi": [
+          "S11"
+        ]
+      }
     },
     "tables/S_gee_repeated.csv": {
-      "type": "file",
+      "type": "csv",
       "writer": "r2.analysis.supp_tables.write_all",
-      "markers": [
-        "S12"
-      ]
+      "columns": {
+        "term": [
+          "S12"
+        ],
+        "label": [
+          "S12"
+        ],
+        "OR": [
+          "S12"
+        ],
+        "lo": [
+          "S12"
+        ],
+        "hi": [
+          "S12"
+        ],
+        "p": [
+          "S12"
+        ]
+      }
     },
     "tables/S_per_model_repeated.csv": {
-      "type": "file",
+      "type": "csv",
       "writer": "r2.analysis.supp_tables.write_all",
-      "markers": [
-        "S13"
-      ]
+      "columns": {
+        "model": [
+          "S13"
+        ],
+        "n": [
+          "S13"
+        ],
+        "acc_sham_first": [
+          "S13"
+        ],
+        "acc_sham_first_lo": [
+          "S13"
+        ],
+        "acc_sham_first_hi": [
+          "S13"
+        ],
+        "n_sham_first": [
+          "S13"
+        ],
+        "acc_sham_second": [
+          "S13"
+        ],
+        "acc_sham_second_lo": [
+          "S13"
+        ],
+        "acc_sham_second_hi": [
+          "S13"
+        ],
+        "n_sham_second": [
+          "S13"
+        ],
+        "primacy": [
+          "S13"
+        ],
+        "primacy_lo": [
+          "S13"
+        ],
+        "primacy_hi": [
+          "S13"
+        ],
+        "position_averaged_accuracy": [
+          "S13"
+        ],
+        "paa_lo": [
+          "S13"
+        ],
+        "paa_hi": [
+          "S13"
+        ],
+        "n_pair_units": [
+          "S13"
+        ],
+        "invariant_correct": [
+          "S13"
+        ],
+        "position_driven": [
+          "S13"
+        ],
+        "wrong_both": [
+          "S13"
+        ],
+        "mcnemar_n10": [
+          "S13"
+        ],
+        "mcnemar_n01": [
+          "S13"
+        ],
+        "mcnemar_p": [
+          "S13"
+        ],
+        "mcnemar_p_fdr": [
+          "S13"
+        ]
+      }
     },
     "tables/S_calibration_repeated.csv": {
-      "type": "file",
+      "type": "csv",
       "writer": "r2.analysis.supp_tables.write_all",
-      "markers": [
-        "S14"
-      ]
+      "columns": {
+        "scope": [
+          "S14"
+        ],
+        "model": [
+          "S14"
+        ],
+        "n_conf": [
+          "S14"
+        ],
+        "ece": [
+          "S14"
+        ],
+        "mce": [
+          "S14"
+        ],
+        "brier": [
+          "S14"
+        ],
+        "auroc": [
+          "S14"
+        ],
+        "mean_conf": [
+          "S14"
+        ],
+        "accuracy_conf": [
+          "S14"
+        ]
+      }
     }
   },
   "provenance": {
@@ -1053,5 +1359,39 @@
       "analysis_repeated/headline.json"
     ],
     "rule": "Every reader of these outputs must refuse a file whose 'synthetic' value is true (or a CSV with a 'synthetic' column): such files come from r2/analysis/synthetic.py and hold no data."
-  }
+  },
+  "out_of_scope": [
+    {
+      "marker": "verif_n_reviewed, verif_kappa_range, verif_n_excluded, verif_n_flagged (supplement 9, response cover letter, Correction section, AE item 4)",
+      "source": "verification/kappa.csv, final_review.csv, excluded_pairs.json, flags.json via edits/numbers.py; headline n_excluded_pairs / n_flagged_pairs use the same definitions (len(excluded), len(flags.json)) and can cross-check them"
+    },
+    {
+      "marker": "AE item 4: per-item Cohen kappa and consensus counts",
+      "source": "verification/kappa.csv and the consensus file (tables/S_physician_verification.csv carries per-item kappa and counts)"
+    },
+    {
+      "marker": "R3 comment 7: CASE_022 consensus answers to Q1 and Q2, with the physicians' notes",
+      "source": "verification/final_review.csv, review_AG.csv, review_MO.csv"
+    },
+    {
+      "marker": "v2_identical_all500, v2_n_physician_edits, confirm the 23 physician-authored edits, the 500-pair re-audit, supplement 8 manual-edit table",
+      "source": "data/v2/pairs_v2.json, data/v2/manual_edits.json (step 2)"
+    },
+    {
+      "marker": "pilot dates, parse rate per model and any change it prompted",
+      "source": "analysis_repeated/PILOT_REVIEW.md (step 4)"
+    },
+    {
+      "marker": "freeze_date and the public timestamp of the freeze",
+      "source": "docs/r2/FREEZE_RECORD.md (step 5)"
+    },
+    {
+      "marker": "release_tag, zenodo_new_doi, Supplementary Table S15 (DATA_FILES)",
+      "source": "release step 9"
+    },
+    {
+      "marker": "supplement 11: confirm the list below against the frozen analysis plan",
+      "source": "docs/r2/ANALYSIS_PLAN.md at tag r2-analysis-plan-frozen (no number)"
+    }
+  ]
 }

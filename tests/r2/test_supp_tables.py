@@ -1,6 +1,7 @@
 import csv
 import json
 from collections import Counter
+from pathlib import Path
 
 import pytest
 
@@ -15,8 +16,10 @@ PENDING_NAMES = ["S_models_repeated", "S_physician_verification", "S_per_model_r
 
 @pytest.fixture(scope="module")
 def written(tmp_path_factory):
+    # the repeated-experiment inputs come from an empty sandbox root, so the pre-results expectations below
+    # hold whether or not the real verification/ and analysis_repeated/ outputs exist yet (review M6)
     out = tmp_path_factory.mktemp("tables")
-    res = st.write_all(out)
+    res = st.write_all(out, root=tmp_path_factory.mktemp("no_repeated_inputs"))
     return out, res
 
 
@@ -430,3 +433,30 @@ def test_write_repeated_writes_every_table(synth, tmp_path):
     assert set(res["written"]) == set(PENDING_NAMES) and not res["pending"]
     for name in PENDING_NAMES:
         assert _csv(tmp_path / f"{name}.csv")
+
+
+
+# ---- fix round 1, M4 / M5 ----
+def test_sensitivity_table_fails_on_a_missing_key(synth, tmp_path):
+    import shutil
+    root = tmp_path / "r"
+    shutil.copytree(synth["root"] / "analysis_repeated", root / "analysis_repeated")
+    path = root / "analysis_repeated" / "sensitivity.json"
+    sens = json.loads(path.read_text())
+    del sens["S3_excluding_flagged"]["acc_sham_first_lo"]
+    path.write_text(json.dumps(sens))
+    with pytest.raises(KeyError, match="acc_sham_first_lo"):
+        st.PENDING_TABLES["S_sensitivity"](root=root)
+
+
+def test_write_csv_refuses_an_empty_table(tmp_path):
+    with pytest.raises(ValueError, match="no rows"):
+        st.write_csv(tmp_path / "S_empty.csv", [])
+    assert not (tmp_path / "S_empty.csv").exists()
+
+
+def test_expected_outputs_key_every_repeated_table_column():
+    exp = json.loads((Path(st.__file__).parent / "expected_outputs.json").read_text())
+    for name, cols in REPEATED_COLUMNS.items():
+        spec = exp["outputs"][f"tables/{name}.csv"]
+        assert spec["type"] == "csv" and list(spec["columns"]) == cols, name
