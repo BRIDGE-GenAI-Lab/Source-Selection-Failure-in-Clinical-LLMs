@@ -201,7 +201,9 @@ def _synthetic_frame():
                 rows.append({"model": m, "case_id": f"C{i}", "order": order, "status": "ok", "sham_first": sf,
                              "selected_first": sel, "correct": int(sel != sf), "confidence": 0.7,
                              "differences": [], "sham_type": "dosing_error" if i % 2 else "outdated_version",
-                             "excluded": i == 0, "flagged": i == 1, "substituted": False, "noticed": False})
+                             "excluded": i == 0, "flagged": i == 1, "substituted": False, "noticed": float(i % 3 == 0),
+                             "rationale": "The two excerpts are identical." if i % 5 == 0 else "B omits a warning.",
+                             "finished_at": f"2026-11-{1 + i % 9:02d}T10:00:00+00:00"})
     df = pd.DataFrame(rows)
     df["category"] = df.sham_type.map(repeated.CATEGORY)
     return df
@@ -349,3 +351,97 @@ def test_per_model_table_has_pair_level_outcomes():
     assert good.invariant_correct == 1 and good.position_driven == 0
     rev = per_model_table(_model_frame("rev", lambda sf: sf, n=10)).set_index("model").loc["rev"]
     assert rev.wrong_both == 1
+
+
+# ---- S5 (ruling 2026-10-05), sensitivity CIs, M11 headline CIs, headline keys ----
+SENS = ["S1_non_response_incorrect", "S2_including_excluded", "S3_excluding_flagged", "S4_excluding_substituted",
+        "S5_excluding_generator_family"]
+RATES = (("accuracy", "acc_lo", "acc_hi"), ("primacy", "primacy_lo", "primacy_hi"),
+         ("acc_sham_first", "acc_sham_first_lo", "acc_sham_first_hi"),
+         ("acc_sham_second", "acc_sham_second_lo", "acc_sham_second_hi"),
+         ("position_averaged_accuracy", "paa_lo", "paa_hi"))
+
+
+def test_s5_model_is_identified_by_original_name_in_models_v2():
+    from r2.run.harness import load_specs
+    assert repeated.S5_MODEL == "gemini-2.5-flash-lite"
+    assert repeated.S5_MODEL in {s["original_name"] for s in load_specs()}
+
+
+def test_s5_excludes_the_generator_family_model():
+    from r2.analysis.stats import position_summary
+    df = _synthetic_frame()
+    df.loc[df.model == "pos", "model"] = repeated.S5_MODEL
+    s5 = repeated.sensitivity_summaries(df)["S5_excluding_generator_family"]
+    kept = _ok(df[~df.excluded & (df.model == "good")])
+    assert s5["n"] == len(kept) and s5["n_models"] == 1
+    assert s5["excluded_models"] == [repeated.S5_MODEL]
+    assert s5["position_averaged_accuracy"] == position_summary(kept)["position_averaged_accuracy"]
+
+
+def test_run_refuses_when_s5_model_is_not_a_spec(monkeypatch):
+    monkeypatch.setattr(repeated, "repeated_frame", lambda *a, **k: _synthetic_frame())
+    with pytest.raises(ValueError, match="S5"):
+        repeated.run(write=False, specs=[{"original_name": "good", "model_id": "good"}])
+
+
+def test_sensitivity_summaries_carry_cluster_bootstrap_cis():
+    sens = repeated.sensitivity_summaries(_synthetic_frame())
+    assert list(sens) == SENS
+    for name, s in sens.items():
+        for est, lo, hi in RATES:
+            if name == "S1_non_response_incorrect" and est == "primacy":
+                assert pd.isna(s[est]) and pd.isna(s[lo]) and pd.isna(s[hi])
+                continue
+            assert s[lo] <= s[est] <= s[hi], (name, est)
+        assert "content_z" not in s and "content_p" not in s
+
+
+def test_headline_has_a_bootstrap_ci_for_every_pooled_rate(monkeypatch):
+    """M11: every pooled descriptive rate in the headline carries a case-cluster bootstrap 95% CI."""
+    frame = _synthetic_frame()
+    monkeypatch.setattr(repeated, "repeated_frame", lambda *a, **k: frame)
+    head = repeated.run(write=False)
+    prim = head["primary"]
+    for est, lo, hi in RATES:
+        assert prim[lo] <= prim[est] <= prim[hi], est
+    for k in ("invariant_correct", "position_driven", "wrong_both"):
+        assert head[f"{k}_lo"] <= head[k] <= head[f"{k}_hi"], k
+    # the CI of a single-order rate resamples only that order's rows, by case
+    from r2.analysis.stats import cluster_bootstrap_mean
+    ana = _ok(frame[~frame.excluded])
+    sf = ana[ana.sham_first]
+    assert (prim["acc_sham_first_lo"], prim["acc_sham_first_hi"]) == cluster_bootstrap_mean(
+        sf.assign(x=sf.correct.astype(float)), "x")
+
+
+def test_headline_aliases_and_counts(monkeypatch):
+    frame = _synthetic_frame()
+    monkeypatch.setattr(repeated, "repeated_frame", lambda *a, **k: frame)
+    head = repeated.run(write=False)
+    prim = head["primary"]
+    for alias, key in repeated.HEADLINE_ALIASES.items():
+        assert prim[alias] == prim[key]
+    assert repeated.HEADLINE_ALIASES == {"position_averaged_accuracy_lo": "paa_lo",
+                                         "position_averaged_accuracy_hi": "paa_hi"}
+    kept = frame[~frame.excluded]
+    assert head["n_cells"] == len(kept) and head["primary"]["n"] == int((kept.status == "ok").sum())
+    assert head["n_types"] == 2 and head["n_flagged_pairs"] == 1 and head["n_excluded_pairs"] == 1
+    assert head["n_pair_units"] == 2 * 29
+    assert head["rep_call_dates"] == {"first": "2026-11-01T10:00:00+00:00", "last": "2026-11-09T10:00:00+00:00"}
+
+
+def test_exploratory_rationale_and_noticed_summaries(tmp_path, monkeypatch):
+    frame = _synthetic_frame()
+    monkeypatch.setattr(repeated, "repeated_frame", lambda *a, **k: frame)
+    out = tmp_path / "a"
+    repeated.run(write=True, analysis_dir=out)
+    ana = _ok(frame[~frame.excluded])
+    rat = json.loads((out / "exploratory_rationale.json").read_text())
+    assert rat["n"] == len(ana)
+    assert abs(rat["says_identical"] - ana.rationale.str.contains("identical").mean()) < 1e-12
+    assert rat["says_identical_lo"] <= rat["says_identical"] <= rat["says_identical_hi"]
+    noti = json.loads((out / "exploratory_noticed_summary.json").read_text())
+    assert noti["n_assessable"] + noti["n_not_assessable"] == len(ana)
+    assert abs(noti["noticed"] - ana.noticed.mean()) < 1e-12
+    assert noti["noticed_lo"] <= noti["noticed"] <= noti["noticed_hi"]

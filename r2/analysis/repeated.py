@@ -11,6 +11,7 @@ from scipy.stats import binomtest, spearmanr
 
 from r2.analysis.stats import (CATEGORY, calibration, cluster_bootstrap_mean, cluster_bootstrap_paa, fdr,
                                gee_logit, position_summary, wilson)
+from r2.analysis.original_corrected import SAYS_IDENTICAL
 from r2.paths import DATA_V2, REPO, RUNS_V2, VERIFY_DIR
 from r2.run.harness import final_records, load_specs, results_path
 
@@ -18,6 +19,21 @@ OUT = REPO / "analysis_repeated"
 # Items for which r2.verify.score_review.flag_reasons flags a pair (flags.json values).
 FLAG_ITEMS = ("q1_vignette_consistent", "q2_question_answerable", "q3_authentic_concordant", "q8_leakage")
 PAIR_COLS = ["model", "case_id", "invariant_correct", "position_driven", "wrong_both"]
+# S5 (ruling 2026-10-05): the evaluated model of the same family as the vignette generator (Gemini 3 Pro),
+# identified by its original_name in r2/run/models_v2.json.
+S5_MODEL = "gemini-2.5-flash-lite"
+SENSITIVITY = {
+    "S1_non_response_incorrect": "Non-responses counted as incorrect",
+    "S2_including_excluded": "Including the pairs excluded by the physicians",
+    "S3_excluding_flagged": "Excluding the pairs flagged in physician verification",
+    "S4_excluding_substituted": "Excluding substituted models",
+    "S5_excluding_generator_family": "Excluding Gemini-2.5-Flash-Lite (same family as the vignette generator)",
+}
+# The documents name the bootstrap CI of the primary outcome primary.paa_lo / primary.paa_hi
+# (PENDING_INDEX.md); analysis_original/headline.json names the same quantity
+# position_averaged_accuracy_lo / _hi, which edits/numbers.py reads. Every summary written by this module
+# carries both names: alias -> canonical key.
+HEADLINE_ALIASES = {"position_averaged_accuracy_lo": "paa_lo", "position_averaged_accuracy_hi": "paa_hi"}
 
 
 def _plain(x):
@@ -177,15 +193,38 @@ def _pooled(df):
     return s
 
 
+def _rate_ci(rows, col):
+    """Case-cluster bootstrap 95% CI of the pooled mean of `col` over `rows`."""
+    return cluster_bootstrap_mean(rows.assign(_rate=pd.to_numeric(rows[col], errors="coerce").astype(float)),
+                                  "_rate")
+
+
+def _summary(df, primacy=True):
+    """Pooled position summary with a case-cluster bootstrap 95% CI (2,000 resamples of vignettes, seed
+    20261005) for every rate: accuracy (acc_lo/acc_hi), primacy, accuracy with the modified excerpt first
+    and second (each over that order's rows), and position-averaged accuracy (paa_lo/paa_hi)."""
+    s = _pooled(df)
+    s["acc_lo"], s["acc_hi"] = _rate_ci(df, "correct")
+    if primacy:
+        s["primacy_lo"], s["primacy_hi"] = _rate_ci(df, "selected_first")
+    else:
+        s["primacy"] = s["primacy_lo"] = s["primacy_hi"] = float("nan")
+    for name, rows in (("acc_sham_first", df[df.sham_first]), ("acc_sham_second", df[~df.sham_first])):
+        s[f"{name}_lo"], s[f"{name}_hi"] = _rate_ci(rows, "correct")
+    s["paa_lo"], s["paa_hi"] = cluster_bootstrap_paa(df)
+    for alias, key in HEADLINE_ALIASES.items():
+        s[alias] = s[key]
+    s["n_models"], s["n_pairs"] = int(df.model.nunique()), int(df.case_id.nunique())
+    return s
+
+
 def sensitivity_non_response(df):
     """Non-responses scored incorrect. Selection is undefined for them, so only n, accuracy and
     position-averaged accuracy are meaningful; primacy is set to NaN."""
     d = df.copy()
     d["correct"] = pd.to_numeric(d.correct, errors="coerce").fillna(0).astype(int)
     d["selected_first"] = [bool(v) if isinstance(v, (bool, np.bool_)) else False for v in d.selected_first]
-    s = _pooled(d)
-    s["primacy"] = float("nan")
-    return s
+    return _summary(d, primacy=False)
 
 
 def mcnemar(g):
@@ -255,21 +294,19 @@ def per_model_table(analysis):
     return pm
 
 
-def _summary(df):
-    s = _pooled(df)
-    s["paa_lo"], s["paa_hi"] = cluster_bootstrap_paa(df)
-    s["primacy_lo"], s["primacy_hi"] = cluster_bootstrap_mean(
-        df.assign(first=df.selected_first.astype(float)), "first")
-    return s
-
-
 def sensitivity_summaries(df):
-    return {
-        "S1_non_response_incorrect": sensitivity_non_response(df[~df.excluded]),
-        "S2_including_excluded": _pooled(_ok(df)),
-        "S3_excluding_flagged": _pooled(_ok(df[~df.excluded & ~df.flagged])),
-        "S4_excluding_substituted": _pooled(_ok(df[~df.excluded & ~df.substituted])),
+    """S1-S5 of ANALYSIS_PLAN.md, each the primary outcome on a different analysis set, with bootstrap CIs."""
+    keep = ~df.excluded
+    sens = {
+        "S1_non_response_incorrect": sensitivity_non_response(df[keep]),
+        "S2_including_excluded": _summary(_ok(df)),
+        "S3_excluding_flagged": _summary(_ok(df[keep & ~df.flagged])),
+        "S4_excluding_substituted": _summary(_ok(df[keep & ~df.substituted])),
+        "S5_excluding_generator_family": _summary(_ok(df[keep & (df.model != S5_MODEL)])),
     }
+    sens["S4_excluding_substituted"]["excluded_models"] = sorted(set(df.model[df.substituted]))
+    sens["S5_excluding_generator_family"]["excluded_models"] = [S5_MODEL]
+    return sens
 
 
 def rate_table(analysis, col):
@@ -278,9 +315,39 @@ def rate_table(analysis, col):
     for key, g in analysis.groupby(col):
         fails = int((1 - g.correct).sum())
         lo, hi = cluster_bootstrap_mean(g.assign(failure=1 - g.correct), "failure")
-        rows.append({col: key, "n": len(g), "failures": fails, "failure_rate": fails / len(g),
-                     "lo": lo, "hi": hi, **{k: v for k, v in _pooled(g).items() if k != "n"}})
+        row = {col: key}
+        if col == "sham_type":
+            row["category"] = CATEGORY[key]
+        row.update({"n": len(g), "n_pairs": int(g.case_id.nunique()), "failures": fails,
+                    "failure_rate": fails / len(g), "lo": lo, "hi": hi,
+                    **{k: v for k, v in _pooled(g).items() if k != "n"}})
+        rows.append(row)
     return pd.DataFrame(rows)
+
+
+def rationale_summary(analysis):
+    """E3 (exploratory): rationales that call the two excerpts identical or equivalent, by the keyword match
+    used for the original responses (r2.analysis.original_corrected.SAYS_IDENTICAL)."""
+    says = analysis.rationale.fillna("").map(lambda t: bool(SAYS_IDENTICAL.search(t))).astype(float)
+    lo, hi = cluster_bootstrap_mean(analysis.assign(_says=says), "_says")
+    return {"n": len(analysis), "says_identical": float(says.mean()) if len(says) else float("nan"),
+            "says_identical_lo": lo, "says_identical_hi": hi}
+
+
+def noticed_summary(analysis):
+    """E1 (exploratory), pooled: share of assessable ok responses whose differences_found shares a 3-word
+    sequence with the edited content; responses whose edit has no 3-word snippet are not assessable."""
+    lo, hi = cluster_bootstrap_mean(analysis, "noticed")
+    n_ass = int(analysis.noticed.notna().sum())
+    return {"n_ok": len(analysis), "n_assessable": n_ass, "n_not_assessable": len(analysis) - n_ass,
+            "noticed": float(analysis.noticed.mean()) if n_ass else float("nan"), "noticed_lo": lo, "noticed_hi": hi}
+
+
+def _call_dates(df):
+    ts = pd.to_datetime(df.get("finished_at", pd.Series(dtype=object)), utc=True, errors="coerce").dropna()
+    if ts.empty:
+        return {"first": None, "last": None}
+    return {"first": ts.min().isoformat(), "last": ts.max().isoformat()}
 
 
 def concordance(per_model, original_csv):
@@ -298,15 +365,25 @@ def concordance(per_model, original_csv):
 def run(out_dir=None, write=True, *, analysis_dir=None, pairs_path=None, verify_dir=None, specs=None,
         original_csv=None):
     """Every path defaults to r2.paths at call time; a sandbox passes its own."""
+    specs = load_specs() if specs is None else specs
+    if S5_MODEL not in {sp["original_name"] for sp in specs}:
+        raise ValueError(f"S5 model {S5_MODEL!r} is not an original_name in the model specs")
     df = repeated_frame(out_dir, pairs_path=pairs_path, verify_dir=verify_dir, specs=specs)
-    analysis = _ok(df[~df.excluded])
-    pairs = pair_level(df[~df.excluded])
+    kept = df[~df.excluded]
+    analysis = _ok(kept)
+    pairs = pair_level(kept)
     head = {
         "primary": _summary(analysis),
         "n_models": int(analysis.model.nunique()), "n_pairs": int(analysis.case_id.nunique()),
+        "n_types": int(analysis.sham_type.nunique()),
         "n_excluded_pairs": int(df[df.excluded].case_id.nunique()),
+        "n_flagged_pairs": int(kept[kept.flagged].case_id.nunique()),
+        "n_cells": int(len(kept)),
         "models_without_ok_cells": sorted(set(df.model) - set(analysis.model)),
-        "non_response": int((df[~df.excluded].status == "non_response").sum()),
+        "non_response": int((kept.status == "non_response").sum()),
+        "n_pair_units": int(len(pairs)),
+        "rep_call_dates": _call_dates(df),
+        "exclusion_rule": df.attrs.get("exclusion_rule"),
     }
     for k in ("invariant_correct", "position_driven", "wrong_both"):
         head[k] = float(pairs[k].mean()) if len(pairs) else float("nan")
@@ -330,6 +407,8 @@ def run(out_dir=None, write=True, *, analysis_dir=None, pairs_path=None, verify_
         original_csv = REPO / "analysis_original" / "per_model_discriminable.csv" if original_csv is None \
             else original_csv
         write_json(out / "exploratory_concordance_original.json", concordance(pm, original_csv))
+        write_json(out / "exploratory_noticed_summary.json", noticed_summary(analysis))
+        write_json(out / "exploratory_rationale.json", rationale_summary(analysis))
         write_json(out / "headline.json", head)
     return head
 
