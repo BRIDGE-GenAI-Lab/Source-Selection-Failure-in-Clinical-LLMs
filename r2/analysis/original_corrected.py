@@ -5,7 +5,7 @@ import re
 
 import pandas as pd
 
-from r2.analysis.stats import CATEGORY, fdr, gee_logit, position_summary, wilson
+from r2.analysis.stats import CATEGORY, cluster_bootstrap_mean, fdr, gee_logit, position_summary
 from r2.original_runs import load_original, sham_position
 from r2.paths import AUDIT_DIR, REPO
 from r2.profiles import profile_for
@@ -47,13 +47,28 @@ def _per_model(df):
 
 
 def _per_type(df):
+    """Failure rate per sham type, pooled across models; CI = case-cluster bootstrap (each case is
+    evaluated by every model, so evaluations are not independent)."""
     rows = []
     for t, g in df.groupby("sham_type"):
         fails = int((1 - g.correct).sum())
-        p, lo, hi = wilson(fails, len(g))
+        lo, hi = cluster_bootstrap_mean(g.assign(failure=1 - g.correct), "failure")
         rows.append({"sham_type": t, "category": CATEGORY[t], "n": len(g),
-                     "failures": fails, "failure_rate": p, "lo": lo, "hi": hi})
+                     "failures": fails, "failure_rate": fails / len(g), "lo": lo, "hi": hi})
     return pd.DataFrame(rows)
+
+
+def _pooled(sub):
+    """Position summary pooled across models, without the unpaired two-proportion z-test (which treats
+    correlated evaluations of the same case as independent); the case-clustered GEE carries inference."""
+    s = position_summary(sub)
+    s.pop("content_z")
+    s.pop("content_p")
+    return s
+
+
+def _by_profile(sub):
+    return pd.DataFrame({p: _pooled(g) for p, g in sub.groupby("profile")}).T
 
 
 def run(write=True):
@@ -62,8 +77,8 @@ def run(write=True):
                "identical": df[df.visible_status == "identical"]}
     head = {}
     for name, sub in subsets.items():
-        s = position_summary(sub)
-        _, s["acc_lo"], s["acc_hi"] = wilson(int(sub.correct.sum()), len(sub))
+        s = _pooled(sub)
+        s["acc_lo"], s["acc_hi"] = cluster_bootstrap_mean(sub, "correct")
         s["says_identical"] = float(sub.says_identical.mean())
         head[name] = s
     head["types_without_valid_pairs"] = sorted(set(df.sham_type) - set(subsets["discriminable"].sham_type))
@@ -75,8 +90,7 @@ def run(write=True):
             _per_model(sub).to_csv(OUT / f"per_model_{name}.csv", index=False)
             _per_type(sub).to_csv(OUT / f"per_type_{name}.csv", index=False)
             gee_logit(sub, formula).to_csv(OUT / f"gee_{name}.csv")
-            by_profile = pd.DataFrame({p: position_summary(g) for p, g in sub.groupby("profile")}).T
-            by_profile.to_csv(OUT / f"by_profile_{name}.csv")
+            _by_profile(sub).to_csv(OUT / f"by_profile_{name}.csv")
             sub = sub.assign(inline=(sub.profile != "openai_fc").astype(int),
                              sham_first_int=sub.sham_first.astype(int))
             sub = sub.assign(sham_first_x_inline=sub.sham_first_int * sub.inline)

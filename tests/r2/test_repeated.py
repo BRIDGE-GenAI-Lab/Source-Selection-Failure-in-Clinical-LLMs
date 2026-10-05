@@ -32,7 +32,7 @@ def test_non_response_sensitivity():
     df.loc[0, ["status", "correct", "selected_first"]] = ["non_response", None, None]
     s = sensitivity_non_response(df)
     assert s["n"] == 20 and abs(s["accuracy"] - 19 / 20) < 1e-9
-    assert pd.isna(s["primacy"]) and pd.isna(s["content_z"]) and pd.isna(s["content_p"])
+    assert pd.isna(s["primacy"]) and "content_z" not in s and "content_p" not in s
 
 
 def test_noticed():
@@ -97,8 +97,9 @@ def test_per_model_table_nan_p_does_not_poison_fdr_and_calibration_drops_nan():
     nanconf.loc[nanconf.index[:10], "confidence"] = float("nan")
     allnan = _model_frame("an", lambda sf: not sf, conf=float("nan"))
     pm = per_model_table(pd.concat([good, bad, one_arm, nanconf, allnan])).set_index("model")
-    assert pd.isna(pm.loc["arm", "content_p"]) and pd.isna(pm.loc["arm", "content_p_fdr"])
-    assert pm.loc[["good", "bad", "nc", "an"], "content_p_fdr"].notna().all()
+    assert pd.isna(pm.loc["arm", "mcnemar_p"]) and pd.isna(pm.loc["arm", "mcnemar_p_fdr"])
+    assert pd.isna(pm.loc["bad", "mcnemar_p"]) and pd.isna(pm.loc["bad", "mcnemar_p_fdr"])
+    assert pm.loc[["good", "nc", "an"], "mcnemar_p_fdr"].notna().all()
     assert abs(pm.loc["nc", "mean_conf"] - 0.8) < 1e-9
     assert pd.isna(pm.loc["an", "ece"]) and pd.isna(pm.loc["an", "mean_conf"])
 
@@ -143,3 +144,62 @@ def test_repeated_frame_reads_only_current_spec_files(tmp_path, monkeypatch):
     monkeypatch.setattr(repeated, "load_specs", lambda *a, **k: [{"original_name": "model_x", "model_id": "model_x"},
                                                                  {"original_name": "y", "model_id": "missing"}])
     assert len(repeated_frame(results)) == 1
+
+
+# ---- M12: paired (McNemar) per-model content test; I7: cluster-aware pooled outputs ----
+def test_mcnemar_pure_content_model():
+    pm = per_model_table(_model_frame("good", lambda sf: not sf, n=12)).set_index("model")
+    row = pm.loc["good"]
+    assert row.mcnemar_n10 == 12 and row.mcnemar_n01 == 0 and row.mcnemar_p < 0.001
+    assert "content_z" not in pm.columns and "content_p" not in pm.columns
+
+
+def test_mcnemar_positional_model_is_nan():
+    pm = per_model_table(_model_frame("pos", lambda sf: True, n=12)).set_index("model")
+    row = pm.loc["pos"]
+    assert row.mcnemar_n10 == 0 and row.mcnemar_n01 == 0 and pd.isna(row.mcnemar_p)
+
+
+def test_mcnemar_counts_wrong_in_both_orders():
+    df = _model_frame("rev", lambda sf: sf, n=5)
+    row = per_model_table(df).set_index("model").loc["rev"]
+    assert row.mcnemar_n10 == 0 and row.mcnemar_n01 == 5 and row.mcnemar_p < 0.1
+
+
+def _synthetic_frame():
+    rows = []
+    for m, rule in (("good", lambda sf: not sf), ("pos", lambda sf: True)):
+        for i in range(30):
+            for order in ("TS", "ST"):
+                sf = order == "ST"
+                sel = rule(sf) if i % 4 else (not rule(sf))
+                rows.append({"model": m, "case_id": f"C{i}", "order": order, "status": "ok", "sham_first": sf,
+                             "selected_first": sel, "correct": int(sel != sf), "confidence": 0.7,
+                             "differences": [], "sham_type": "dosing_error" if i % 2 else "outdated_version",
+                             "excluded": i == 0, "flagged": i == 1, "substituted": False, "noticed": False})
+    df = pd.DataFrame(rows)
+    df["category"] = df.sham_type.map(repeated.CATEGORY)
+    return df
+
+
+def test_run_headline_has_cluster_cis_and_no_pooled_z(monkeypatch):
+    monkeypatch.setattr(repeated, "repeated_frame", lambda *a, **k: _synthetic_frame())
+    head = repeated.run(write=False)
+    prim = head["primary"]
+    assert "content_z" not in prim and "content_p" not in prim
+    assert prim["primacy_lo"] <= prim["primacy"] <= prim["primacy_hi"]
+    for k in ("invariant_correct", "position_driven", "wrong_both"):
+        assert head[f"{k}_lo"] <= head[k] <= head[f"{k}_hi"]
+    sens = repeated.sensitivity_summaries(_synthetic_frame())
+    for s in sens.values():
+        assert "content_z" not in s and "content_p" not in s
+
+
+def test_rate_table_uses_cluster_bootstrap():
+    from r2.analysis.stats import wilson
+    analysis = _ok(_synthetic_frame())
+    t = repeated.rate_table(analysis, "sham_type").set_index("sham_type")
+    for _, r in t.iterrows():
+        _, wlo, whi = wilson(int(r.failures), int(r.n))
+        assert r.lo <= r.failure_rate <= r.hi and (r.lo, r.hi) != (wlo, whi)
+    assert "content_z" not in t.columns and "content_p" not in t.columns

@@ -66,3 +66,29 @@ def test_position_summary_one_orientation_is_nan_not_error():
     assert s["n"] == len(df) and s["primacy"] == 1.0
     for k in ("acc_sham_second", "position_averaged_accuracy", "content_z", "content_p"):
         assert np.isnan(s[k])
+
+
+# ---- I7: case-cluster bootstrap for pooled rates ----
+def test_cluster_bootstrap_mean_brackets_and_is_deterministic():
+    from r2.analysis.stats import cluster_bootstrap_mean
+    df = _frame(lambda sf: not sf)
+    df.loc[df.index % 3 == 0, "correct"] = 0
+    lo, hi = cluster_bootstrap_mean(df, "correct", n_boot=500)
+    assert lo < df.correct.mean() < hi
+    assert (lo, hi) == cluster_bootstrap_mean(df, "correct", n_boot=500)
+
+
+def test_cluster_bootstrap_mean_empty_is_nan():
+    from r2.analysis.stats import cluster_bootstrap_mean
+    lo, hi = cluster_bootstrap_mean(pd.DataFrame({"case_id": [], "correct": []}), "correct")
+    assert np.isnan(lo) and np.isnan(hi)
+
+
+def test_cluster_bootstrap_mean_widens_for_clustered_data():
+    from r2.analysis.stats import cluster_bootstrap_mean
+    rng = np.random.default_rng(1)
+    case_val = rng.integers(0, 2, size=30)
+    df = pd.DataFrame([{"case_id": f"C{i}", "correct": int(v)} for i, v in enumerate(case_val) for _ in range(21)])
+    lo, hi = cluster_bootstrap_mean(df, "correct")
+    _, wlo, whi = wilson(int(df.correct.sum()), len(df))
+    assert (hi - lo) > 3 * (whi - wlo)

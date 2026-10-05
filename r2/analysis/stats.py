@@ -98,3 +98,22 @@ def cluster_bootstrap_paa(df, n_boot=2000, seed=20261005):
     paa = np.full(n_boot, np.nan)
     paa[ok] = ((w @ k1)[ok] / d1[ok] + (w @ k2)[ok] / d2[ok]) / 2
     return float(np.nanpercentile(paa, 2.5)), float(np.nanpercentile(paa, 97.5))
+
+
+def cluster_bootstrap_mean(df, col, n_boot=2000, seed=20261005):
+    """95% percentile CI for the pooled mean of `col`, resampling case_id with replacement (every row
+    of a drawn case enters the resample). NaN values of `col` are ignored."""
+    if len(df) == 0:
+        return float("nan"), float("nan")
+    agg = df.groupby("case_id")[col].agg(["sum", "count"])
+    k, n = agg["sum"].to_numpy(dtype=float), agg["count"].to_numpy(dtype=float)
+    m = len(agg)
+    rng = np.random.default_rng(seed)
+    draws = rng.integers(0, m, size=(n_boot, m))
+    w = np.stack([np.bincount(d, minlength=m) for d in draws])
+    den = w @ n
+    stat = np.full(n_boot, np.nan)
+    stat[den > 0] = (w @ k)[den > 0] / den[den > 0]
+    if np.isnan(stat).all():
+        return float("nan"), float("nan")
+    return float(np.nanpercentile(stat, 2.5)), float(np.nanpercentile(stat, 97.5))

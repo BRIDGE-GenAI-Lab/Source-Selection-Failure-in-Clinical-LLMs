@@ -4,10 +4,10 @@ import json
 import re
 
 import pandas as pd
-from scipy.stats import spearmanr
+from scipy.stats import binomtest, spearmanr
 
-from r2.analysis.stats import (CATEGORY, calibration, cluster_bootstrap_paa, fdr, gee_logit,
-                               position_summary, wilson)
+from r2.analysis.stats import (CATEGORY, calibration, cluster_bootstrap_mean, cluster_bootstrap_paa, fdr,
+                               gee_logit, position_summary)
 from r2.paths import DATA_V2, REPO, RUNS_V2, VERIFY_DIR
 from r2.run.harness import final_records, load_specs, results_path
 
@@ -103,23 +103,48 @@ def _ok(df):
     return out
 
 
+def _pooled(df):
+    """Position summary pooled across models, without the unpaired two-proportion z-test (it treats the
+    correlated evaluations of one pair as independent); the case-clustered GEE carries inference."""
+    s = position_summary(df)
+    s.pop("content_z")
+    s.pop("content_p")
+    return s
+
+
 def sensitivity_non_response(df):
     """Non-responses scored incorrect. Selection is undefined for them, so only n, accuracy and
-    position-averaged accuracy are meaningful; primacy and the content test are set to NaN."""
+    position-averaged accuracy are meaningful; primacy is set to NaN."""
     d = df.copy()
     d["correct"] = d.correct.fillna(0).astype(int)
     d["selected_first"] = d.selected_first.fillna(False).astype(bool)
-    s = position_summary(d)
-    s.update({"primacy": float("nan"), "content_z": float("nan"), "content_p": float("nan")})
+    s = _pooled(d)
+    s["primacy"] = float("nan")
     return s
+
+
+def mcnemar(g):
+    """Exact McNemar test of content sensitivity on pairs with an ok record in both orders.
+    n10: T selected in both orders (first in TS, second in ST); n01: S selected in both orders.
+    Position-driven pairs (same slot in both orders) are concordant and carry no information."""
+    counts = g.groupby("case_id").sham_first.agg(["sum", "count"])
+    keep = counts.index[(counts["count"] == 2) & (counts["sum"] == 1)]
+    both = g[g.case_id.isin(keep)]
+    sel = both.set_index("case_id").selected_first.astype(bool)
+    sham_first = both.sham_first.astype(bool).to_numpy()
+    ts, st = sel[~sham_first], sel[sham_first].reindex(sel[~sham_first].index)
+    n10, n01 = int((ts & ~st).sum()), int((~ts & st).sum())
+    p = binomtest(n10, n10 + n01, 0.5).pvalue if n10 + n01 else float("nan")
+    return n10, n01, float(p)
 
 
 def per_model_table(analysis):
     nan = float("nan")
     per_model = []
     for model, g in analysis.groupby("model"):
-        s = position_summary(g)
+        s = _pooled(g)
         s["paa_lo"], s["paa_hi"] = cluster_bootstrap_paa(g)
+        s["mcnemar_n10"], s["mcnemar_n01"], s["mcnemar_p"] = mcnemar(g)
         conf = g.dropna(subset=["confidence"])
         cal = calibration(conf.confidence, conf.correct) if len(conf) else {
             k: nan for k in ("ece", "mce", "brier", "auroc", "mean_conf", "accuracy")}
@@ -127,17 +152,39 @@ def per_model_table(analysis):
         s.update({"model": model, **cal})
         per_model.append(s)
     pm = pd.DataFrame(per_model)
-    pm["content_p_fdr"] = float("nan")
-    valid = pm.content_p.notna()
+    pm["mcnemar_p_fdr"] = float("nan")
+    valid = pm.mcnemar_p.notna()
     if valid.any():
-        pm.loc[valid, "content_p_fdr"] = fdr(pm.loc[valid, "content_p"])
+        pm.loc[valid, "mcnemar_p_fdr"] = fdr(pm.loc[valid, "mcnemar_p"])
     return pm
 
 
 def _summary(df):
-    s = position_summary(df)
+    s = _pooled(df)
     s["paa_lo"], s["paa_hi"] = cluster_bootstrap_paa(df)
+    s["primacy_lo"], s["primacy_hi"] = cluster_bootstrap_mean(
+        df.assign(first=df.selected_first.astype(float)), "first")
     return s
+
+
+def sensitivity_summaries(df):
+    return {
+        "S1_non_response_incorrect": sensitivity_non_response(df[~df.excluded]),
+        "S2_including_excluded": _pooled(_ok(df)),
+        "S3_excluding_flagged": _pooled(_ok(df[~df.excluded & ~df.flagged])),
+        "S4_excluding_substituted": _pooled(_ok(df[~df.excluded & ~df.substituted])),
+    }
+
+
+def rate_table(analysis, col):
+    """Failure rate per level of `col`, pooled across models; CI = case-cluster bootstrap."""
+    rows = []
+    for key, g in analysis.groupby(col):
+        fails = int((1 - g.correct).sum())
+        lo, hi = cluster_bootstrap_mean(g.assign(failure=1 - g.correct), "failure")
+        rows.append({col: key, "n": len(g), "failures": fails, "failure_rate": fails / len(g),
+                     "lo": lo, "hi": hi, **{k: v for k, v in _pooled(g).items() if k != "n"}})
+    return pd.DataFrame(rows)
 
 
 def run(out_dir=RUNS_V2 / "main", write=True):
@@ -150,28 +197,17 @@ def run(out_dir=RUNS_V2 / "main", write=True):
         "n_excluded_pairs": int(df[df.excluded].case_id.nunique()),
         "models_without_ok_cells": sorted(set(df.model) - set(analysis.model)),
         "non_response": int((df[~df.excluded].status == "non_response").sum()),
-        "invariant_correct": float(pairs.invariant_correct.mean()),
-        "position_driven": float(pairs.position_driven.mean()),
-        "wrong_both": float(pairs.wrong_both.mean()),
     }
-    sens = {
-        "S1_non_response_incorrect": sensitivity_non_response(df[~df.excluded]),
-        "S2_including_excluded": position_summary(_ok(df)),
-        "S3_excluding_flagged": position_summary(_ok(df[~df.excluded & ~df.flagged])),
-        "S4_excluding_substituted": position_summary(_ok(df[~df.excluded & ~df.substituted])),
-    }
+    for k in ("invariant_correct", "position_driven", "wrong_both"):
+        head[k] = float(pairs[k].mean())
+        head[f"{k}_lo"], head[f"{k}_hi"] = cluster_bootstrap_mean(pairs, k)
+    sens = sensitivity_summaries(df)
     if write:
         OUT.mkdir(exist_ok=True)
         pm = per_model_table(analysis)
         pm.sort_values("position_averaged_accuracy", ascending=False).to_csv(OUT / "per_model.csv", index=False)
         for col, name in (("sham_type", "per_type"), ("category", "per_category")):
-            rows = []
-            for key, g in analysis.groupby(col):
-                fails = int((1 - g.correct).sum())
-                p, lo, hi = wilson(fails, len(g))
-                rows.append({col: key, "n": len(g), "failures": fails, "failure_rate": p, "lo": lo, "hi": hi,
-                             **{k: v for k, v in position_summary(g).items() if k != "n"}})
-            pd.DataFrame(rows).to_csv(OUT / f"{name}.csv", index=False)
+            rate_table(analysis, col).to_csv(OUT / f"{name}.csv", index=False)
         gee_logit(analysis, "correct ~ sham_first + C(category, Treatment('metadata')) + C(model)"
                   ).to_csv(OUT / "gee.csv")
         conf = analysis.dropna(subset=["confidence"])
