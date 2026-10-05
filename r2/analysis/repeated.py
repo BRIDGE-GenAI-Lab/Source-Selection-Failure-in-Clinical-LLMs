@@ -414,4 +414,4 @@ def run(out_dir=None, write=True, *, analysis_dir=None, pairs_path=None, verify_
 
 
 if __name__ == "__main__":
-    print(json.dumps(run(), indent=2))
+    print(json.dumps(_plain(run()), indent=2))
