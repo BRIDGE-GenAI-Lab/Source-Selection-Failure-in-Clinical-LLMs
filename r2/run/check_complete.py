@@ -61,7 +61,7 @@ def orphan_files(out_dir, specs):
 def check(out_dir, specs, case_ids):
     """One completeness row per spec. Error cells may lack model_served (None or absent)."""
     if not specs:
-        raise ValueError("no model specs to check: r2/run/models_v2.json lists no models")
+        raise ValueError("no model specs to check (an empty spec list)")
     orphans = orphan_files(out_dir, specs)
     if orphans:
         raise OrphanResults(f"{out_dir} holds result files for no current spec: {orphans}")
