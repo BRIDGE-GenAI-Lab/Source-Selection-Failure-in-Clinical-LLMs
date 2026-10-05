@@ -48,3 +48,26 @@ def test_per_type_and_by_profile_are_cluster_aware():
     assert am.lo < am.failure_rate < am.hi and (am.hi - am.lo) > 1.5 * (whi - wlo)
     bp = _by_profile(sub)
     assert "content_z" not in bp.columns and "content_p" not in bp.columns
+
+
+_OLD = {
+    "all": {"n": 10500, "accuracy": 0.5938095238095238, "primacy": 0.7274285714285714,
+            "acc_sham_first": 0.3674163674163674, "acc_sham_second": 0.8237665578805913,
+            "acc_lo": 0.5644738095238095, "acc_hi": 0.6225761904761904},
+    "discriminable": {"n": 6993, "accuracy": 0.6457886457886458, "primacy": 0.6507936507936508,
+                      "acc_sham_first": 0.49500998003992014, "acc_sham_second": 0.7974756167527252},
+    "identical": {"n": 3507, "primacy": 0.8802395209580839,
+                  "acc_sham_first": 0.11659192825112108, "acc_sham_second": 0.8769587928032502},
+}
+
+
+def test_pooled_position_rates_have_cluster_bootstrap_cis(tmp_path, monkeypatch):
+    import r2.analysis.original_corrected as oc
+    monkeypatch.setattr(oc, "OUT", tmp_path / "out")
+    h = oc.run(write=False)
+    for name in ("all", "discriminable", "identical"):
+        s = h[name]
+        for rate in ("primacy", "acc_sham_first", "acc_sham_second", "says_identical"):
+            assert s[f"{rate}_lo"] < s[rate] < s[f"{rate}_hi"], (name, rate)
+        for k, v in _OLD[name].items():
+            assert s[k] == v, (name, k)

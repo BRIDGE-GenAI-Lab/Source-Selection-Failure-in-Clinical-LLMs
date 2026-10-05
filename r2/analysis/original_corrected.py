@@ -80,6 +80,12 @@ def run(write=True):
         s = _pooled(sub)
         s["acc_lo"], s["acc_hi"] = cluster_bootstrap_mean(sub, "correct")
         s["says_identical"] = float(sub.says_identical.mean())
+        # case-cluster bootstrap CIs for the other pooled rates (position rates use their own rows)
+        for rate, rows, col in (("primacy", sub, "selected_first"),
+                                ("acc_sham_first", sub[sub.sham_first], "correct"),
+                                ("acc_sham_second", sub[~sub.sham_first], "correct"),
+                                ("says_identical", sub, "says_identical")):
+            s[f"{rate}_lo"], s[f"{rate}_hi"] = cluster_bootstrap_mean(rows.assign(**{col: rows[col].astype(float)}), col)
         head[name] = s
     head["types_without_valid_pairs"] = sorted(set(df.sham_type) - set(subsets["discriminable"].sham_type))
     if write:
