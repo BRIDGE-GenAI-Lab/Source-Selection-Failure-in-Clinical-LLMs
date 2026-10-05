@@ -805,3 +805,109 @@ def test_incidents_are_written_under_the_model_lock(tmp_path, monkeypatch):
         run_model({**SPEC, "original_name": "z", "model_id": "prov/z-1"}, SUBSET, tmp_path,
                   FakeClient([GOOD], served="prov/x"), CTX, sleep=lambda s: None)
     assert held == [True, True, True]
+
+
+# ---- Step 4b: an exhausted transient error stops the model, the job continues; every stop is logged ----
+def test_exhausted_transient_error_raises_model_unavailable():
+    client = RaisingClient(_fake_exc("RateLimitError"))
+    with pytest.raises(ModelUnavailable, match="RateLimitError persisted after 10 tries: boom"):
+        execute_cell(client, SPEC, CASES["CASE_001"], "TS", CTX, sleep=lambda s: None)
+
+
+@pytest.fixture
+def two_models(monkeypatch, tmp_path):
+    import functools
+    a = {**SPEC, "original_name": "a", "model_id": "prov/a-1", "provider": "openai"}
+    b = {**SPEC, "original_name": "b", "model_id": "prov/b-1", "provider": "together"}
+    clients = {}
+    monkeypatch.setattr(harness, "load_v2_cases", lambda *x, **k: (SUBSET, "stim-sha"))
+    monkeypatch.setattr(harness, "_clean_commit", lambda: "0" * 40)
+    monkeypatch.setattr(harness, "load_specs", lambda *x, **k: [a, b])
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *x, **k: None)
+    monkeypatch.setattr(harness, "make_client", lambda provider: clients[provider])
+    monkeypatch.setattr(harness, "run_model", functools.partial(harness.run_model, sleep=lambda s: None))
+    return a, b, clients, tmp_path / "pilot"
+
+
+def _incidents(spec, out):
+    from r2.run.harness import incidents_path
+    return [json.loads(l) for l in incidents_path(spec, out).read_text().splitlines()]
+
+
+def _main_continues_after_stop(two_models, capsys, a_client):
+    a, b, clients, out = two_models
+    clients["openai"], clients["together"] = a_client, FakeClient([GOOD] * 4)
+    stopped = harness.main(["--pilot", "--out", str(out)])
+    captured = capsys.readouterr()
+    assert stopped == ["a"]
+    assert len(_recs(results_path(b, out))) == 4  # the next model ran to completion
+    assert "FINISHED 2 model(s); stopped 1: ['a']" in captured.out
+    return captured, out, a
+
+
+def test_main_exhausted_transient_error_stops_model_and_continues(two_models, capsys):
+    captured, out, a = _main_continues_after_stop(two_models, capsys, RaisingClient(_fake_exc("RateLimitError")))
+    assert "STOPPED a: ModelUnavailable: prov/a-1: RateLimitError persisted after 10 tries: boom" in captured.out
+    assert captured.out.count("RETRY prov/a-1 try ") == 9
+    assert results_path(a, out).read_text() == ""  # no response, so no record: the cell runs again on resume
+    (inc,) = _incidents(a, out)
+    assert inc["kind"] == "stopped" and inc["error_type"] == "ModelUnavailable"
+    assert (inc["case_id"], inc["order"]) == ("CASE_001", "TS") and "RateLimitError" in inc["error"]
+    assert inc["harness_commit"] == "0" * 40 and inc["stimulus_sha256"] == "stim-sha"
+
+
+def test_main_model_unavailable_stops_model_and_continues(two_models, capsys):
+    captured, out, a = _main_continues_after_stop(two_models, capsys, RaisingClient(_fake_exc("NotFoundError")))
+    assert "STOPPED a: ModelUnavailable: prov/a-1: NotFoundError: boom" in captured.out
+    (inc,) = _incidents(a, out)
+    assert inc["kind"] == "stopped" and "NotFoundError" in inc["error"]
+
+
+def test_main_model_mismatch_stops_model_and_continues(two_models, capsys):
+    captured, out, a = _main_continues_after_stop(two_models, capsys, FakeClient([GOOD], served="prov/a-2"))
+    assert "STOPPED a: ModelMismatch: requested 'prov/a-1', provider served 'prov/a-2'" in captured.out
+    assert [i["kind"] for i in _incidents(a, out)] == ["model_mismatch"]  # logged once, with the response
+
+
+def test_main_unexpected_error_stops_model_and_continues(two_models, capsys):
+    # e.g. an HTTP status the SDK maps to the generic APIStatusError (402), which no rule classifies
+    captured, out, a = _main_continues_after_stop(two_models, capsys, RaisingClient(_fake_exc("APIStatusError")))
+    assert "STOPPED a: unexpected APIStatusError: boom" in captured.out
+    assert "Traceback" in captured.err
+    (inc,) = _incidents(a, out)
+    assert inc["kind"] == "stopped" and inc["error_type"] == "APIStatusError"
+
+
+def test_main_stale_records_stop_model_and_continue(two_models, capsys):
+    a, b, clients, out = two_models
+    run_model(a, SUBSET, out, FakeClient([GOOD] * 2), {**CTX, "stimulus_sha256": "older"}, limit=1,
+              sleep=lambda s: None)
+    captured, out, a = _main_continues_after_stop(two_models, capsys, FakeClient([GOOD] * 4))
+    assert "STOPPED a: StaleRecords: " in captured.out and "stale record for ('CASE_001', 'TS')" in captured.out
+    (inc,) = _incidents(a, out)
+    assert inc["kind"] == "stopped" and inc["error_type"] == "StaleRecords" and inc["case_id"] is None
+
+
+def test_main_run_locked_stops_model_without_writing_its_files(two_models, capsys):
+    import fcntl
+
+    from r2.run.harness import incidents_path, safe_name
+    a, b, clients, out = two_models
+    out.mkdir(parents=True)
+    holder = open(out / f"{safe_name(a['model_id'])}.lock", "a")
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        captured, out, a = _main_continues_after_stop(two_models, capsys, FakeClient([GOOD] * 4))
+    finally:
+        holder.close()
+    assert "STOPPED a: RunLocked: " in captured.out
+    assert not incidents_path(a, out).exists() and not results_path(a, out).exists()
+
+
+def test_breaker_stop_is_logged_as_an_incident(tmp_path):
+    with pytest.raises(ModelUnavailable):
+        run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("a"), _bad("b"), _bad("c")]), CTX,
+                  sleep=lambda s: None)
+    (inc,) = _incidents(SPEC, tmp_path)
+    assert inc["kind"] == "stopped" and inc["error_type"] == "ModelUnavailable"
+    assert "circuit breaker" in inc["error"] and (inc["case_id"], inc["order"]) == ("CASE_002", "TS")

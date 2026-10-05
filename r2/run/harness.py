@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import time
+import traceback
 from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -74,6 +75,8 @@ def _error_kind(exc):
         return "cell"
     if name in MODEL_ERRORS:
         return "model"
+    if name in TRANSIENT:
+        return "transient"  # reaches execute_cell only after _create has used all its tries
     return None
 
 
@@ -285,6 +288,9 @@ def execute_cell(client, spec, case, order, context, sleep=time.sleep, out_dir=N
             kind = _error_kind(exc)
             if kind == "model":
                 raise ModelUnavailable(f"{spec['model_id']}: {type(exc).__name__}: {exc}"[:500]) from exc
+            if kind == "transient":  # e.g. a quota 429: stop the model (resumable), not the provider job
+                raise ModelUnavailable(f"{spec['model_id']}: {type(exc).__name__} persisted after {RETRY_TRIES} "
+                                       f"tries: {exc}"[:500]) from exc
             if kind == "cell":
                 error = f"{type(exc).__name__}: {exc}"[:500]
                 break
@@ -429,29 +435,42 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
     out_dir.mkdir(parents=True, exist_ok=True)
     path = results_path(spec, out_dir)
     with _model_lock(out_dir, spec):
-        done, error_texts = _done(path, cases, context, spec, out_dir, accept_spec_change)
-        ids = sorted(cases)[:limit] if limit else sorted(cases)
-        if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
+        cell = None  # the cell being attempted when a stop is raised (None: before any cell)
+        try:
+            done, error_texts = _done(path, cases, context, spec, out_dir, accept_spec_change)
+            ids = sorted(cases)[:limit] if limit else sorted(cases)
+            if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
+                with open(path, "a", encoding="utf-8") as fh:
+                    fh.write("\n")
+            breaker = _Breaker(spec)
             with open(path, "a", encoding="utf-8") as fh:
-                fh.write("\n")
-        breaker = _Breaker(spec)
-        with open(path, "a", encoding="utf-8") as fh:
-            for cid in ids:
-                for order in ORDERS:
-                    if (cid, order) in done:
-                        continue
-                    rec = execute_cell(client, spec, cases[cid], order, context, sleep=sleep,
-                                       out_dir=out_dir)
-                    earlier = error_texts.get((cid, order))
-                    if earlier and is_error_only(rec) and _error_text(rec) in earlier:
-                        rec["persistent_error"] = True
-                        print(f"FINAL {spec['original_name']} {cid} {order}: same error as an earlier "
-                              f"attempt, recorded as persistent_error: {_error_text(rec)}", flush=True)
-                    fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                    fh.flush()
-                    os.fsync(fh.fileno())
-                    if not earlier:  # re-attempted cells count toward neither breaker rule
-                        breaker.observe(rec)
+                for cid in ids:
+                    for order in ORDERS:
+                        if (cid, order) in done:
+                            continue
+                        cell = (cid, order)
+                        rec = execute_cell(client, spec, cases[cid], order, context, sleep=sleep,
+                                           out_dir=out_dir)
+                        earlier = error_texts.get(cell)
+                        if earlier and is_error_only(rec) and _error_text(rec) in earlier:
+                            rec["persistent_error"] = True
+                            print(f"FINAL {spec['original_name']} {cid} {order}: same error as an earlier "
+                                  f"attempt, recorded as persistent_error: {_error_text(rec)}", flush=True)
+                        fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                        fh.flush()
+                        os.fsync(fh.fileno())
+                        if not earlier:  # re-attempted cells count toward neither breaker rule
+                            breaker.observe(rec)
+        except ModelMismatch:
+            raise  # execute_cell has already logged a model_mismatch incident with the served response
+        except Exception as exc:
+            _log_incident(out_dir, spec, {"kind": "stopped", "model_id": spec["model_id"],
+                                          "original_name": spec["original_name"],
+                                          "case_id": cell[0] if cell else None,
+                                          "order": cell[1] if cell else None,
+                                          "error_type": type(exc).__name__, "error": str(exc)[:2000],
+                                          **context})
+            raise
     return path
 
 
@@ -541,14 +560,22 @@ def main(argv=None):
     context = {"harness_commit": _clean_commit(), "stimulus_sha256": stim_sha}
     from dotenv import load_dotenv
     load_dotenv(REPO / ".env")
-    for spec in _select(load_specs(), args.models):
+    specs, stopped = _select(load_specs(), args.models), []
+    for spec in specs:
         print(f"[{datetime.now():%H:%M:%S}] {spec['original_name']}", flush=True)
         try:
             run_model(spec, cases, args.out, make_client(spec["provider"]), context, limit=args.limit,
                       accept_spec_change=args.accept_spec_change)
-        except (ModelMismatch, ModelUnavailable, RunLocked) as exc:
-            print(f"STOPPED {spec['original_name']}: {exc}", flush=True)
+        except (ModelMismatch, ModelUnavailable, RunLocked, StaleRecords, CorruptResults) as exc:
+            stopped.append(spec["original_name"])
+            print(f"STOPPED {spec['original_name']}: {type(exc).__name__}: {exc}", flush=True)
+        except Exception as exc:  # never let one model end the provider job
+            stopped.append(spec["original_name"])
+            print(f"STOPPED {spec['original_name']}: unexpected {type(exc).__name__}: {exc}", flush=True)
+            traceback.print_exc()
+    print(f"FINISHED {len(specs)} model(s); stopped {len(stopped)}: {stopped}", flush=True)
+    return stopped
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(1 if main() else 0)
