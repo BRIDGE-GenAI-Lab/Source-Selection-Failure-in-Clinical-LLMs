@@ -383,29 +383,29 @@ def test_repeat_of_any_earlier_error_text_is_final(tmp_path, capsys):
 
 
 def test_reattempted_cells_do_not_count_toward_the_breaker(tmp_path):
-    # Run 1 trips on 3 consecutive distinct errors. On resume the same 3 cells fail again with new texts:
-    # they are re-attempts, so they neither trip the breaker nor become final, and the fresh cells run.
+    # Run 1 trips on 3 consecutive distinct errors. On resume the 3 fresh cells run first and succeed; the
+    # same 3 cells then fail again with new texts: re-attempts neither trip the breaker nor become final.
     with pytest.raises(ModelUnavailable):
         run_model(SPEC, SUBSET3, tmp_path, ScriptedClient([_bad("a"), _bad("b"), _bad("c")]), CTX,
                   sleep=lambda s: None)
-    client = ScriptedClient([_bad("d"), _bad("e"), _bad("f"), GOOD, GOOD, GOOD])
+    client = ScriptedClient([GOOD, GOOD, GOOD, _bad("d"), _bad("e"), _bad("f")])
     run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
     assert len(client.calls) == 6
     recs = _recs(results_path(SPEC, tmp_path))
     assert len(recs) == 9 and not any(r.get("persistent_error") for r in recs)
 
 
-def test_reattempt_ok_does_not_reset_the_fresh_cell_breaker(tmp_path):
-    # Re-attempted cells are invisible to the breaker: an ok re-attempt between fresh errors does not reset it.
+def test_reattempt_error_does_not_extend_a_fresh_error_run(tmp_path):
+    # Re-attempted cells are invisible to the breaker: 2 fresh errors followed by a re-attempt error is not
+    # 3 consecutive errors.
     run_model(SPEC, SUBSET3, tmp_path, ScriptedClient([GOOD, GOOD, _bad("a"), GOOD, GOOD, GOOD]), CTX,
               sleep=lambda s: None)  # CASE_002/TS is error-only
     path = results_path(SPEC, tmp_path)
     keep = [r for r in _recs(path) if r["order"] == "TS" and r["case_id"] in ("CASE_001", "CASE_002")]
-    _rewrite(path, keep)  # resume order: 001/ST fresh, 002/TS re-attempt, 002/ST fresh, 003/TS fresh
-    client = ScriptedClient([_bad("p"), GOOD, _bad("q"), _bad("r")])
-    with pytest.raises(ModelUnavailable, match="3 consecutive"):
-        run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
-    assert len(client.calls) == 4
+    _rewrite(path, keep)  # resume: fresh 001/ST, 002/ST, 003/TS, 003/ST, then the re-attempt 002/TS
+    client = ScriptedClient([GOOD, GOOD, _bad("p"), _bad("q"), _bad("r")])
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(client.calls) == 5
 
 
 def test_final_records_takes_last_record_per_cell(tmp_path):
@@ -1136,3 +1136,126 @@ def test_error_cell_record_has_model_served_none_and_resume_reads_it(tmp_path):
     client = FakeClient([GOOD])
     run_model(SPEC, SUBSET, tmp_path, client, CTX, limit=1, sleep=lambda s: None)
     assert len(client.calls) == 1 and _recs(results_path(SPEC, tmp_path))[-1]["model_served"] == "prov/m-1"
+
+
+# ---- fix round 1, I1: --retry-persistent reopens final cells; fresh cells run before re-attempts ----
+from r2.run.harness import ORDERS  # noqa: E402
+ORG_UNVERIFIED = ("Error code: 400 - {'error': {'message': \"Your organization must be verified to use the model "
+                  "'gpt-5-mini-2025-08-07'. Please go to: https://platform.openai.com/settings/organization/general "
+                  "and click on Verify Organization. If you just verified, it can take up to 15 minutes for access "
+                  "to propagate.\", 'type': 'invalid_request_error', 'param': None, 'code': 'unverified_organization'}}")
+
+
+class ProviderClient(FakeClient):
+    """Every call fails with the same 400 until `fixed` is set; then every call replies GOOD."""
+
+    def __init__(self, fixed=False, exc=None):
+        super().__init__([])
+        self.fixed, self.exc = fixed, exc
+
+    def create(self, **kw):
+        self.calls.append(kw)
+        if not self.fixed:
+            raise self.exc or _bad(ORG_UNVERIFIED)
+        return _Resp(GOOD, kw["model"])
+
+
+def test_org_verification_replay_premature_resume_then_retry_persistent(tmp_path, capsys):
+    from r2.run.check_complete import check
+    from r2.run.harness import final_records, incidents_path
+    path = results_path(SPEC, tmp_path)
+    # run 1: the breaker trips on the first 3 fresh cells
+    with pytest.raises(ModelUnavailable, match="circuit breaker"):
+        run_model(SPEC, SUBSET3, tmp_path, ProviderClient(), CTX, sleep=lambda s: None)
+    # run 2, before the fix: fresh cells run first, so the breaker trips again before any re-attempt
+    client = ProviderClient()
+    with pytest.raises(ModelUnavailable, match="circuit breaker"):
+        run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(client.calls) == 3
+    assert not any(r.get("persistent_error") for r in _recs(path)) and "FINAL" not in capsys.readouterr().out
+    # run 3, still before the fix: no fresh cell is left, the 6 re-attempts reproduce the text and become final
+    run_model(SPEC, SUBSET3, tmp_path, ProviderClient(), CTX, sleep=lambda s: None)
+    assert capsys.readouterr().out.count("FINAL m ") == 6
+    assert all(r.get("persistent_error") for r in final_records(path))
+    # after the fix, a plain resume leaves final cells alone (unchanged behaviour) ...
+    client = ProviderClient(fixed=True)
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
+    assert client.calls == []
+    # ... and --retry-persistent reopens them: an incident per cell, then a new record that supersedes the old
+    client = ProviderClient(fixed=True)
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None, retry_persistent=True)
+    assert len(client.calls) == 6
+    fin = final_records(path)
+    assert len(fin) == 6 and all(r["status"] == "ok" and "persistent_error" not in r for r in fin)
+    reopened = [i for i in _incidents(SPEC, tmp_path) if i["kind"] == "reopened_persistent"]
+    assert sorted((i["case_id"], i["order"]) for i in reopened) == sorted((c, o) for c in SUBSET3 for o in ORDERS)
+    assert all(i["prior_error"] == f"BadRequestError: {ORG_UNVERIFIED}"[:200] for i in reopened)
+    lines = path.read_text().splitlines()
+    assert all(json.loads(lines[i["prior_line"] - 1]).get("persistent_error") for i in reopened)
+    (row,) = check(tmp_path, [SPEC], sorted(SUBSET3))
+    assert (row["missing"], row["duplicates"], row["ok"], row["superseded_errors"]) == (0, 0, 6, 12)
+    client = ProviderClient(fixed=True)
+    run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None, retry_persistent=True)
+    assert client.calls == []  # nothing is persistent any more
+    assert incidents_path(SPEC, tmp_path).exists()
+
+
+def test_retry_persistent_refinalizes_on_the_same_text(tmp_path):
+    from r2.run.harness import final_records
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), GOOD, GOOD, GOOD]), CTX, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x")]), CTX, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x")]), CTX, sleep=lambda s: None, retry_persistent=True)
+    recs = [r for r in _recs(results_path(SPEC, tmp_path)) if (r["case_id"], r["order"]) == ("CASE_001", "TS")]
+    assert [r.get("persistent_error", False) for r in recs] == [False, True, True]
+    assert sum(r.get("persistent_error", False) for r in final_records(results_path(SPEC, tmp_path))) == 1
+
+
+def test_reopened_incident_is_logged_before_the_attempt(tmp_path):
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), GOOD, GOOD, GOOD]), CTX, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x")]), CTX, sleep=lambda s: None)
+    with pytest.raises(ModelUnavailable):
+        run_model(SPEC, SUBSET, tmp_path, ProviderClient(exc=_fake_exc("NotFoundError")("gone")), CTX,
+                  sleep=lambda s: None, retry_persistent=True)
+    kinds = [i["kind"] for i in _incidents(SPEC, tmp_path)]
+    assert kinds == ["persistent_error", "reopened_persistent", "stopped"]
+
+
+def test_fresh_cells_run_before_reattempts(tmp_path):
+    # CASE_001/TS is error-only; on resume the fresh CASE_002 cells are attempted first.
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), GOOD]), CTX, limit=1, sleep=lambda s: None)
+    client = FakeClient([GOOD] * 3)
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
+    sent = [c["messages"][1]["content"] for c in client.calls]
+    order = [next((cid, o) for cid in SUBSET for o in ORDERS if render_messages(SUBSET[cid], o)["user"] == u)
+             for u in sent]
+    assert order == [("CASE_002", "TS"), ("CASE_002", "ST"), ("CASE_001", "TS")]
+
+
+def test_persistent_finalization_is_an_incident(tmp_path):
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x"), GOOD]), CTX, limit=1, sleep=lambda s: None)
+    run_model(SPEC, SUBSET, tmp_path, ScriptedClient([_bad("x")]), CTX, limit=1, sleep=lambda s: None)
+    (inc,) = _incidents(SPEC, tmp_path)
+    assert inc["kind"] == "persistent_error" and (inc["case_id"], inc["order"]) == ("CASE_001", "TS")
+    assert inc["error"] == "BadRequestError: x" and inc["harness_commit"] == "abc"
+
+
+def test_retry_persistent_flag_reaches_run_model(no_side_effects, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(harness, "load_specs", lambda *a, **k: [SPEC])
+    monkeypatch.setattr(harness, "make_client", lambda p: None)
+    monkeypatch.setattr(harness, "run_model", lambda *a, **k: seen.update(k))
+    harness.main(["--pilot", "--retry-persistent"])
+    assert seen["retry_persistent"] is True
+    harness.main(["--pilot"])
+    assert seen["retry_persistent"] is False
+
+
+def test_last_record_decides_a_cells_state(tmp_path):
+    # An ok record later followed by an error-only record for the same cell: the last record decides.
+    path, recs = _first_record(tmp_path)
+    err = {**recs[0], "attempts": [], "decision": None, "status": "non_response", "selected_tool": None,
+           "correct": None, "error": "BadRequestError: late"}
+    _rewrite(path, recs + [err])
+    client = FakeClient([GOOD] * 3)
+    run_model(SPEC, SUBSET, tmp_path, client, CTX, sleep=lambda s: None)
+    assert len(client.calls) == 3  # CASE_002 TS/ST fresh, then CASE_001/TS re-attempted

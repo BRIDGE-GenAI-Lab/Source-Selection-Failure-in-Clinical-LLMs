@@ -401,13 +401,15 @@ def _spec_mismatches(r, spec, msgs):
     return out
 
 
-def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
-    """(done, error_texts). done: cells with a completing record (is_done). error_texts: per cell, the
-    first ERROR_TEXT_CHARS characters of every error-only record, for the persistent-error rule."""
-    done, error_texts = set(), {}
-    if not path.exists():
-        return done, error_texts
-    lines = path.read_bytes().split(b"\n")
+def _done(path, cases, context, spec, out_dir, accept_spec_change=False, retry_persistent=False):
+    """Validate every stored record; the LAST record of each cell decides its state. Returns
+    (done, error_texts, reopen):
+    - done: cells whose last record completes them (is_done), except persistent cells under retry_persistent;
+    - error_texts: per cell, the first ERROR_TEXT_CHARS characters of every error-only record (persistent rule);
+    - reopen: with retry_persistent, {cell: (prior error text, 1-based line)} for each cell whose last record
+      is a persistent_error record."""
+    last, error_texts = {}, {}
+    lines = path.read_bytes().split(b"\n") if path.exists() else []
     if lines and lines[-1] == b"":
         lines.pop()
     offset = 0
@@ -421,7 +423,7 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
             if i == len(lines) - 1:
                 print(f"WARNING: dropped torn final line ({len(line)} bytes) in {path}", flush=True)
                 os.truncate(path, start)  # keeps every earlier byte; nothing is rewritten
-                return done, error_texts
+                break
             raise CorruptResults(f"{path}: unparseable line {i + 1}")
         key = (r["case_id"], r["order"])
         msgs = render_messages(cases[key[0]], key[1]) if key[0] in cases else None
@@ -439,11 +441,16 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False):
             _log_incident(out_dir, spec, {"kind": "accepted_spec_change", "model_id": spec["model_id"],
                                     "file": path.name, "case_id": key[0], "order": key[1], "field": field,
                                     "recorded": recorded, "current": current})
-        if is_done(r):
-            done.add(key)
-        else:
+        last[key] = (r, i + 1)
+        if is_error_only(r):
             error_texts.setdefault(key, set()).add(_error_text(r))
-    return done, error_texts
+    done, reopen = set(), {}
+    for key, (r, line_no) in last.items():
+        if retry_persistent and r.get("persistent_error") is True:
+            reopen[key] = (_error_text(r), line_no)
+        elif is_done(r):
+            done.add(key)
+    return done, error_texts, reopen
 
 
 @contextmanager
@@ -462,8 +469,11 @@ def _model_lock(out_dir, spec):
         fh.close()  # closing the descriptor releases the lock
 
 
-def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.sleep, accept_spec_change=False):
-    """Run every not-yet-done cell of the first `limit` case_ids (all when limit is None; 0 runs none)."""
+def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.sleep, accept_spec_change=False,
+              retry_persistent=False):
+    """Run every not-yet-done cell of the first `limit` case_ids (all when limit is None; 0 runs none).
+    Fresh (never-attempted) cells run before re-attempts. With retry_persistent, cells whose last record is
+    persistent_error are re-attempted too, each after a reopened_persistent incident."""
     if limit is not None and limit < 0:
         raise ValueError(f"limit must be >= 0 or None, got {limit}")
     out_dir = Path(out_dir)
@@ -472,30 +482,44 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
     with _model_lock(out_dir, spec):
         cell = None  # the cell being attempted when a stop is raised (None: before any cell)
         try:
-            done, error_texts = _done(path, cases, context, spec, out_dir, accept_spec_change)
+            done, error_texts, reopen = _done(path, cases, context, spec, out_dir, accept_spec_change,
+                                              retry_persistent)
             ids = sorted(cases) if limit is None else sorted(cases)[:limit]
+            todo = [(cid, order) for cid in ids for order in ORDERS if (cid, order) not in done]
+            # Fresh cells first: a provider-wide error then trips the breaker on fresh cells before any
+            # re-attempt can reproduce its text and be finalized.
+            todo = [c for c in todo if c not in error_texts] + [c for c in todo if c in error_texts]
             if path.exists() and path.stat().st_size and not path.read_bytes().endswith(b"\n"):
                 with open(path, "a", encoding="utf-8") as fh:
                     fh.write("\n")
             breaker = _Breaker(spec)
             with open(path, "a", encoding="utf-8") as fh:
-                for cid in ids:
-                    for order in ORDERS:
-                        if (cid, order) in done:
-                            continue
-                        cell = (cid, order)
-                        rec = execute_cell(client, spec, cases[cid], order, context, sleep=sleep,
-                                           out_dir=out_dir)
-                        earlier = error_texts.get(cell)
-                        if earlier and is_error_only(rec) and _error_text(rec) in earlier:
-                            rec["persistent_error"] = True
-                            print(f"FINAL {spec['original_name']} {cid} {order}: same error as an earlier "
-                                  f"attempt, recorded as persistent_error: {_error_text(rec)}", flush=True)
-                        fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                        fh.flush()
-                        os.fsync(fh.fileno())
-                        if not earlier:  # re-attempted cells count toward neither breaker rule
-                            breaker.observe(rec)
+                for cell in todo:
+                    cid, order = cell
+                    if cell in reopen:
+                        prior, line_no = reopen[cell]
+                        print(f"REOPEN {spec['original_name']} {cid} {order}: persistent_error at line {line_no}: "
+                              f"{prior}", flush=True)
+                        _log_incident(out_dir, spec, {"kind": "reopened_persistent", "model_id": spec["model_id"],
+                                                      "original_name": spec["original_name"], "case_id": cid,
+                                                      "order": order, "prior_error": prior,
+                                                      "prior_line": line_no, **context})
+                    rec = execute_cell(client, spec, cases[cid], order, context, sleep=sleep,
+                                       out_dir=out_dir)
+                    earlier = error_texts.get(cell)
+                    if earlier and is_error_only(rec) and _error_text(rec) in earlier:
+                        rec["persistent_error"] = True
+                        print(f"FINAL {spec['original_name']} {cid} {order}: same error as an earlier "
+                              f"attempt, recorded as persistent_error: {_error_text(rec)}", flush=True)
+                    fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                    if rec.get("persistent_error"):
+                        _log_incident(out_dir, spec, {"kind": "persistent_error", "model_id": spec["model_id"],
+                                                      "original_name": spec["original_name"], "case_id": cid,
+                                                      "order": order, "error": rec["error"], **context})
+                    if not earlier:  # re-attempted cells count toward neither breaker rule
+                        breaker.observe(rec)
         except ModelMismatch:
             raise  # execute_cell has already logged a model_mismatch incident with the served response
         except Exception as exc:
@@ -590,6 +614,9 @@ def parse_args(argv=None):
                         help="keep stored records whose prompt, model mapping or decoding differs from the "
                              "current spec; each accepted mismatch is logged to "
                              "<out>/<safe_name>.incidents.jsonl")
+    parser.add_argument("--retry-persistent", action="store_true",
+                        help="re-attempt cells whose last record is persistent_error (each logged as a "
+                             "reopened_persistent incident); use after a provider-wide condition is fixed")
     args = parser.parse_args(argv)
     if args.out is None:
         args.out = str(RUNS_V2 / ("pilot" if args.pilot else "main"))
@@ -611,7 +638,7 @@ def main(argv=None):
         print(f"[{datetime.now():%H:%M:%S}] {spec['original_name']}", flush=True)
         try:
             run_model(spec, cases, args.out, make_client(spec["provider"]), context, limit=args.limit,
-                      accept_spec_change=args.accept_spec_change)
+                      accept_spec_change=args.accept_spec_change, retry_persistent=args.retry_persistent)
         except (ModelMismatch, ModelUnavailable, RunLocked, StaleRecords, CorruptResults) as exc:
             stopped.append(spec["original_name"])
             print(f"STOPPED {spec['original_name']}: {type(exc).__name__}: {exc}", flush=True)
