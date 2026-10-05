@@ -975,3 +975,29 @@ def test_clean_commit_fails_outside_a_git_repo(tmp_path, monkeypatch):
     monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
     with pytest.raises(SystemExit, match="git status failed"):
         harness._clean_commit()
+
+
+# ---- minor 4: load_v2_cases raises explicit exceptions (no assert anywhere in r2/run/) ----
+def test_no_assert_statements_in_r2_run():
+    import ast
+    from pathlib import Path
+    run_dir = Path(harness.__file__).parent
+    found = [f"{p.name}:{n.lineno}" for p in sorted(run_dir.glob("*.py")) if not p.name.startswith("._")
+             for n in ast.walk(ast.parse(p.read_text())) if isinstance(n, ast.Assert)]
+    assert found == []
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda d: list(d["cases"]),                                  # top level is not an object
+    lambda d: {k: v for k, v in d.items() if k != "cases"},      # no "cases"
+    lambda d: {**d, "cases": {"CASE_001": {}}},                  # "cases" is not a list
+    lambda d: {**d, "cases": [{k: v for k, v in c.items() if k != "case_id"} if i == 3 else c
+                              for i, c in enumerate(d["cases"])]},
+    lambda d: {**d, "cases": [{**c, "tools": {"T": c["tools"]["T"]}} if i == 3 else c
+                              for i, c in enumerate(d["cases"])]},
+], ids=["not-an-object", "no-cases", "cases-not-a-list", "case-without-id", "case-without-S"])
+def test_load_v2_cases_rejects_malformed_payload(tmp_path, make_pairs, mutate):
+    path = tmp_path / "pairs_v2.json"
+    path.write_text(json.dumps(mutate(make_pairs(IDS500))))
+    with pytest.raises(ValueError, match="pairs_v2.json"):
+        harness.load_v2_cases(path)

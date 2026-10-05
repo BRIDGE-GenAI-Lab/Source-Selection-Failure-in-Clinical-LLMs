@@ -92,8 +92,16 @@ def load_specs(path=REPO / "r2" / "run" / "models_v2.json"):
 
 
 def load_v2_cases(path=DATA_V2 / "pairs_v2.json"):
+    """(cases by case_id, sha256 of the file bytes). Raises ValueError, never assert, on any defect."""
     raw = Path(path).read_bytes()
     data = json.loads(raw)
+    if not isinstance(data, dict) or not isinstance(data.get("cases"), list):
+        raise ValueError(f"{path}: expected an object with a 'cases' list")
+    bad = [i for i, c in enumerate(data["cases"])
+           if not (isinstance(c, dict) and isinstance(c.get("case_id"), str) and isinstance(c.get("tools"), dict)
+                   and isinstance(c["tools"].get("T"), dict) and isinstance(c["tools"].get("S"), dict))]
+    if bad:
+        raise ValueError(f"{path}: cases at positions {bad[:10]} lack a case_id or tools T and S")
     if data.get("unresolved"):
         raise ValueError(f"{path}: corrected stimulus set still has {len(data['unresolved'])} unresolved pairs")
     cases = {c["case_id"]: c for c in data["cases"]}
