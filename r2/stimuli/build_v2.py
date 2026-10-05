@@ -37,6 +37,9 @@ def build_v2(manual_edits=None, strict=True):
         status = audit.loc[cid, "raw_status"]
         source = "original_transform"
         if cid in manual_edits:
+            if status != "no_edit" and not manual_edits[cid].get("override"):
+                raise ValueError(f"{cid}: manual_edits.json has an entry for a pair that already carries an "
+                                 f"original edit (raw_status {status!r}); add \"override\": true to replace it")
             s = apply_manual_edit(s, manual_edits[cid])
             source = "physician_manual"
         elif status == "no_edit" and sham_type == "authority_mimicry":
@@ -68,28 +71,42 @@ def build_v2(manual_edits=None, strict=True):
     return out, unresolved
 
 
+QUEUE_COLUMNS = ["case_id", "sham_type", "authentic_organization", "clinical_question", "authentic_excerpt_text"]
+
+
+def write_outputs(cases, unresolved, originals=None):
+    """Write pairs_v2.json and keep manual_edit_queue.csv in step: rewritten while pairs are
+    unresolved, removed (never left stale) once the queue is empty."""
+    DATA_V2.mkdir(parents=True, exist_ok=True)
+    queue_path = DATA_V2 / "manual_edit_queue.csv"
+    if unresolved:
+        if originals is None:
+            originals, _ = load_original_cases()
+        with open(queue_path, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(QUEUE_COLUMNS)
+            for cid in unresolved:
+                c = originals[cid]
+                w.writerow([cid, c["eval"]["sham_trap_type"], c["tools"]["T"]["metadata"]["organization"],
+                            c.get("clinical_question"), c["tools"]["T"]["excerpt_text"]])
+        print(f"{len(unresolved)} pairs need a physician-authored edit: data/v2/manual_edit_queue.csv")
+    elif queue_path.exists():
+        queue_path.unlink()
+        print("no unresolved pairs: removed the stale data/v2/manual_edit_queue.csv")
+    payload = {"derived_from_sha256": ORIGINAL_CASES_SHA256, "n_pairs": len(cases),
+               "unresolved": unresolved, "cases": cases}
+    (DATA_V2 / "pairs_v2.json").write_text(json.dumps(payload, indent=1, ensure_ascii=False), encoding="utf-8")
+    print(f"wrote {len(cases)} pairs")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--allow-unresolved", action="store_true")
     args = parser.parse_args()
     manual_path = DATA_V2 / "manual_edits.json"
-    manual = json.loads(manual_path.read_text()) if manual_path.exists() else {}
+    manual = json.loads(manual_path.read_text(encoding="utf-8")) if manual_path.exists() else {}
     cases, unresolved = build_v2(manual, strict=not args.allow_unresolved)
-    DATA_V2.mkdir(parents=True, exist_ok=True)
-    if unresolved:
-        originals, _ = load_original_cases()
-        with open(DATA_V2 / "manual_edit_queue.csv", "w", newline="") as fh:
-            w = csv.writer(fh)
-            w.writerow(["case_id", "sham_type", "authentic_organization", "clinical_question", "authentic_excerpt_text"])
-            for cid in unresolved:
-                c = originals[cid]
-                w.writerow([cid, c["eval"]["sham_trap_type"], c["tools"]["T"]["metadata"]["organization"], c.get("clinical_question"),
-                            c["tools"]["T"]["excerpt_text"]])
-        print(f"{len(unresolved)} pairs need a physician-authored edit: data/v2/manual_edit_queue.csv")
-    payload = {"derived_from_sha256": ORIGINAL_CASES_SHA256, "n_pairs": len(cases),
-               "unresolved": unresolved, "cases": cases}
-    (DATA_V2 / "pairs_v2.json").write_text(json.dumps(payload, indent=1, ensure_ascii=False))
-    print(f"wrote {len(cases)} pairs")
+    write_outputs(cases, unresolved)
 
 
 if __name__ == "__main__":
