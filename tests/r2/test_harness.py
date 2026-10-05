@@ -1055,3 +1055,31 @@ def test_model_mismatch_on_retry_logs_the_earlier_attempt_too(tmp_path):
     assert [a["response"]["model"] for a in inc["attempts"]] == ["prov/m-1"]
     assert inc["attempts"][0]["response"]["choices"][0]["message"]["content"] == "nope"
     assert results_path(SPEC, tmp_path).read_text() == ""
+
+
+# ---- minor 7: _done splits bytes before decoding; a tear inside any multibyte character is a torn tail ----
+@pytest.mark.parametrize("char", ["é", "•", "🙂"], ids=["2-byte", "3-byte", "4-byte"])
+def test_torn_tail_inside_multibyte_char_at_every_offset(tmp_path, char):
+    encoded = char.encode("utf-8")
+    for cut_in_char in range(1, len(encoded)):
+        out = tmp_path / f"cut{cut_in_char}"
+        path, recs = _first_record(out)
+        before = path.read_bytes()
+        tail = json.dumps({**recs[0], "order": "ST", "note": f"x{char}y"}, ensure_ascii=False).encode("utf-8")
+        cut = tail.index(encoded) + cut_in_char
+        with open(path, "ab") as fh:
+            fh.write(tail[:cut])
+        client = FakeClient([GOOD] * 2)
+        run_model(SPEC, SUBSET, out, client, CTX, sleep=lambda s: None)
+        after = path.read_bytes()
+        assert after[:len(before)] == before and len(client.calls) == 2
+        new = after[len(before):].decode("utf-8").splitlines()
+        assert len(new) == 2 and all(json.loads(l)["case_id"] == "CASE_002" for l in new)
+
+
+def test_invalid_utf8_in_a_middle_line_is_corrupt_not_a_decode_crash(tmp_path):
+    path, recs = _first_record(tmp_path)
+    good = path.read_bytes()
+    path.write_bytes(b'{"case_id": "CASE_001", "note": "\xe2\x80"}\n' + good)
+    with pytest.raises(CorruptResults, match="line 1"):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None)
