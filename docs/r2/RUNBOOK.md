@@ -1,0 +1,257 @@
+# Runbook: from the physicians' forms to the rebuilt documents
+
+This is the operator's sequence for the rest of the R2 revision. Every step is one command of
+`python -m r2.pipeline` (in `r2/pipeline.py`). Each command prints what it runs. A step stops with
+`REFUSED: <reason>` (exit status 2) when an input is missing, and with `WAITING: <reason>` (exit status 3) when
+people must act first. Rerunning a step that already finished changes nothing.
+
+Run every command from the repository root, `~/npj_r2/r2_repo`, with the project interpreter:
+
+```bash
+cd ~/npj_r2/r2_repo
+PY=~/.venvs/npj-r2/bin/python
+```
+
+**Never set `R2_SANDBOX` for the real run.** With `R2_SANDBOX` set, every write goes to the sandbox, the API is
+never called, and the documents are marked SIMULATED. Check that it is unset with `echo "${R2_SANDBOX:-unset}"`.
+`R2_REPO` may stay unset; the document scripts then read `~/npj_r2/r2_repo`.
+
+Steps that need the authors' approval are marked **[authors approve]**. The operator does not approve them.
+
+## 0. The rehearsal (already run; rerun after any code change)
+
+```bash
+$PY -m r2.rehearse /path/to/new/empty/dir        # outside the repository and outside /Volumes/Lexar/LLM_Tool_use
+```
+
+The rehearsal runs every step below in a new sandbox. Simulated physicians fill the forms. A fake API answers
+the probe, the pilot and the main run. The fake API has a position bias, invalid replies, `<think>` tags, 400
+and 429 errors, and one cell whose error never clears. Before and after the run, the rehearsal hashes the real
+`data/v2`, `verification`, `analysis_repeated`, `r2_runs` and `npj_R2_WORKING` folders, and the git state of the
+repository. It fails if anything real changed. Its report is `rehearsal_report.md` in the sandbox. Success means:
+- every step `ok`, except the first consensus step, which shows `waiting`;
+- `NUMERIC markers ... NOT filled: 0`;
+- `Real-path check: unchanged: True`.
+
+Nothing in the sandbox is data. Never copy anything from it into the repository or into `npj_R2_WORKING`.
+
+## 1. API keys [authors act]
+
+1. Rotate the legacy keys. Plaintext keys sit in the local legacy runner scripts:
+   `safe-guideline-tooling-eval/scripts/run_{together,deepseek,deepseek_reasoner,gemini,groq}_experiment.py`
+   and their copies under `safe-guideline-tooling-eval/github_repo/scripts/`. They are the Together,
+   DeepSeek, Gemini and Groq keys. There is also an OpenAI key in `safe-guideline-tooling-eval/.env`. Treat all
+   of them as compromised. Revoke them in each provider's dashboard and create new keys. Groq is not used by the
+   repeated experiment, so its key needs revoking only.
+2. Copy `.env.example` to `~/npj_r2/r2_repo/.env`. The `.env` file is gitignored. Fill in the four names it
+   lists: `OPENAI_API_KEY`, `TOGETHER_API_KEY`, `DEEPSEEK_API_KEY` and `GEMINI_API_KEY`.
+3. Check that no key is tracked: run the secrets `git grep` of the project constraints
+   (`.superpowers/sdd/2026-10-05-npj-r2-integrity-revision/global-constraints.md`, "Secrets"). It must print
+   nothing. The pattern is not repeated here, because this file would then match it.
+
+## 2. Round 1 back: import the 23 physician-written edits
+
+**The authors do this.** The two reviewers named in the forms, A.G. and M.O., fill in
+`verification/round1/review_AG.xlsx` and `review_MO.xlsx` independently. A.G. also fills in the `Author_edits`
+sheet of his workbook: one find and replace per queued pair. Keep the returned files outside the repository, for example in
+`~/npj_r2/returned/`.
+
+```bash
+$PY -m r2.pipeline import-edits ~/npj_r2/returned/AG_r1.xlsx --author A.G. --date YYYY-MM-DD
+```
+
+This command:
+- checks every edit and writes the edits to `data/v2/manual_edits.json`;
+- rebuilds `data/v2/pairs_v2.json` strictly, so all 500 pairs are present and re-audited. The build stops if
+  any pair renders identically;
+- removes `manual_edit_queue.csv`;
+- writes the round-2 forms for the 23 rebuilt pairs to `verification/round2/`.
+
+**Success:** `"pairs": 500, "unresolved": 0, "identical_visible": 0`.
+**If an edit is rejected:** the message names the case and the reason, for example "'find' must occur exactly
+once" or "subtle_inversion edits belong in excerpt_text". Nothing is written. Send that row back to A.G. and
+rerun the command.
+
+Commit `data/v2/` and `verification/round2/`.
+
+## 3. Round 2 back: consensus, kappa and exclusions
+
+**The authors do this.** Both physicians return their round-2 workbooks, `verification/round2/review_*.xlsx`.
+
+```bash
+$PY -m r2.pipeline consensus AG_r1.xlsx MO_r1.xlsx AG_r2.xlsx MO_r2.xlsx      # full paths
+```
+
+The first run imports the four workbooks and merges round 1 with round 2. It refuses a form whose packet
+content was edited, and a pair that changed after it was reviewed. It writes `verification/kappa.csv` and
+`verification/adjudication_needed.csv`. If the physicians disagree on any item, it stops with
+`WAITING: N disagreements ...`. The two physicians then agree a consensus answer for each listed row. They write
+the answers to `verification/consensus.csv` with the columns `case_id,item,consensus`. Rerun the same command;
+it then writes `excluded_pairs.json`, `flags.json` and `final_review.csv`.
+
+**Success:** `"pairs_reviewed": 500`, with the excluded and flagged counts. The exclusion rule is fixed in
+`r2/verify/score_review.py`. Commit `verification/`.
+
+## 4. Budget and probe [authors approve the budget]
+
+Show the authors the projected token use and the current prices; see F8 in
+`.superpowers/sdd/.../author-facts-findings.md` for the projection. Once they approve:
+
+```bash
+$PY -m r2.pipeline probe --yes
+```
+
+The probe makes one call per model. It writes `analysis_repeated/model_availability.csv`, which
+Supplementary Table S2 needs. Without `--yes`, the command only prints what it would run.
+**Success:** every model shows `available`, with a served identifier.
+
+## 5. Pilot and pilot review
+
+```bash
+$PY -m r2.pipeline pilot --yes                 # the first 10 pairs, every model, both orders: 420 calls
+$PY -m r2.pipeline pilot-summary               # read-only
+```
+
+Write `analysis_repeated/PILOT_REVIEW.md` from the summary. Record:
+- the pilot dates;
+- the parse rate per model (target: at least 95% `ok`);
+- the served identifiers;
+- the median tokens and the projected main-run cost.
+
+Only these changes are allowed before the freeze, each logged in `PILOT_REVIEW.md` with its reason:
+- a higher `max_tokens` for a model whose non-responses are truncations (the `truncated` column);
+- a `served_prefix`;
+- a substitution under the plan's substitution rule.
+
+After any change, rerun the pilot. The pilot is never analyzed. The supplement marker "pilot dates, parse rate
+per model and any change it prompted" is filled from `PILOT_REVIEW.md` by the authors.
+
+## 6. Freeze, then make the tag public, BEFORE the main run [authors approve]
+
+```bash
+$PY -m r2.pipeline freeze --dry-run            # prints the hashes it would freeze; changes nothing
+$PY -m r2.pipeline freeze --yes                # after the authors approve: commit + local annotated tag
+```
+
+The freeze refuses if:
+- `excluded_pairs.json` is missing;
+- `pairs_v2.json` does not hold 500 resolved pairs;
+- a model has no pilot records;
+- the working tree is dirty;
+- the tag already exists;
+- the plan has lost its DRAFT banner.
+
+The freeze writes `docs/r2/FREEZE_RECORD.md`; its date fills `freeze_date`. Nothing is pushed.
+
+**[authors approve the push]** Push the tag. Then record the push date:
+
+```bash
+git push origin r2-analysis-plan-frozen        # only after approval
+$PY -m r2.pipeline record --freeze-pushed YYYY-MM-DD
+```
+
+The recorded date fills the "public timestamp of the freeze" markers. The push must happen before the first
+call of the main run. Post-results checks that the freeze date is not after the first main-run call
+(`order_check`).
+
+## 7. Main run
+
+The harness refuses the main run unless:
+- the tag `r2-analysis-plan-frozen` exists;
+- `pairs_v2.json` has the hash recorded in `excluded_pairs.json`;
+- `r2/`, `data/v2/` and `tests/` are committed.
+
+Run one background job per provider. The command prints the exact harness call:
+
+```bash
+mkdir -p /Volumes/Lexar/LLM_Tool_use/r2_runs/logs
+for p in openai together deepseek gemini; do
+  nohup $PY -m r2.pipeline main --yes --models provider:$p > /Volumes/Lexar/LLM_Tool_use/r2_runs/logs/$p.log 2>&1 &
+done
+```
+
+Watch the logs with the Monitor tool. A job that dies resumes when you rerun the same command: completed cells
+are skipped. Each job ends with `FINISHED <n> model(s); stopped <k>: [...]; <m> cells need a resume`. Its exit
+status is 0 only when no model stopped and no cell needs a resume.
+
+What to do for each line the harness prints:
+
+| Line or incident | Meaning | What to do |
+|---|---|---|
+| `RETRY <model> try i/10: ... sleeping s` | A transient error (429, timeout, 5xx). Backoff honours `Retry-After`, capped at 900 s. | Nothing. |
+| `PENDING <model>: N cells end in an error ...` | API cell errors (400/422) were recorded; those cells are not complete yet. | Rerun the same command once. A re-attempt with the same error becomes final. |
+| `FINAL <model> <case> <order>: ... persistent_error` | The same cell error happened twice (compared by `error_key`, so request ids are ignored). The cell is final as a non-response. Incident `persistent_error`. | Nothing, unless the error is provider-wide. Then fix the cause and rerun with `--retry-persistent` (incident `reopened_persistent`). |
+| `STOPPED <model>: ModelMismatch` | The provider served a different model. Incident `model_mismatch` keeps the paid responses. | A human decision under the substitution rule. Do not resume until it is made. After a substitution, move the superseded file to `main/_superseded/`. |
+| `STOPPED <model>: ModelUnavailable` | Authentication, permission or not-found errors; a 429 that persisted for 10 tries; or the circuit breaker (3 consecutive cell errors, or the same error text 3 times in a row). Incident `stopped`. | Read `<safe_name>.incidents.jsonl` and the last records. Fix provider-wide causes (key, quota, outage), then rerun. |
+| `STOPPED <model>: RunLocked` | Another process is running that model. | Do not start a second one. |
+| `STOPPED <model>: StaleRecords` | Stored records were made with another stimulus file, prompt or spec. | Stop and find out why. Rerun with `--accept-spec-change` only for a deliberate, documented change; it logs incidents of kind `accepted_spec_change`. |
+| `STOPPED <model>: CorruptResults` | A results file has an unparseable line that is not the last one. | Stop. Do not edit the file; report it. |
+| `WARNING: dropped torn final line` | A crash left half a line at the end of a file. The harness truncates it and logs incident `torn_tail` with the dropped bytes. | Nothing. |
+| `STOPPED <model>: unexpected ...` | A bug or an unknown error. | Stop and report with the traceback. |
+| `refusing the main run: ...` | The freeze tag is missing, or the stimulus hash differs. | Go back to step 6, or rebuild consistently. |
+| `commit r2/, data/v2/ and tests/ before running` | Code or stimuli are uncommitted. | Commit, then rerun. |
+
+Archive every `*.incidents.jsonl` file with the run logs.
+
+## 8. Post-results: analyses, tables, figures, documents, checks
+
+```bash
+$PY -m r2.pipeline post-results                # add --no-render to skip the LibreOffice PDFs
+```
+
+The steps run in order. The first failure stops the command and is reported:
+1. the completeness gate (`check_complete`): every model has 1,000 cells, no duplicates, no invalid records and
+   no unresolved errors. On failure, read the `UNRESOLVED` lines and go back to step 7;
+2. the repeated analyses (`analysis_repeated/`);
+3. Supplementary Tables S2, S7, S8 and S11 to S14 (`npj_R2_WORKING/tables/`), and S15 once the release is
+   recorded;
+4. Table 1;
+5. Figures 2 to 4 (`npj_R2_WORKING/05_Figures/`);
+6. `edits/numbers.py` and `edits/numbers_supplement.py`;
+7. the manuscript (`edits/run_all.py`, which also runs the numbers test and the idempotency check), the
+   supplement and the response;
+8. the four `qa_*.py` scripts, whose reports are in `npj_R2_WORKING/qa_*_report.md`;
+9. `PENDING_INDEX.md`;
+10. the remaining markers, with the list in `npj_R2_WORKING/MARKERS_REMAINING.md`.
+
+**Success:**
+- `NUMERIC (should be 0): 0` before the release, apart from the release markers (`release_tag`,
+  `zenodo_new_doi`, Supplementary Table S15);
+- every other remaining marker is PROSE.
+
+Then the authors:
+- write the PROSE markers in `edits/content.py` and `build_response.py`, using the numbers.json keys, such as
+  `{{rep_head_primary_position_averaged_accuracy}}` (keys are listed in `edits/numbers.json`);
+- check the sentences in the confirm lists of `PENDING.md` and `PENDING_response.md`;
+- trim the text to the word limits.
+
+Rerun `post-results` after every change.
+
+## 9. Release [authors approve]
+
+After approval:
+1. push the branch and the tags;
+2. create the release tag;
+3. mint the new Zenodo version.
+
+Then record the release and rebuild:
+
+```bash
+$PY -m r2.pipeline record --release-tag <tag> --zenodo-doi 10.5281/zenodo.<n>
+$PY -m r2.data_files_doc && git diff --stat docs/DATA_FILES.md   # must be current at the tag
+$PY -m r2.pipeline post-results
+```
+
+**Success:** `NUMERIC (should be 0): 0`. Before submission, PROSE must also be 0: no `⟦PENDING` anywhere.
+
+## Files each step writes
+
+| Step | Writes |
+|---|---|
+| import-edits | `data/v2/manual_edits.json`, `data/v2/pairs_v2.json`, `verification/round2/*` |
+| consensus | `verification/round{1,2}/review_*.csv`, `verification/review_*.csv`, `packets_manifest.json`, `kappa.csv`, `adjudication_needed.csv`, `excluded_pairs.json`, `flags.json`, `final_review.csv` |
+| probe | `r2_runs/model_availability.csv`, `analysis_repeated/model_availability.csv` |
+| pilot / main | `r2_runs/pilot/*`, `r2_runs/main/*` (results, incidents, locks) |
+| freeze | `docs/r2/ANALYSIS_PLAN.md` (filled), `docs/r2/FREEZE_RECORD.md`, one commit, one local tag |
+| record | `docs/r2/PUBLIC_RECORD.json` |
+| post-results | `analysis_repeated/*`, `data/v2/results_repeated.csv`, `npj_R2_WORKING/{tables,05_Figures}/*`, the three documents, their PDFs and side files |
