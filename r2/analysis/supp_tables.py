@@ -15,9 +15,10 @@ from pathlib import Path
 
 from r2 import profiles
 from r2.audit.coerced_choices import RUNNER_MAX_TOKENS
-from r2.paths import AUDIT_DIR, DATA_V2, LEGACY_EVAL, ORIGINAL_RUNS_DIR, REPO, VERIFY_DIR
+from r2.paths import (ANALYSIS_REPEATED as _ANALYSIS_REPEATED, AUDIT_DIR, DATA_V2, LEGACY_EVAL, ORIGINAL_RUNS_DIR,
+                      REPO, TABLES_DIR, VERIFY_DIR)
 
-OUT_DIR = Path("/Volumes/Lexar/LLM_Tool_use/npj_R2_WORKING/tables")
+OUT_DIR = TABLES_DIR  # npj_R2_WORKING/tables, or inside R2_SANDBOX
 ORIGINAL_ANALYSIS = REPO / "analysis_original"
 RESULT_TREES = ("results", "results_opensource")
 CANONICAL_HASH_PREFIX = "58651ef5"
@@ -407,7 +408,7 @@ def modifications_by_type():
 # - r2.verify.score_review (score, apply_consensus) -> VERIFY_DIR: kappa.csv, excluded_pairs.json, flags.json,
 #   final_review.csv.
 # `root` (a sandbox) replaces the repository root: root/analysis_repeated and root/verification.
-ANALYSIS_REPEATED = REPO / "analysis_repeated"
+ANALYSIS_REPEATED = _ANALYSIS_REPEATED
 VERIFY = VERIFY_DIR
 
 

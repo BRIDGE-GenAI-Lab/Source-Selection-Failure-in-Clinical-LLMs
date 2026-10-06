@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-from r2.paths import DATA_V2, REPO, RUNS_V2, VERIFY_DIR
+from r2.paths import DATA_V2, FREEZE_REPO, MODELS_FILE, REPO, RUNS_V2, SANDBOX, VERIFY_DIR
 from r2.stimuli.render import render_messages, visible_content
 
 ORDERS = ("TS", "ST")
@@ -109,7 +109,9 @@ def _error_kind(exc):
     return None
 
 
-def load_specs(path=REPO / "r2" / "run" / "models_v2.json"):
+def load_specs(path=None):
+    """The model specs of r2/run/models_v2.json (MODELS_FILE: a copy inside R2_SANDBOX when sandboxed)."""
+    path = MODELS_FILE if path is None else path
     specs = json.loads(Path(path).read_text())["models"]
     keys = {"model_id": lambda s: s["model_id"], "safe_name(model_id)": lambda s: safe_name(s["model_id"]),
             "original_name": lambda s: s["original_name"]}
@@ -608,7 +610,22 @@ def run_model(spec, cases, out_dir, client, context, limit=None, sleep=time.slee
 CODE_PATHS = ("r2", "data/v2", "tests")  # must be committed: harness_commit identifies all of them
 
 
+def _sandbox_commit():
+    """Under R2_SANDBOX: "sandbox:code-<16 hex>", a SHA-256 over the paths and bytes of r2/**/*.py and
+    tests/**/*.py. It runs no git: a sandbox runs no git command outside itself (r2.sandbox_git). The sandbox
+    stimuli are not in the repository, so data/v2 is not included; nothing here is ever analysed as data."""
+    h = hashlib.sha256()
+    for top in ("r2", "tests"):
+        for p in sorted((REPO / top).rglob("*.py")):
+            if p.name.startswith("._") or "__pycache__" in p.parts:
+                continue
+            h.update(p.relative_to(REPO).as_posix().encode() + b"\0" + p.read_bytes() + b"\0")
+    return f"sandbox:code-{h.hexdigest()[:16]}"
+
+
 def _clean_commit():
+    if SANDBOX is not None:
+        return _sandbox_commit()
     status = subprocess.run(["git", "status", "--porcelain", *CODE_PATHS], cwd=REPO,
                             capture_output=True, text=True)
     if status.returncode != 0:
@@ -640,8 +657,20 @@ def _select(specs, selector):
     return [s for s in specs if s["original_name"] in names]
 
 
-def _tag_exists(tag):
-    res = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], cwd=REPO,
+def _tag_exists(tag, repo=None):
+    """The tag exists in FREEZE_REPO: the repository itself, or the sandbox's freeze repository under R2_SANDBOX
+    (checked through r2.sandbox_git: no inherited GIT_* variables, and the repository must lie in the sandbox)."""
+    repo = FREEZE_REPO if repo is None else repo
+    if SANDBOX is not None:
+        from r2 import sandbox_git
+        if not Path(repo).exists():
+            return False
+        try:
+            res = sandbox_git.run(repo, "rev-parse", "-q", "--verify", f"refs/tags/{tag}", sandbox=SANDBOX)
+        except sandbox_git.SandboxGitError as exc:
+            raise SystemExit(f"refusing the main run: {exc}") from exc
+        return res.returncode == 0
+    res = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], cwd=repo,
                          capture_output=True, text=True)
     return res.returncode == 0
 
@@ -695,24 +724,35 @@ def parse_args(argv=None):
     return args
 
 
-def main(argv=None):
+def main(argv=None, client_factory=None, sleep=None):
+    """client_factory(provider) -> an OpenAI-compatible client; default make_client (the real API, keys from
+    REPO/.env or the environment). Under R2_SANDBOX a factory must be injected (r2.rehearse): the sandbox never
+    calls a real API, and every record it writes carries "synthetic": true."""
     args = parse_args(argv)
+    if SANDBOX is not None and client_factory is None:
+        raise SystemExit(f"refusing: R2_SANDBOX={SANDBOX} is set and no client was injected; a sandbox run never "
+                         "calls a real API (run it through r2.rehearse, or unset R2_SANDBOX for the real run)")
     if args.pilot and _same_dir(args.out, RUNS_V2 / "main"):
         raise SystemExit("refusing a --pilot run into the main out dir")
     cases, stim_sha = load_v2_cases()
     if not args.pilot:
         _require_frozen(stim_sha)
     context = {"harness_commit": _clean_commit(), "stimulus_sha256": stim_sha}
-    from dotenv import load_dotenv
-    load_dotenv(REPO / ".env")
+    if SANDBOX is not None:
+        context["synthetic"] = True
+    if client_factory is None:
+        from dotenv import load_dotenv
+        load_dotenv(REPO / ".env")
+        client_factory = make_client
     specs, stopped, need_resume = _select(load_specs(), args.models), [], 0
     for spec in specs:
         name = spec["original_name"]
         print(f"[{datetime.now():%H:%M:%S}] {name}", flush=True)
         locked = False
         try:
-            run_model(spec, cases, args.out, make_client(spec["provider"]), context, limit=args.limit,
-                      accept_spec_change=args.accept_spec_change, retry_persistent=args.retry_persistent)
+            run_model(spec, cases, args.out, client_factory(spec["provider"]), context, limit=args.limit,
+                      accept_spec_change=args.accept_spec_change, retry_persistent=args.retry_persistent,
+                      **({} if sleep is None else {"sleep": sleep}))
         except (ModelMismatch, ModelUnavailable, RunLocked, StaleRecords, CorruptResults) as exc:
             stopped.append(name)
             locked = isinstance(exc, RunLocked)
@@ -737,9 +777,9 @@ def main(argv=None):
     return {"stopped": stopped, "need_resume": need_resume}
 
 
-def cli(argv=None):
-    """Exit status 1 when any model stopped or any cell needs a resume, else 0."""
-    summary = main(argv)
+def cli(argv=None, **kwargs):
+    """Exit status 1 when any model stopped or any cell needs a resume, else 0. kwargs go to main()."""
+    summary = main(argv, **kwargs)
     return 1 if summary["stopped"] or summary["need_resume"] else 0
 
 

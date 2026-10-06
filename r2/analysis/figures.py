@@ -23,8 +23,9 @@ import numpy as np  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 
 from r2.analysis.stats import cluster_bootstrap_mean  # noqa: E402
+from r2.paths import FIGURES_DIR  # noqa: E402
 
-OUT_DIR = Path("/Volumes/Lexar/LLM_Tool_use/npj_R2_WORKING/05_Figures")
+OUT_DIR = FIGURES_DIR  # npj_R2_WORKING/05_Figures, or inside R2_SANDBOX
 DPI = 600
 BOOT_N = inspect.signature(cluster_bootstrap_mean).parameters["n_boot"].default
 

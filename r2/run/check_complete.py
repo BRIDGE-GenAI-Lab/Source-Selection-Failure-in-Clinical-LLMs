@@ -4,7 +4,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from r2.paths import DATA_V2, REPO, RUNS_V2
+from r2.paths import ANALYSIS_REPEATED, DATA_V2, RUNS_V2
 from r2.run.harness import (ORDERS, CorruptResults, final_records, is_error_only, is_unresolved,
                             iter_result_files, load_specs, load_v2_cases, read_records, results_path)
 
@@ -114,16 +114,17 @@ def export_flat(out_dir, specs=None):
     return dest
 
 
-def main():
-    out_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else RUNS_V2 / "main"
+def main(argv=None):
+    args = sys.argv[1:] if argv is None else list(argv)
+    out_dir = Path(args[0]) if args else RUNS_V2 / "main"
     cases, _ = load_v2_cases()
     specs = load_specs()
     try:
         report = check(out_dir, specs, sorted(cases))
     except (OrphanResults, CorruptResults, ValueError) as exc:
         raise SystemExit(f"gate failed: {exc}")
-    dest = REPO / "analysis_repeated" / "completeness.csv"
-    dest.parent.mkdir(exist_ok=True)
+    dest = ANALYSIS_REPEATED / "completeness.csv"
+    dest.parent.mkdir(parents=True, exist_ok=True)
     with open(dest, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(report[0]))
         w.writeheader()

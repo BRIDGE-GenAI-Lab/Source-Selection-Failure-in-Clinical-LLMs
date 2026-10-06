@@ -54,8 +54,14 @@ COMPLAINTS = ["Fever and productive cough", "Chest pain at rest", "Acute confusi
 
 
 def _protected_roots():
+    """The repository, the legacy root and the real run directory. Under R2_SANDBOX, paths.RUNS_V2 lies inside the
+    sandbox and is not protected; the real one (REAL_RUNS_V2) always is."""
     from r2 import paths
-    return [Path(paths.REPO), Path(paths.LEGACY_ROOT), Path(paths.RUNS_V2)]
+    roots = [Path(paths.REPO), Path(paths.LEGACY_ROOT), Path(getattr(paths, "REAL_RUNS_V2", paths.RUNS_V2))]
+    sandbox = getattr(paths, "SANDBOX", None)
+    if sandbox is None or not _within(Path(paths.RUNS_V2).expanduser().resolve(), Path(sandbox)):
+        roots.append(Path(paths.RUNS_V2))
+    return roots
 
 
 def _key(path):
