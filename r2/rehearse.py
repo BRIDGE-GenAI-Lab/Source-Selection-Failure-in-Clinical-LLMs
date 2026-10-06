@@ -20,7 +20,7 @@ anything changed. Steps of the child:
      one cell whose 400 error persists (it ends as persistent_error);
   4. pipeline pilot-summary; pipeline freeze --dry-run, then the freeze itself in the sandbox freeze repository,
      and the simulated public record of the push and of the release;
-  5. pipeline post-results;
+  5. pipeline post-results, then pipeline package-runs (the run-log manifest and tarball);
   6. rehearsal_report.md in the sandbox: each step's result, the remaining markers by class, every NUMERIC
      marker not filled, the fake API events and the timing.
 """
@@ -93,7 +93,7 @@ def real_state():
             state["roots"].append(str(repo / rel))
             state["files"].update(_tree_hashes(repo / rel))
         state["git"][str(repo)] = _git_state(repo)
-    for root in (paths.REAL_RUNS_V2, paths.REAL_R2_WORKING):
+    for root in (paths.REAL_RUNS_V2, paths.REAL_RUNS_ARCHIVE, paths.REAL_R2_WORKING):
         state["roots"].append(str(root))
         state["files"].update(_tree_hashes(root))
     state["docx"] = {k: v for k, v in state["files"].items() if k.endswith(".docx")}
@@ -444,6 +444,7 @@ def _child(root, render, seed):
         step("pipeline record --release-tag --zenodo-doi (simulated release)",
              lambda: pipeline.record(release_tag=SIM_RELEASE, zenodo_doi="10.5281/zenodo.0000000"))
         step("pipeline post-results", lambda: _summarize_post(pipeline.post_results(render=render)))
+        step("pipeline package-runs (run-log manifest and tarball)", lambda: pipeline.package_runs())
         after = pipeline.markers()
         result["markers_before"] = before
         result["markers_after"] = after

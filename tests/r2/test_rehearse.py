@@ -25,7 +25,7 @@ def _independent_hashes():
     """Hashes taken here, not by r2.rehearse: the real .docx files and the real state directories."""
     out = {}
     roots = [REAL_DOCS, Path(paths.REAL_DATA_V2), Path(paths.REAL_VERIFY_DIR), Path(paths.REAL_ANALYSIS_REPEATED),
-             Path(paths.REAL_RUNS_V2)]
+             Path(paths.REAL_RUNS_V2), Path(paths.REAL_RUNS_ARCHIVE)]
     for root in roots:
         if root.exists():
             for p in sorted(root.rglob("*")):
@@ -109,3 +109,15 @@ def test_post_results_checks_pass_in_the_rehearsal(rehearsal):
     assert oc["ok"] is True and oc["public_since"] and oc["freeze_date"] <= oc["first_main_call"][:10]
     record = (rehearsal["root"] / "freeze_repo" / "docs" / "r2" / "FREEZE_RECORD.md").read_text()
     assert f"- Public URL: {rehearse.SIM_TAG_URL}" in record
+
+
+def test_rehearsal_packages_the_run_logs(rehearsal):
+    """Final fix I3: the run-log manifest covers the sandbox r2_runs/ and its tarball sits in the sandbox."""
+    from r2 import pipeline
+    root = rehearsal["root"]
+    man = json.loads((root / "analysis_repeated" / pipeline.RUNS_MANIFEST).read_text())
+    assert man["synthetic"] is True and man["totals"]["by_directory"]["main"]["files"] > 0
+    assert {"main", "pilot"} <= set(man["totals"]["by_directory"])
+    tar = root / "r2_runs_archive" / pipeline.RUNS_TARBALL
+    assert hashlib.sha256(tar.read_bytes()).hexdigest() == man["tarball"]["sha256"]
+    assert not any(f["path"].endswith(".lock") for f in man["files"])

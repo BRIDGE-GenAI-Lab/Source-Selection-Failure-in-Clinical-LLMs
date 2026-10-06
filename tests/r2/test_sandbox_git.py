@@ -59,7 +59,7 @@ def sandboxed(tmp_path, monkeypatch):
     layout = {"DATA_V2": box / "data" / "v2", "VERIFY_DIR": box / "verification", "RUNS_V2": box / "r2_runs",
               "ANALYSIS_REPEATED": box / "analysis_repeated", "R2_WORKING": box / "npj_R2_WORKING",
               "MODELS_FILE": box / "models_v2.json", "FREEZE_REPO": box / "freeze_repo",
-              "PUBLIC_RECORD": box / "PUBLIC_RECORD.json"}
+              "PUBLIC_RECORD": box / "PUBLIC_RECORD.json", "RUNS_ARCHIVE": box / "r2_runs_archive"}
     layout.update({"TABLES_DIR": layout["R2_WORKING"] / "tables", "FIGURES_DIR": layout["R2_WORKING"] / "05_Figures",
                    "FREEZE_RECORD": layout["FREEZE_REPO"] / "docs" / "r2" / "FREEZE_RECORD.md"})
     monkeypatch.setattr(paths, "SANDBOX", box)

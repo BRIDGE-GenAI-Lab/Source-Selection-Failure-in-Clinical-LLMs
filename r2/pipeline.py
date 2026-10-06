@@ -31,6 +31,13 @@
       completeness gate -> repeated analyses -> order check (freeze and public timestamp before the first
       main-run call) -> supplement tables -> Table 1 -> Figures 2-4 -> numbers.json -> manuscript, supplement,
       response -> QA scripts (any failure stops) -> PENDING_INDEX.md -> remaining markers by class.
+  package-runs
+      after the main run: analysis_repeated/r2_runs_manifest.json (SHA-256 and size of every file under r2_runs/,
+      with totals) and the tarball r2_runs_archive/r2_runs.tar.gz of r2_runs/ (pilot, main, incidents, logs) for the
+      Zenodo deposit; refuses while a harness runs or when a log holds a plaintext key.
+  release-check
+      the release QA before any tag, push or Zenodo step: a clean tree, docs/DATA_FILES.md current, the run-log
+      manifest current, numbers.json consistent (edits/test_numbers.py), the four QA scripts, and the test suite.
   markers
       the remaining pending markers of the three documents, NUMERIC (must be filled) or PROSE (author text).
   sandbox-init DIR
@@ -42,6 +49,7 @@ calls a real API.
 """
 import argparse
 import csv
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -718,6 +726,175 @@ def record(release_tag=None, zenodo_doi=None):
     return data
 
 
+# ---------------------------------------------------------------- package-runs (the raw logs for the archive)
+RUNS_MANIFEST = "r2_runs_manifest.json"   # in analysis_repeated/ (tracked: the release tag pins it)
+RUNS_TARBALL = "r2_runs.tar.gz"           # in RUNS_ARCHIVE (outside the repository; uploaded to the Zenodo version)
+RUNS_EXCLUDED = ("*.lock", "._*", ".DS_Store")
+
+
+def _runs_files(root):
+    """The run-log files under `root` (r2_runs/), as sorted POSIX paths relative to it: every regular file except
+    *.lock, ._* and .DS_Store (and __pycache__). A symbolic link is refused: the archive holds files, not links."""
+    from fnmatch import fnmatch
+    out = []
+    for p in sorted(Path(root).rglob("*")):
+        rel = p.relative_to(root).as_posix()
+        if "__pycache__" in p.parts or any(fnmatch(p.name, pat) for pat in RUNS_EXCLUDED):
+            continue
+        if p.is_symlink():
+            raise Refused(f"{p} is a symbolic link; the run-log archive holds regular files only")
+        if p.is_file():
+            out.append(rel)
+    return out
+
+
+def _file_digest(path, chunk=1 << 20):
+    h, n = hashlib.sha256(), 0
+    with open(path, "rb") as fh:
+        while True:
+            b = fh.read(chunk)
+            if not b:
+                return h.hexdigest(), n
+            h.update(b)
+            n += len(b)
+
+
+def _held_locks(root):
+    held = []
+    for lock in sorted(Path(root).rglob("*.lock")):
+        if lock.name.startswith("._"):
+            continue
+        with open(lock, "a") as fh:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                held.append(str(lock))
+    return held
+
+
+def _write_tarball(root, files, dest):
+    """A deterministic gzip tarball of `files` under the top directory r2_runs/: sorted members, owner 0 and no
+    owner names, mode 0644, the files' own mtimes (whole seconds), and a gzip header without a timestamp. Written to
+    a temporary file and renamed, so a failed run leaves no partial tarball."""
+    import gzip
+    import tarfile
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".partial")
+    with open(tmp, "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as gz, \
+            tarfile.open(fileobj=gz, mode="w", format=tarfile.GNU_FORMAT) as tar:
+        for rel in files:
+            src = Path(root) / rel
+            info = tar.gettarinfo(str(src), arcname=f"r2_runs/{rel}")
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            info.mode = 0o644
+            info.mtime = int(info.mtime)
+            with open(src, "rb") as fh:
+                tar.addfile(info, fh)
+    os.replace(tmp, dest)
+    return dest
+
+
+def _tarball_members(path):
+    """{member name: SHA-256} of every regular member of the tarball."""
+    import tarfile
+    out = {}
+    with tarfile.open(path, "r:gz") as tar:
+        for m in tar.getmembers():
+            if m.isfile():
+                out[m.name] = hashlib.sha256(tar.extractfile(m).read()).hexdigest()
+    return out
+
+
+def package_runs():
+    """analysis_repeated/r2_runs_manifest.json (path, size and SHA-256 of every run-log file under r2_runs/: pilot,
+    main with its incident files and _superseded/, job logs, the probe's availability file; totals by top
+    directory) and RUNS_ARCHIVE/r2_runs.tar.gz holding exactly those files, its own SHA-256 and size recorded in the
+    manifest. Excludes *.lock, ._* and .DS_Store. Refuses while a harness holds a model lock, and when a file holds
+    a plaintext API key (named by file and provider, never shown). Deterministic: a rerun on the same files writes
+    the same bytes. Run after the completeness gate and post-results; commit the manifest; upload the tarball and
+    the manifest to the Zenodo version (docs/r2/RUNBOOK.md, section 9)."""
+    check_write_paths()
+    root = Path(paths.RUNS_V2)
+    _need(root / "main")
+    if paths.SANDBOX is not None:
+        from r2.analysis.synthetic import _within
+        if not _within(Path(paths.RUNS_ARCHIVE).expanduser().resolve(), Path(paths.SANDBOX).resolve()):
+            raise Refused(f"R2_SANDBOX={paths.SANDBOX}: the archive location {paths.RUNS_ARCHIVE} is outside it")
+    held = _held_locks(root)
+    if held:
+        raise Refused(f"{', '.join(held)} is held by a running harness; package the run logs after every job ended")
+    files = _runs_files(root)
+    keys = {}
+    for rel in files:
+        text = (root / rel).read_bytes().decode("utf-8", "replace")
+        found = sorted({(_sk_provider(m.group(0), text) if prov == "sk-" else prov)
+                        for prov, rx in KEY_PATTERNS for m in rx.finditer(text)})
+        if found:
+            keys[rel] = found
+    if keys:
+        raise Refused("plaintext API keys in the run logs (scrub them, then rerun): "
+                      + "; ".join(f"{rel}: {', '.join(p)}" for rel, p in keys.items()))
+    entries, by_dir = [], {}
+    for rel in files:
+        digest, size = _file_digest(root / rel)
+        entries.append({"path": rel, "bytes": size, "sha256": digest})
+        top = rel.split("/", 1)[0] if "/" in rel else "."
+        d = by_dir.setdefault(top, {"files": 0, "bytes": 0})
+        d["files"] += 1
+        d["bytes"] += size
+    tarball = _write_tarball(root, files, Path(paths.RUNS_ARCHIVE) / RUNS_TARBALL)
+    members = _tarball_members(tarball)
+    want = {f"r2_runs/{e['path']}": e["sha256"] for e in entries}
+    if members != want:
+        raise Refused(f"{tarball} does not hold exactly the manifest files (a file changed while it was packaged?); "
+                      "rerun")
+    tar_sha, tar_size = _file_digest(tarball)
+    manifest = {
+        "_doc": ("SHA-256 and size of every run-log file of the repeated experiment (python -m r2.pipeline "
+                 "package-runs). Paths are relative to the run directory; in the tarball they sit under r2_runs/."),
+        "source": str(root), "archive_root": "r2_runs", "excluded_patterns": list(RUNS_EXCLUDED),
+        "totals": {"files": len(entries), "bytes": sum(e["bytes"] for e in entries),
+                   "by_directory": dict(sorted(by_dir.items()))},
+        "tarball": {"name": RUNS_TARBALL, "sha256": tar_sha, "bytes": tar_size, "location": str(tarball)},
+        "files": entries,
+    }
+    if paths.SANDBOX is not None:
+        manifest["synthetic"] = True
+    dest = Path(paths.ANALYSIS_REPEATED) / RUNS_MANIFEST
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
+    print(f"packaged {len(entries)} run-log files ({manifest['totals']['bytes']:,} bytes) into {tarball} "
+          f"(sha256 {tar_sha}); manifest {dest}; commit the manifest and upload both to the Zenodo version")
+    return {"files": len(entries), "bytes": manifest["totals"]["bytes"], "manifest": str(dest),
+            "tarball": str(tarball), "tarball_sha256": tar_sha}
+
+
+def check_runs_manifest():
+    """Problems (a list of strings; empty when current) between analysis_repeated/r2_runs_manifest.json, the files
+    under r2_runs/ and the tarball: a file changed, missing or not in the manifest, or a tarball whose SHA-256 or
+    size differs."""
+    path = Path(paths.ANALYSIS_REPEATED) / RUNS_MANIFEST
+    if not path.exists():
+        return [f"{path} does not exist (python -m r2.pipeline package-runs)"]
+    man = json.loads(path.read_text(encoding="utf-8"))
+    root = Path(paths.RUNS_V2)
+    listed = {e["path"]: e for e in man["files"]}
+    on_disk = set(_runs_files(root)) if root.exists() else set()
+    problems = [f"{rel}: in the manifest but missing under {root}" for rel in sorted(set(listed) - on_disk)]
+    problems += [f"{rel}: under {root} but not in the manifest" for rel in sorted(on_disk - set(listed))]
+    for rel in sorted(on_disk & set(listed)):
+        digest, size = _file_digest(root / rel)
+        if (digest, size) != (listed[rel]["sha256"], listed[rel]["bytes"]):
+            problems.append(f"{rel}: changed since it was packaged")
+    tar = Path(paths.RUNS_ARCHIVE) / man["tarball"]["name"]
+    if not tar.exists():
+        problems.append(f"tarball {tar} does not exist")
+    elif _file_digest(tar) != (man["tarball"]["sha256"], man["tarball"]["bytes"]):
+        problems.append(f"tarball {tar}: SHA-256 or size differs from the manifest")
+    return problems
+
+
 # ---------------------------------------------------------------- post-results
 QA_SCRIPTS = ("qa_numbers.py", "qa_xref.py", "qa_keyfacts.py", "qa_hygiene.py")
 QA_VERDICTS = {  # script -> (report, verdict line pattern, label); the verdict must be 0 and the exit status 0
@@ -967,6 +1144,7 @@ def build_parser():
     p.add_argument("root", nargs="?", default=None, help=f"default {paths.LEGACY_ROOT}")
     p = sub.add_parser("post-results")
     p.add_argument("--no-render", action="store_true")
+    sub.add_parser("package-runs")
     sub.add_parser("markers")
     p = sub.add_parser("sandbox-init")
     p.add_argument("dir")
@@ -1000,6 +1178,8 @@ def dispatch(a, client_factory=None, sleep=None):
         return {"files": len(res["files"]), "providers": res["providers"]}
     if a.cmd == "post-results":
         return post_results(render=not a.no_render)
+    if a.cmd == "package-runs":
+        return package_runs()
     if a.cmd == "markers":
         return markers()
     if a.cmd == "sandbox-init":
