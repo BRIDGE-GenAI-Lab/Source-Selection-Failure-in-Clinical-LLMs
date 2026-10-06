@@ -11,6 +11,7 @@ import pytest
 
 from r2.paths import AUDIT_DIR, DATA_V2, VERIFY_DIR
 from r2.stimuli.transforms import self_label_tokens
+from tests.r2.test_pipeline import sandboxed  # noqa: F401  (a fixture)
 
 FC = "fabricated_citation"
 ROUND1 = VERIFY_DIR / "round1"
@@ -37,10 +38,41 @@ def _fc_ids():
 # ---------------------------------------------------------------- round-1 forms
 
 
-def test_round1_manifest_binds_the_corrected_pairs():
-    m = json.loads((ROUND1 / "packets_manifest.json").read_text(encoding="utf-8"))
-    assert m["pairs_v2_sha256"] == hashlib.sha256((DATA_V2 / "pairs_v2.json").read_bytes()).hexdigest()
+def check_manifest_against_pairs(m, pairs):
+    """Every round-1 packet hash equals the packet recomputed from the CURRENT pairs for that case. This holds
+    forever: the physicians' edits touch only the 23 unresolved cases, which are not in round 1."""
+    from r2.verify.build_packets import packet_rows
+    now = {r["case_id"]: r["packet_sha256"] for r in packet_rows(pairs["cases"])}
     assert len(m["packets"]) == 477 and len(m["unresolved"]) == 23
+    assert set(m["packets"]) <= set(now)
+    assert {cid for cid, h in m["packets"].items() if now[cid] != h} == set()
+    assert set(m["unresolved"]) <= set(now) | set(pairs["unresolved"])
+
+
+def check_round1_render(tmp_dir, m, pairs, raw):
+    """Regenerate the round-1 forms in tmp from the round-1 case subset and compare them byte for byte."""
+    import difflib
+
+    from r2.verify import build_packets as bp
+    saved = difflib.HtmlDiff._default_prefix
+    difflib.HtmlDiff._default_prefix = 0  # the committed file was written by a fresh process
+    subset = [c for c in pairs["cases"] if c["case_id"] in m["packets"]]
+    assert len(subset) == len(m["packets"])
+    try:
+        bp._write_forms_to(tmp_dir, raw, subset, {"unresolved": list(m["unresolved"])})
+    finally:
+        difflib.HtmlDiff._default_prefix = saved
+    for name in ("review_AG.csv", "review_MO.csv", "packets.html", "README_REVIEWERS.md"):
+        assert (tmp_dir / name).read_bytes() == (ROUND1 / name).read_bytes(), name
+    # the manifest differs only in the whole-file hash, which moves when pairs_v2.json gains the new pairs
+    fresh = json.loads((tmp_dir / "packets_manifest.json").read_text(encoding="utf-8"))
+    fresh.pop("pairs_v2_sha256"), m.pop("pairs_v2_sha256", None)
+    assert fresh == m
+
+
+def test_round1_manifest_matches_the_current_pairs():
+    m = json.loads((ROUND1 / "packets_manifest.json").read_text(encoding="utf-8"))
+    check_manifest_against_pairs(m, _pairs())
 
 
 def test_round1_keeps_437_packets_and_changes_exactly_the_40_fabricated_citation_packets():
@@ -85,21 +117,75 @@ def test_round1_xlsx_matches_the_current_render(reviewer):
     assert len(rows) == 478
 
 
-def test_round1_files_equal_a_fresh_render(tmp_path, monkeypatch):
-    """The committed round-1 CSV, HTML, manifest and README are exactly what build_packets writes for the
-    committed pairs (HtmlDiff wraps long lines, so the HTML is compared whole, not searched for a DOI)."""
-    import difflib
-
-    from r2.verify import build_packets as bp
-    # HtmlDiff numbers its anchors with a class-level counter that every make_table call in the process
-    # advances; the committed file was written by a fresh process (python -m r2.verify.build_packets round1)
-    monkeypatch.setattr(difflib.HtmlDiff, "_default_prefix", 0)
+def test_round1_files_equal_a_fresh_render(tmp_path):
+    """The committed round-1 CSV, HTML, manifest and README are exactly what build_packets writes for the round-1
+    cases (HtmlDiff wraps long lines, so the HTML is compared whole, not searched for a DOI)."""
     raw = (DATA_V2 / "pairs_v2.json").read_bytes()
-    d = json.loads(raw)
-    bp._write_forms_to(tmp_path, raw, d["cases"], {"unresolved": list(d["unresolved"])})
-    for name in ("review_AG.csv", "review_MO.csv", "packets.html", "packets_manifest.json", "README_REVIEWERS.md"):
-        assert (tmp_path / name).read_bytes() == (ROUND1 / name).read_bytes(), name
+    m = json.loads((ROUND1 / "packets_manifest.json").read_text(encoding="utf-8"))
+    check_round1_render(tmp_path, m, json.loads(raw), raw)
     assert "fake" not in (ROUND1 / "packets.html").read_text(encoding="utf-8").lower()
+
+
+def _queued_edits():
+    """A valid physician edit for each of the 23 queued cases (whole-field find, so it occurs exactly once)."""
+    from r2.io import load_original_cases
+    from r2.stimuli.build_v2 import build_v2
+    _, queued = build_v2(strict=False)
+    originals, _ = load_original_cases()
+    edits = {}
+    for cid in queued:
+        t = originals[cid]["tools"]["T"]
+        if originals[cid]["eval"]["sham_trap_type"] == "authority_mimicry":
+            edits[cid] = {"field": "metadata.organization", "find": t["metadata"]["organization"],
+                          "replace": t["metadata"]["organization"] + " Group"}
+        else:
+            edits[cid] = {"field": "excerpt_text", "find": t["excerpt_text"],
+                          "replace": t["excerpt_text"] + " Avoid the usual dose."}
+    return edits
+
+
+def test_the_three_checks_hold_once_the_physicians_edits_exist_and_still_catch_a_round1_change(sandboxed):
+    """Synthetic world: a manual_edits.json for the 23 queued cases in the sandbox's data/v2 (never the real one)."""
+    import copy
+
+    from r2 import paths
+    from tests.r2.test_build_v2 import check_committed_pairs, committed_manual_edits
+    from r2.stimuli.build_v2 import build_v2
+    edits = _queued_edits()
+    assert len(edits) == 23 and paths.DATA_V2 != DATA_V2
+    paths.DATA_V2.mkdir(parents=True)
+    (paths.DATA_V2 / "manual_edits.json").write_text(json.dumps(edits))
+    manual = committed_manual_edits(paths.DATA_V2)
+    cases, unresolved = build_v2(manual, strict=True)
+    pairs = {"derived_from_sha256": "synthetic", "n_pairs": 500, "unresolved": unresolved, "cases": cases}
+    raw = json.dumps(pairs, indent=1).encode("utf-8")
+    (paths.DATA_V2 / "pairs_v2.json").write_bytes(raw)
+    assert len(cases) == 500 and unresolved == []
+    m = json.loads((ROUND1 / "packets_manifest.json").read_text(encoding="utf-8"))
+    assert m["pairs_v2_sha256"] != hashlib.sha256(raw).hexdigest()   # the whole-file binding does move
+
+    # 1. test_build_v2: the committed pairs equal the build with the committed edits
+    check_committed_pairs(pairs, manual)
+    with pytest.raises(AssertionError):
+        check_committed_pairs(pairs, {})                             # a build without the edits would differ
+    # 2. the manifest packets equal the packets recomputed from the current pairs
+    check_manifest_against_pairs(copy.deepcopy(m), pairs)
+    # 3. the round-1 forms stay byte-reproducible from the round-1 subset
+    out = sandboxed / "render"
+    check_round1_render(out, copy.deepcopy(m), pairs, raw)
+
+    # an accidental change to any round-1 pair is still caught by all three
+    victim = next(c for c in cases if c["case_id"] in m["packets"] and c["eval"]["sham_trap_type"] != FC)
+    altered = copy.deepcopy(pairs)
+    tool = next(c for c in altered["cases"] if c["case_id"] == victim["case_id"])["tools"]["S"]
+    tool["excerpt_text"] += " Altered."
+    with pytest.raises(AssertionError):
+        check_committed_pairs(altered, manual)
+    with pytest.raises(AssertionError):
+        check_manifest_against_pairs(copy.deepcopy(m), altered)
+    with pytest.raises(AssertionError):
+        check_round1_render(sandboxed / "render2", copy.deepcopy(m), altered,
+                            json.dumps(altered, indent=1).encode("utf-8"))
 
 
 # ---------------------------------------------------------------- audit disclosure

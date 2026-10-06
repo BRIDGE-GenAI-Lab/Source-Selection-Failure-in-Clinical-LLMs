@@ -151,7 +151,8 @@ def _digest(pairs):
 
 
 def _assert_only_fc_changed(cases):
-    by_id = {c["case_id"]: c for c in cases}
+    # the 23 physician-authored pairs (once manual_edits.json exists) are new, not round-1 pairs
+    by_id = {c["case_id"]: c for c in cases if c["edit_record"]["edit_source"] != "physician_manual"}
     unchanged = [(cid, _case_sha(c)) for cid, c in by_id.items() if c["eval"]["sham_trap_type"] != FC]
     assert len(unchanged) == 437 and _digest(unchanged) == HEAD_437_UNCHANGED
     fc = {cid: c for cid, c in by_id.items() if c["eval"]["sham_trap_type"] == FC}
@@ -210,10 +211,23 @@ def test_only_the_40_fabricated_citation_pairs_change_against_head(built):
     _assert_only_fc_changed(built[0])
 
 
-def test_committed_pairs_match_head_except_the_40_fabricated_citation_pairs(built):
+def committed_manual_edits(data_dir=None):
+    """The physicians' edits when data/v2/manual_edits.json exists (after import-edits), else none."""
+    path = (DATA_V2 if data_dir is None else data_dir) / "manual_edits.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def check_committed_pairs(committed, manual):
+    """pairs_v2.json is exactly the build with the committed manual edits (none before they arrive)."""
+    cases, unresolved = build_v2(manual, strict=False)
+    assert committed["cases"] == cases and committed["unresolved"] == unresolved
+    return cases
+
+
+def test_committed_pairs_match_head_except_the_40_fabricated_citation_pairs():
     committed = json.loads((DATA_V2 / "pairs_v2.json").read_text(encoding="utf-8"))
-    assert committed["cases"] == built[0] and committed["unresolved"] == built[1]
-    _assert_only_fc_changed(committed["cases"])
+    cases = check_committed_pairs(committed, committed_manual_edits())
+    _assert_only_fc_changed(cases)
 
 
 def test_changed_pairs_against_the_head_commit_by_git(built):
