@@ -28,7 +28,7 @@ def env(tmp_path):
     (repo / "r2/run/models_v2.json").write_text(json.dumps(
         {"models": [{"model_id": "org/m-1", "original_name": "m1"}, {"model_id": "m2", "original_name": "m2"}]}))
     (repo / "r2/run/harness.py").write_text("# harness\n")
-    (repo / "docs/r2/ANALYSIS_PLAN.md").write_text(PLAN.read_text())
+    (repo / "docs/r2/ANALYSIS_PLAN.md").write_text(freeze.draft_plan(PLAN.read_text()))  # also once frozen
     (repo / ".gitignore").write_text("._*\n")
     git(repo, "init", "-q", "-b", "main")
     git(repo, "config", "user.name", "T")
@@ -167,7 +167,7 @@ def test_freeze_never_pushes():
 
 
 def test_draft_plan_in_repo_has_slots_and_banner():
-    text = PLAN.read_text()
+    text = freeze.draft_plan(PLAN.read_text())  # the plan itself while it is a draft
     assert text.startswith("DRAFT — not frozen")
     assert text.count("<sha>") == 5 and "<YYYY-MM-DD>" in text
     assert "S5." in text and "Gemini-2.5-Flash-Lite" in text
@@ -193,3 +193,30 @@ def test_tag_failure_rolls_back(env, monkeypatch):
     assert (repo / "docs/r2/ANALYSIS_PLAN.md").read_bytes() == plan_before
     assert not (repo / "docs/r2/FREEZE_RECORD.md").exists()
     assert git(repo, "status", "--porcelain").strip() == ""
+
+
+# ---- final review I2: the suite stays green after the real freeze (the tests and the sandbox freeze a draft) ----
+def test_draft_plan_undoes_fill_plan_exactly():
+    draft = freeze.draft_plan(PLAN.read_text())
+    hashes = {rel: c * 64 for rel, c in zip(HASHED, "abcde")}
+    frozen = freeze.fill_plan(draft, hashes, "2026-10-20")
+    assert not frozen.startswith("DRAFT") and freeze.draft_plan(frozen) == draft
+    assert draft.splitlines()[0] == freeze.BANNER_LINE
+    assert freeze.fill_plan(freeze.draft_plan(frozen), hashes, "2026-10-20") == frozen
+
+
+def test_draft_plan_refuses_a_plan_it_cannot_undo():
+    frozen = freeze.fill_plan(freeze.draft_plan(PLAN.read_text()), {r: "a" * 64 for r in HASHED}, "2026-10-20")
+    with pytest.raises(freeze.FreezeRefused, match="r2/run/harness.py"):
+        freeze.draft_plan(frozen.replace(f"- r2/run/harness.py: {'a' * 64}", "- r2/run/harness.py: gone"))
+
+
+def test_a_frozen_plan_in_the_repository_still_freezes_in_a_throwaway_repository(env):
+    """After the real freeze the repository's plan has no banner; a throwaway freeze of its draft still works."""
+    repo, _ = env
+    p = repo / "docs/r2/ANALYSIS_PLAN.md"
+    frozen = freeze.fill_plan(p.read_text(), {r: "f" * 64 for r in HASHED}, "2026-10-19")
+    p.write_text(freeze.draft_plan(frozen))
+    assert git(repo, "status", "--porcelain").strip() == ""  # the draft of the frozen plan is the committed draft
+    run(env)
+    assert "Date frozen: 2026-10-20." in p.read_text()

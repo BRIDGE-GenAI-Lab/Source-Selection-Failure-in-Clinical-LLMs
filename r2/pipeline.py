@@ -554,9 +554,13 @@ def _sandbox_freeze_repo():
         sandbox_git.init_repo(repo, paths.SANDBOX)
     except sandbox_git.SandboxGitError as exc:
         raise Refused(f"sandbox freeze repository: {exc}") from exc
+    from r2.freeze import PLAN, draft_plan
     for rel, src in FREEZE_INPUTS.items():
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src(), repo / rel)
+        if rel == PLAN:  # the draft, also once the real plan is frozen (r2.freeze.draft_plan undoes the fill)
+            (repo / rel).write_text(draft_plan(src().read_text(encoding="utf-8")), encoding="utf-8")
+        else:
+            shutil.copyfile(src(), repo / rel)
     if _git(repo, "status", "--porcelain", check=True).stdout.strip():
         _git(repo, "add", "-A", check=True)
         _git(repo, *GIT_ID, "commit", "-q", "-m", "sandbox: inputs to freeze (simulated)", check=True)
@@ -995,9 +999,22 @@ def order_check():
 
 
 def data_files_table():
-    """tables/S_data_files.csv (Supplementary Table S15) from docs/DATA_FILES.md, once the release is recorded."""
+    """tables/S_data_files.csv (Supplementary Table S15) from docs/DATA_FILES.md, once the release is recorded.
+    Outside a sandbox it refuses a DATA_FILES.md that differs from a fresh build (python -m r2.data_files_doc), or
+    that still has a "Not yet present" row: S15 lists the released files as they are. (A sandbox builds S15 from
+    the real, pre-results document, marked synthetic.)"""
+    from r2 import data_files_doc
     from r2.analysis.supp_tables import write_csv
     src = paths.REPO / "docs" / "DATA_FILES.md"
+    if paths.SANDBOX is None:
+        if not data_files_doc.is_current():
+            raise Refused(f"{src} is stale (it differs from a fresh build): run python -m r2.data_files_doc, commit "
+                          "it, and rerun")
+        pending = [line.split("`")[1] for line in src.read_text(encoding="utf-8").splitlines()
+                   if line.startswith("| `") and "Not yet present" in line and line.rstrip().endswith("| n/a |")]
+        if pending:
+            raise Refused(f"{src} still lists files that are not present: {pending}; S15 would describe files that "
+                          "do not exist (finish the steps that write them, commit, regenerate)")
     rows = []
     for line in src.read_text(encoding="utf-8").splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
@@ -1009,6 +1026,7 @@ def data_files_table():
     out = paths.TABLES_DIR / "S_data_files.csv"
     if paths.SANDBOX is not None:
         rows = [{**r, "synthetic": True} for r in rows]
+    out.parent.mkdir(parents=True, exist_ok=True)
     write_csv(out, rows)
     return len(rows)
 

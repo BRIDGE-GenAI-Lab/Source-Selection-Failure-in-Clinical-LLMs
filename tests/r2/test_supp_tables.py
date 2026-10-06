@@ -7,7 +7,7 @@ import pytest
 
 from r2 import profiles
 from r2.analysis import supp_tables as st
-from r2.paths import AUDIT_DIR, LEGACY_EVAL
+from r2.paths import AUDIT_DIR, LEGACY_EVAL, REPO
 
 RESULT_TREES = [LEGACY_EVAL / "results", LEGACY_EVAL / "results_opensource"]
 PENDING_NAMES = ["S_models_repeated", "S_physician_verification", "S_per_model_repeated",
@@ -112,11 +112,14 @@ def test_modifications_by_type(written):
     rows = read(out, "S_modifications_by_type")
     assert len(rows) == 10
     assert sum(int(r["pairs_total"]) for r in rows) == 500
-    assert sum(int(r["pending_physician_edit"]) for r in rows) == 23
+    pairs = json.loads((REPO / "data" / "v2" / "pairs_v2.json").read_text())  # 23 queued before the physician edits
+    assert sum(int(r["pending_physician_edit"]) for r in rows) == len(pairs["unresolved"])
+    assert sum(int(r["physician_manual"]) for r in rows) == sum(
+        c["edit_record"]["edit_source"] == "physician_manual" for c in pairs["cases"])
     for r in rows:
         assert r["transform"] and r["fields_changed"]
-        parts = sum(int(r[c]) for c in ("original_transform", "rule_typosquat",
-                                        "rule_inversion_extended", "pending_physician_edit"))
+        parts = sum(int(r[c]) for c in ("original_transform", "rule_typosquat", "rule_inversion_extended",
+                                        "physician_manual", "pending_physician_edit"))
         assert parts == int(r["pairs_total"])
 
 
