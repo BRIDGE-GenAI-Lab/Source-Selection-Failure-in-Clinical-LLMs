@@ -10,7 +10,8 @@ import pandas as pd
 from r2.io import load_original_cases
 from r2.paths import AUDIT_DIR, DATA_V2, ORIGINAL_CASES_SHA256
 from r2.stimuli.render import visible_content
-from r2.stimuli.transforms import TransformError, apply_manual_edit, propose_inversion, typosquat
+from r2.stimuli.transforms import (FAKE_DOI, TransformError, apply_manual_edit, neutralize_citation_doi,
+                                   propose_inversion, self_label_tokens, typosquat)
 
 
 class UnresolvedEdits(RuntimeError):
@@ -23,6 +24,36 @@ def edit_record(t, s, source):
     rt, rs = visible_content(t), visible_content(s)
     changes = [{"field": k, "before": rt[k], "after": rs[k]} for k in rt if rt[k] != rs[k]]
     return {"edit_source": source, "fields_changed": [c["field"] for c in changes], "changes": changes}
+
+
+def self_labels_in(tool):
+    """Self-labelling tokens in the tool as shown to the model (every rendered field, read as plain text,
+    not as JSON: an escaped newline would hide a word boundary)."""
+    parts = []
+    for value in visible_content(tool).values():
+        parts += [str(x) for x in value] if isinstance(value, list) else [str(value)]
+    return self_label_tokens("\n".join(parts))
+
+
+def neutralize_fabricated_citation(cid, s):
+    """Final fix F1: the original fabricated-citation edit ends with DOI:10.9999/fake.NNNN, and the word
+    "fake" tells the model which excerpt was modified. Replace the suffix with a neutral journal-style one
+    (r2.stimuli.transforms.neutral_doi_suffix); everything else in the modified tool is kept."""
+    s = copy.deepcopy(s)
+    s["excerpt_text"], before, after = neutralize_citation_doi(s["excerpt_text"], cid)
+    return s, {"rule": "neutral_doi_suffix", "field": "excerpt_text", "before": before, "after": after}
+
+
+def before_self_label_fix(case):
+    """The case as the build wrote it before F1: the neutral DOI put back and `self_label_fix` dropped.
+    Used to prove that F1 changed nothing else."""
+    fix = case["edit_record"]["self_label_fix"]
+    text = json.dumps(case, ensure_ascii=False)
+    if text.count(fix["after"]) != 3:  # S excerpt, the edit_record change, self_label_fix itself
+        raise ValueError(f"{case['case_id']}: {fix['after']!r} occurs {text.count(fix['after'])} times, expected 3")
+    out = json.loads(text.replace(fix["after"], fix["before"]))
+    del out["edit_record"]["self_label_fix"]
+    return out
 
 
 def build_v2(manual_edits=None, strict=True):
@@ -61,10 +92,18 @@ def build_v2(manual_edits=None, strict=True):
         elif status == "no_edit":
             unresolved.append(cid)
             continue
+        fix = None
+        if sham_type == "fabricated_citation" and FAKE_DOI.search(s["excerpt_text"]):
+            s, fix = neutralize_fabricated_citation(cid, s)
         case["tools"]["S"] = s
         if visible_content(t) == visible_content(s):
             raise AssertionError(f"{cid}: rendered authentic and modified excerpts are identical")
+        labels = self_labels_in(s)
+        if labels:
+            raise AssertionError(f"{cid}: the modified excerpt carries self-labelling token(s) {labels}")
         case["edit_record"] = edit_record(t, s, source)
+        if fix:
+            case["edit_record"]["self_label_fix"] = fix
         out.append(case)
     if unresolved and strict:
         raise UnresolvedEdits(unresolved)

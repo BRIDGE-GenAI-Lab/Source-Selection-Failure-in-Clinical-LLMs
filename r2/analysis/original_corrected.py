@@ -98,6 +98,40 @@ def _excluding_coerced(sub):
     return out
 
 
+CUE_KEY = "fabricated_citation_cue_confounded"
+CUE_NOTE = (
+    "Exploratory and cue-confounded. Every original fabricated_citation modified excerpt ended with "
+    "\"Evidence: 'NEJM 2025;392:<pages>' (DOI:10.9999/fake.NNNN)\", so the word 'fake' was visible in the "
+    "modified excerpt to all 21 models (audit/self_label_tokens.json). These rates were obtained with that cue "
+    "present. They do not measure detection of a nonexistent citation, and they are not comparable with the "
+    "repeated experiment, whose corrected excerpts carry a neutral suffix (10.9999/cg.<year>.NNNN).")
+
+
+def _cue_confounded(df):
+    """Final fix F1: the original fabricated_citation results, pooled over the 21 models, labelled as
+    cue-confounded. Case-cluster bootstrap CIs as for every other pooled rate."""
+    sub = df[df.sham_type == "fabricated_citation"]
+    sub = sub.assign(failure=1 - sub.correct)
+    tokens = json.loads((AUDIT_DIR / "self_label_tokens.json").read_text(encoding="utf-8"))
+    s = position_summary(sub)
+    out = {"label": "exploratory; cue-confounded", "sham_type": "fabricated_citation", "note": CUE_NOTE,
+           "token": "fake", "rows_with_token": tokens["modified_tool_payload"]["fake"]["rows"],
+           "n": s["n"], "n_cases": int(sub.case_id.nunique()), "n_models": int(sub.model.nunique()),
+           "failures": int(sub.failure.sum()), "failure_rate": float(sub.failure.mean())}
+    out["failure_rate_lo"], out["failure_rate_hi"] = cluster_bootstrap_mean(sub, "failure")
+    for measure, rows, col in (("accuracy", sub, "correct"),
+                               ("primacy", sub, "selected_first"),
+                               ("acc_sham_first", sub[sub.sham_first], "correct"),
+                               ("acc_sham_second", sub[~sub.sham_first], "correct")):
+        out[measure] = s[measure]
+        out[f"{measure}_lo"], out[f"{measure}_hi"] = cluster_bootstrap_mean(
+            rows.assign(**{col: rows[col].astype(float)}), col)
+    out["position_averaged_accuracy"] = s["position_averaged_accuracy"]
+    out["position_averaged_accuracy_lo"], out["position_averaged_accuracy_hi"] = cluster_bootstrap_paa(sub)
+    out["ci"] = "case-cluster bootstrap (2,000 draws, percentile 95% CI; r2.analysis.stats)"
+    return out
+
+
 def run(write=True):
     df = original_frame()
     subsets = {"all": df, "discriminable": df[df.visible_status != "identical"],
@@ -117,6 +151,7 @@ def run(write=True):
         head[name] = s
     head["types_without_valid_pairs"] = sorted(set(df.sham_type) - set(subsets["discriminable"].sham_type))
     head["excluding_coerced"] = {name: _excluding_coerced(sub) for name, sub in subsets.items()}
+    head[CUE_KEY] = _cue_confounded(df)
     if write:
         OUT.mkdir(exist_ok=True)
         formula = "correct ~ sham_first + C(category, Treatment('metadata')) + C(model)"

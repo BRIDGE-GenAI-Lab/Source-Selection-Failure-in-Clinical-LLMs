@@ -87,7 +87,7 @@ def test_no_existing_headline_value_changes():
     import hashlib
     import json
     h = run(write=False)
-    old = {k: v for k, v in h.items() if k != "excluding_coerced"}
+    old = {k: v for k, v in h.items() if k not in ("excluding_coerced", "fabricated_citation_cue_confounded")}
     assert hashlib.sha256(json.dumps(old, indent=2).encode()).hexdigest() == _HEADLINE_BEFORE_3B_SHA256
 
 
@@ -110,3 +110,49 @@ def test_excluding_coerced_block():
             assert b[f"{m}_lo"] < b[m] < b[f"{m}_hi"], (name, m)
     assert ex["all"]["n"] == 10500 - 781 and ex["identical"]["n"] == 3507 - 368
     assert abs(ex["identical"]["primacy"] - 0.866) < 0.0005  # review figure: 86.6%
+
+
+# ---- Final fix F1: original fabricated_citation results are cue-confounded ----
+CUE_KEY = "fabricated_citation_cue_confounded"
+# analysis_original/headline.json at 1a9831f (before F1), as written (json.dumps(head, indent=2)).
+_HEADLINE_BEFORE_F1_SHA256 = "3a6f4bdf01ba7b349c854c5fe93488790d25dc4245d8e64fdd6b9733efe1a467"
+
+
+def test_f1_keeps_every_existing_headline_key_byte_for_byte():
+    import hashlib
+    import json
+    h = run(write=False)
+    assert list(h)[-1] == CUE_KEY
+    old = {k: v for k, v in h.items() if k != CUE_KEY}
+    assert hashlib.sha256(json.dumps(old, indent=2).encode()).hexdigest() == _HEADLINE_BEFORE_F1_SHA256
+
+
+def test_fabricated_citation_cue_confounded_block():
+    import json
+
+    import pandas as pd
+
+    from r2.paths import AUDIT_DIR, REPO
+    b = run(write=False)[CUE_KEY]
+    assert b["sham_type"] == "fabricated_citation" and "cue-confounded" in b["label"]
+    assert "exploratory" in b["label"] and "10.9999/fake." in b["note"]
+    assert b["n"] == 840 and b["n_cases"] == 40 and b["n_models"] == 21
+    tokens = json.loads((AUDIT_DIR / "self_label_tokens.json").read_text(encoding="utf-8"))
+    assert b["rows_with_token"] == tokens["modified_tool_payload"]["fake"]["rows"] == 840
+    pt = pd.read_csv(REPO / "analysis_original" / "per_type_all.csv", float_precision="round_trip").set_index(
+        "sham_type").loc["fabricated_citation"]
+    assert b["failures"] == int(pt.failures) == 288
+    assert b["failure_rate"] == pt.failure_rate and (b["failure_rate_lo"], b["failure_rate_hi"]) == (pt.lo, pt.hi)
+    assert abs(b["accuracy"] + b["failure_rate"] - 1) < 1e-12
+    for m in ("accuracy", "failure_rate", "primacy", "acc_sham_first", "acc_sham_second",
+              "position_averaged_accuracy"):
+        assert b[f"{m}_lo"] < b[m] < b[f"{m}_hi"], m
+    assert b["ci"].startswith("case-cluster bootstrap")
+
+
+def test_committed_headline_has_the_cue_block():
+    import json
+
+    from r2.paths import REPO
+    committed = json.loads((REPO / "analysis_original" / "headline.json").read_text())
+    assert committed == json.loads(json.dumps(run(write=False)))

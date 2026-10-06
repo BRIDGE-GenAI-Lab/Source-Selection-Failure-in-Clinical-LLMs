@@ -32,6 +32,8 @@ def test_previously_edited_pairs_are_untouched(built):
     original, _ = load_original_cases()
     audit = pd.read_csv(AUDIT_DIR / "pair_audit.csv").set_index("case_id")
     for c in built[0]:
+        if c["eval"]["sham_trap_type"] == "fabricated_citation":
+            continue  # only the DOI suffix changes: test_fabricated_citation_dois_carry_the_neutral_suffix
         if audit.loc[c["case_id"], "raw_status"] != "no_edit":
             assert c["tools"]["S"] == original[c["case_id"]]["tools"]["S"]
             assert c["tools"]["T"] == original[c["case_id"]]["tools"]["T"]
@@ -119,3 +121,109 @@ def test_pairs_file_is_utf8_with_non_ascii(tmp_path, monkeypatch):
     b = _tiny(tmp_path, monkeypatch)
     b.write_outputs([{"case_id": "C", "x": "≥ 5 µg"}], [])
     assert "≥ 5 µg" in (tmp_path / "pairs_v2.json").read_bytes().decode("utf-8")
+
+
+# ---- Final fix F1: the fabricated-citation DOI no longer labels itself "fake" ----
+import hashlib  # noqa: E402
+import json  # noqa: E402
+import re  # noqa: E402
+import subprocess  # noqa: E402
+
+from r2.paths import DATA_V2, REPO  # noqa: E402
+from r2.stimuli.build_v2 import before_self_label_fix, self_labels_in  # noqa: E402
+from r2.stimuli.render import SYSTEM_PROMPT_V2, USER_TEMPLATE_V2  # noqa: E402
+from r2.stimuli.transforms import neutral_doi_suffix, self_label_tokens  # noqa: E402
+
+FC = "fabricated_citation"
+# Pinned from data/v2/pairs_v2.json at 1a9831f, the commit before F1. Case hash = sha256 of
+# json.dumps(case, sort_keys=True, ensure_ascii=False); digest = sha256 of the sorted "case_id:hash" lines.
+HEAD_COMMIT = "1a9831f"
+HEAD_437_UNCHANGED = "1cb37a397de3c0c21dfc07c99366e928dcf969352f482983b5d7766ba8c8fefb"
+HEAD_40_FABRICATED = "ef8bf4d1e8aba204a5ba92555c0aae5cae967aa0d22ad8bcd9466c2434a07194"
+
+
+def _case_sha(c):
+    return hashlib.sha256(json.dumps(c, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def _digest(pairs):
+    return hashlib.sha256("\n".join(f"{a}:{b}" for a, b in sorted(pairs)).encode("utf-8")).hexdigest()
+
+
+def _assert_only_fc_changed(cases):
+    by_id = {c["case_id"]: c for c in cases}
+    unchanged = [(cid, _case_sha(c)) for cid, c in by_id.items() if c["eval"]["sham_trap_type"] != FC]
+    assert len(unchanged) == 437 and _digest(unchanged) == HEAD_437_UNCHANGED
+    fc = {cid: c for cid, c in by_id.items() if c["eval"]["sham_trap_type"] == FC}
+    reverted = {cid: before_self_label_fix(c) for cid, c in fc.items()}
+    assert len(fc) == 40 and all(_case_sha(fc[cid]) != _case_sha(reverted[cid]) for cid in fc)
+    assert _digest([(cid, _case_sha(c)) for cid, c in reverted.items()]) == HEAD_40_FABRICATED
+
+
+def test_fabricated_citation_dois_carry_the_neutral_suffix(built):
+    original, _ = load_original_cases()
+    fc = [c for c in built[0] if c["eval"]["sham_trap_type"] == FC]
+    assert len(fc) == 40
+    for c in fc:
+        cid, s0 = c["case_id"], original[c["case_id"]]["tools"]["S"]
+        before = re.search(r"10\.9999/fake\.\d{4}", s0["excerpt_text"]).group(0)
+        after = "10.9999/" + neutral_doi_suffix(cid, "2025")
+        assert re.fullmatch(r"10\.9999/cg\.2025\.\d{4}", after)
+        assert c["tools"]["S"] == {**s0, "excerpt_text": s0["excerpt_text"].replace(before, after)}, cid
+        assert c["tools"]["T"] == original[cid]["tools"]["T"]
+        assert c["edit_record"]["edit_source"] == "original_transform"
+        assert c["edit_record"]["self_label_fix"] == {"rule": "neutral_doi_suffix", "field": "excerpt_text",
+                                                      "before": before, "after": after}
+    assert not any("self_label_fix" in c["edit_record"] for c in built[0] if c["eval"]["sham_trap_type"] != FC)
+
+
+def test_build_is_deterministic(built):
+    again, unresolved = build_v2(strict=False)
+    assert again == built[0] and unresolved == built[1]
+
+
+def test_post_condition_holds_on_all_500(built):
+    original, _ = load_original_cases()
+    by_id = {c["case_id"]: c for c in built[0]}
+    assert len(by_id) + len(built[1]) == 500 and not set(by_id) & set(built[1])
+    for cid in sorted(original):
+        case = by_id.get(cid, original[cid])  # an unresolved pair is checked as the original holds it
+        assert self_labels_in(case["tools"]["S"]) == [], cid
+        assert self_labels_in(case["tools"]["T"]) == [], cid
+    assert self_label_tokens(SYSTEM_PROMPT_V2 + "\n" + USER_TEMPLATE_V2) == []
+
+
+def test_self_labels_in_reads_every_visible_field():
+    tool = {"metadata": {"organization": "Org", "guideline_title": "Dummy title"}, "excerpt_text": "x",
+            "safety_guardrails": ["a", "not real"], "applicability": [], "exclusions_or_cautions": []}
+    assert self_labels_in(tool) == ["dummy", "not real"]
+    assert self_labels_in({"metadata": {"notes": "fake"}, "excerpt_text": "x"}) == []  # notes are never shown
+
+
+def test_post_condition_refuses_a_self_labelling_edit():
+    edit = {"field": "metadata.organization", "find": "ENT UK", "replace": "ENT UK (placeholder)"}
+    with pytest.raises(AssertionError, match="self-labelling"):
+        build_v2({"CASE_399": edit}, strict=False)
+
+
+def test_only_the_40_fabricated_citation_pairs_change_against_head(built):
+    _assert_only_fc_changed(built[0])
+
+
+def test_committed_pairs_match_head_except_the_40_fabricated_citation_pairs(built):
+    committed = json.loads((DATA_V2 / "pairs_v2.json").read_text(encoding="utf-8"))
+    assert committed["cases"] == built[0] and committed["unresolved"] == built[1]
+    _assert_only_fc_changed(committed["cases"])
+
+
+def test_changed_pairs_against_the_head_commit_by_git(built):
+    out = subprocess.run(["git", "show", f"{HEAD_COMMIT}:data/v2/pairs_v2.json"], cwd=REPO, capture_output=True)
+    if out.returncode != 0:
+        pytest.skip(f"commit {HEAD_COMMIT} not available (no git history)")
+    head = {c["case_id"]: c for c in json.loads(out.stdout)["cases"]}
+    now = {c["case_id"]: c for c in built[0]}
+    assert set(head) == set(now)
+    changed = sorted(cid for cid in now if _case_sha(now[cid]) != _case_sha(head[cid]))
+    assert changed == sorted(cid for cid, c in now.items() if c["eval"]["sham_trap_type"] == FC)
+    assert len(changed) == 40
+    assert all(before_self_label_fix(now[cid]) == head[cid] for cid in changed)

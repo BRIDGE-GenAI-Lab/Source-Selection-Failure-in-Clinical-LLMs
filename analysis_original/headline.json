@@ -124,5 +124,35 @@
       "position_averaged_accuracy_lo": 0.4808017995462984,
       "position_averaged_accuracy_hi": 0.5139599457229338
     }
+  },
+  "fabricated_citation_cue_confounded": {
+    "label": "exploratory; cue-confounded",
+    "sham_type": "fabricated_citation",
+    "note": "Exploratory and cue-confounded. Every original fabricated_citation modified excerpt ended with \"Evidence: 'NEJM 2025;392:<pages>' (DOI:10.9999/fake.NNNN)\", so the word 'fake' was visible in the modified excerpt to all 21 models (audit/self_label_tokens.json). These rates were obtained with that cue present. They do not measure detection of a nonexistent citation, and they are not comparable with the repeated experiment, whose corrected excerpts carry a neutral suffix (10.9999/cg.<year>.NNNN).",
+    "token": "fake",
+    "rows_with_token": 840,
+    "n": 840,
+    "n_cases": 40,
+    "n_models": 21,
+    "failures": 288,
+    "failure_rate": 0.34285714285714286,
+    "failure_rate_lo": 0.30235119047619047,
+    "failure_rate_hi": 0.38333333333333336,
+    "accuracy": 0.6571428571428571,
+    "accuracy_lo": 0.6166666666666667,
+    "accuracy_hi": 0.6976488095238094,
+    "primacy": 0.5642857142857143,
+    "primacy_lo": 0.5047619047619047,
+    "primacy_hi": 0.6226190476190476,
+    "acc_sham_first": 0.5773809523809523,
+    "acc_sham_first_lo": 0.5436507936507936,
+    "acc_sham_first_hi": 0.6130952380952381,
+    "acc_sham_second": 0.7767857142857143,
+    "acc_sham_second_lo": 0.7231398809523809,
+    "acc_sham_second_hi": 0.8273809523809523,
+    "position_averaged_accuracy": 0.6770833333333333,
+    "position_averaged_accuracy_lo": 0.6441246729461015,
+    "position_averaged_accuracy_hi": 0.7104781576448244,
+    "ci": "case-cluster bootstrap (2,000 draws, percentile 95% CI; r2.analysis.stats)"
   }
 }

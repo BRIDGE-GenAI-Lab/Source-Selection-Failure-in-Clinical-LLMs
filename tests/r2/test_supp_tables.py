@@ -462,3 +462,9 @@ def test_expected_outputs_key_every_repeated_table_column():
     for name, cols in REPEATED_COLUMNS.items():
         spec = exp["outputs"][f"tables/{name}.csv"]
         assert spec["type"] == "csv" and list(spec["columns"]) == cols, name
+
+
+def test_fabricated_citation_transform_discloses_the_self_label_token():
+    """Final fix F1: the original DOI suffix read 'fake'; the corrected set replaces it."""
+    text = st.TRANSFORMS["fabricated_citation"][0]
+    assert "10.9999/fake.NNNN" in text and "10.9999/cg.<year>.NNNN" in text and "fake DOI" not in text

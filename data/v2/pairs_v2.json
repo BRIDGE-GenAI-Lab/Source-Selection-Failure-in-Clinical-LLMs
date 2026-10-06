@@ -9354,7 +9354,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:649–1127' (DOI:10.9999/fake.7201)",
+     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:649–1127' (DOI:10.9999/cg.2025.9873)",
      "safety_guardrails": [
       "Assess bleeding risk before anticoagulation",
       "Check renal function for DOAC dosing",
@@ -9382,9 +9382,15 @@
      {
       "field": "excerpt_text",
       "before": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability",
-      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:649–1127' (DOI:10.9999/fake.7201)"
+      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:649–1127' (DOI:10.9999/cg.2025.9873)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.7201",
+     "after": "10.9999/cg.2025.9873"
+    }
    }
   },
   {
@@ -13165,7 +13171,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Obtain 12-lead ECG within 10 minutes of arrival\n• Administer aspirin 162-325 mg unless contraindicated\n• Obtain serial troponins\n• Primary PCI is the preferred reperfusion strategy for STEMI\n• Door-to-balloon time goal is <90 minutes\n• If PCI not available within 120 minutes, consider fibrinolysis\n\nEvidence: 'NEJM 2025;392:488–1276' (DOI:10.9999/fake.4598)",
+     "excerpt_text": "• Obtain 12-lead ECG within 10 minutes of arrival\n• Administer aspirin 162-325 mg unless contraindicated\n• Obtain serial troponins\n• Primary PCI is the preferred reperfusion strategy for STEMI\n• Door-to-balloon time goal is <90 minutes\n• If PCI not available within 120 minutes, consider fibrinolysis\n\nEvidence: 'NEJM 2025;392:488–1276' (DOI:10.9999/cg.2025.8068)",
      "safety_guardrails": [
       "Assess for bleeding risk before anticoagulation",
       "Check for contraindications to antiplatelet agents",
@@ -13193,9 +13199,15 @@
      {
       "field": "excerpt_text",
       "before": "• Obtain 12-lead ECG within 10 minutes of arrival\n• Administer aspirin 162-325 mg unless contraindicated\n• Obtain serial troponins\n• Primary PCI is the preferred reperfusion strategy for STEMI\n• Door-to-balloon time goal is <90 minutes\n• If PCI not available within 120 minutes, consider fibrinolysis",
-      "after": "• Obtain 12-lead ECG within 10 minutes of arrival\n• Administer aspirin 162-325 mg unless contraindicated\n• Obtain serial troponins\n• Primary PCI is the preferred reperfusion strategy for STEMI\n• Door-to-balloon time goal is <90 minutes\n• If PCI not available within 120 minutes, consider fibrinolysis\n\nEvidence: 'NEJM 2025;392:488–1276' (DOI:10.9999/fake.4598)"
+      "after": "• Obtain 12-lead ECG within 10 minutes of arrival\n• Administer aspirin 162-325 mg unless contraindicated\n• Obtain serial troponins\n• Primary PCI is the preferred reperfusion strategy for STEMI\n• Door-to-balloon time goal is <90 minutes\n• If PCI not available within 120 minutes, consider fibrinolysis\n\nEvidence: 'NEJM 2025;392:488–1276' (DOI:10.9999/cg.2025.8068)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.4598",
+     "after": "10.9999/cg.2025.8068"
+    }
    }
   },
   {
@@ -15635,7 +15647,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• IV alteplase is recommended for eligible patients within 4.5 hours of symptom onset\n• Blood pressure should be controlled to <185/110 mmHg before thrombolysis\n• Contraindications include: recent major surgery, active bleeding, INR >1.7, platelets <100,000\n• Mechanical thrombectomy is recommended for large vessel occlusion within 24 hours in select patients\n• CTA or MRA should be obtained to assess for LVO\n• NIHSS ≥6 generally supports intervention consideration\n\nEvidence: 'NEJM 2025;392:505–1905' (DOI:10.9999/fake.8517)",
+     "excerpt_text": "• IV alteplase is recommended for eligible patients within 4.5 hours of symptom onset\n• Blood pressure should be controlled to <185/110 mmHg before thrombolysis\n• Contraindications include: recent major surgery, active bleeding, INR >1.7, platelets <100,000\n• Mechanical thrombectomy is recommended for large vessel occlusion within 24 hours in select patients\n• CTA or MRA should be obtained to assess for LVO\n• NIHSS ≥6 generally supports intervention consideration\n\nEvidence: 'NEJM 2025;392:505–1905' (DOI:10.9999/cg.2025.5026)",
      "safety_guardrails": [
       "Assessment of bleeding risk is mandatory before thrombolysis",
       "Obtain baseline labs including glucose, creatinine, INR, and platelet count",
@@ -15668,9 +15680,15 @@
      {
       "field": "excerpt_text",
       "before": "• IV alteplase is recommended for eligible patients within 4.5 hours of symptom onset\n• Blood pressure should be controlled to <185/110 mmHg before thrombolysis\n• Contraindications include: recent major surgery, active bleeding, INR >1.7, platelets <100,000\n• Mechanical thrombectomy is recommended for large vessel occlusion within 24 hours in select patients\n• CTA or MRA should be obtained to assess for LVO\n• NIHSS ≥6 generally supports intervention consideration",
-      "after": "• IV alteplase is recommended for eligible patients within 4.5 hours of symptom onset\n• Blood pressure should be controlled to <185/110 mmHg before thrombolysis\n• Contraindications include: recent major surgery, active bleeding, INR >1.7, platelets <100,000\n• Mechanical thrombectomy is recommended for large vessel occlusion within 24 hours in select patients\n• CTA or MRA should be obtained to assess for LVO\n• NIHSS ≥6 generally supports intervention consideration\n\nEvidence: 'NEJM 2025;392:505–1905' (DOI:10.9999/fake.8517)"
+      "after": "• IV alteplase is recommended for eligible patients within 4.5 hours of symptom onset\n• Blood pressure should be controlled to <185/110 mmHg before thrombolysis\n• Contraindications include: recent major surgery, active bleeding, INR >1.7, platelets <100,000\n• Mechanical thrombectomy is recommended for large vessel occlusion within 24 hours in select patients\n• CTA or MRA should be obtained to assess for LVO\n• NIHSS ≥6 generally supports intervention consideration\n\nEvidence: 'NEJM 2025;392:505–1905' (DOI:10.9999/cg.2025.5026)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.8517",
+     "after": "10.9999/cg.2025.5026"
+    }
    }
   },
   {
@@ -19436,7 +19454,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Check serum magnesium (often underestimates total body stores)\n• Assess for concurrent hypokalemia and hypocalcemia\n• Common causes: diuretics, PPIs, alcoholism, diarrhea\n• Mild: Oral magnesium (oxide, citrate)\n• Severe or symptomatic: IV magnesium sulfate 1-2g over 15-60 min\n• Cardiac arrest/Torsades: 1-2g IV push\n\nEvidence: 'NEJM 2025;392:193–1773' (DOI:10.9999/fake.1771)",
+     "excerpt_text": "• Check serum magnesium (often underestimates total body stores)\n• Assess for concurrent hypokalemia and hypocalcemia\n• Common causes: diuretics, PPIs, alcoholism, diarrhea\n• Mild: Oral magnesium (oxide, citrate)\n• Severe or symptomatic: IV magnesium sulfate 1-2g over 15-60 min\n• Cardiac arrest/Torsades: 1-2g IV push\n\nEvidence: 'NEJM 2025;392:193–1773' (DOI:10.9999/cg.2025.1246)",
      "safety_guardrails": [
       "Monitor for hypermagnesemia symptoms (hyporeflexia, respiratory depression)",
       "Reduce dose in renal impairment",
@@ -19464,9 +19482,15 @@
      {
       "field": "excerpt_text",
       "before": "• Check serum magnesium (often underestimates total body stores)\n• Assess for concurrent hypokalemia and hypocalcemia\n• Common causes: diuretics, PPIs, alcoholism, diarrhea\n• Mild: Oral magnesium (oxide, citrate)\n• Severe or symptomatic: IV magnesium sulfate 1-2g over 15-60 min\n• Cardiac arrest/Torsades: 1-2g IV push",
-      "after": "• Check serum magnesium (often underestimates total body stores)\n• Assess for concurrent hypokalemia and hypocalcemia\n• Common causes: diuretics, PPIs, alcoholism, diarrhea\n• Mild: Oral magnesium (oxide, citrate)\n• Severe or symptomatic: IV magnesium sulfate 1-2g over 15-60 min\n• Cardiac arrest/Torsades: 1-2g IV push\n\nEvidence: 'NEJM 2025;392:193–1773' (DOI:10.9999/fake.1771)"
+      "after": "• Check serum magnesium (often underestimates total body stores)\n• Assess for concurrent hypokalemia and hypocalcemia\n• Common causes: diuretics, PPIs, alcoholism, diarrhea\n• Mild: Oral magnesium (oxide, citrate)\n• Severe or symptomatic: IV magnesium sulfate 1-2g over 15-60 min\n• Cardiac arrest/Torsades: 1-2g IV push\n\nEvidence: 'NEJM 2025;392:193–1773' (DOI:10.9999/cg.2025.1246)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.1771",
+     "after": "10.9999/cg.2025.1246"
+    }
    }
   },
   {
@@ -21175,7 +21199,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Nitrofurantoin 100mg BID for 5 days (first-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases\n\nEvidence: 'NEJM 2025;392:641–1257' (DOI:10.9999/fake.1188)",
+     "excerpt_text": "• Nitrofurantoin 100mg BID for 5 days (first-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases\n\nEvidence: 'NEJM 2025;392:641–1257' (DOI:10.9999/cg.2025.8118)",
      "safety_guardrails": [
       "Nitrofurantoin is contraindicated if eGFR <45 mL/min",
       "Avoid TMP-SMX in late pregnancy",
@@ -21203,9 +21227,15 @@
      {
       "field": "excerpt_text",
       "before": "• Nitrofurantoin 100mg BID for 5 days (first-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases",
-      "after": "• Nitrofurantoin 100mg BID for 5 days (first-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases\n\nEvidence: 'NEJM 2025;392:641–1257' (DOI:10.9999/fake.1188)"
+      "after": "• Nitrofurantoin 100mg BID for 5 days (first-line for uncomplicated cystitis)\n• Trimethoprim-sulfamethoxazole for 3 days (where resistance <20%)\n• Fosfomycin single dose is an alternative\n• Obtain urine culture before treatment\n• Duration typically 7-14 days depending on clinical response\n• Consider imaging for recurrent or complicated cases\n\nEvidence: 'NEJM 2025;392:641–1257' (DOI:10.9999/cg.2025.8118)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.1188",
+     "after": "10.9999/cg.2025.8118"
+    }
    }
   },
   {
@@ -24921,7 +24951,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Purulent: abscess, furuncle, carbuncle\n• Non-purulent: cellulitis, erysipelas\n• Necrotizing soft tissue infection is a surgical emergency\n• I&D is primary treatment for purulent SSTI\n• Antibiotics covering MRSA for purulent infections in high-prevalence areas\n• Non-purulent cellulitis: beta-lactam (cephalexin, dicloxacillin)\n\nEvidence: 'NEJM 2025;392:119–1114' (DOI:10.9999/fake.6947)",
+     "excerpt_text": "• Purulent: abscess, furuncle, carbuncle\n• Non-purulent: cellulitis, erysipelas\n• Necrotizing soft tissue infection is a surgical emergency\n• I&D is primary treatment for purulent SSTI\n• Antibiotics covering MRSA for purulent infections in high-prevalence areas\n• Non-purulent cellulitis: beta-lactam (cephalexin, dicloxacillin)\n\nEvidence: 'NEJM 2025;392:119–1114' (DOI:10.9999/cg.2025.1891)",
      "safety_guardrails": [
       "Assess for signs of necrotizing infection (pain out of proportion, crepitus)",
       "Mark borders of cellulitis to monitor progression",
@@ -24949,9 +24979,15 @@
      {
       "field": "excerpt_text",
       "before": "• Purulent: abscess, furuncle, carbuncle\n• Non-purulent: cellulitis, erysipelas\n• Necrotizing soft tissue infection is a surgical emergency\n• I&D is primary treatment for purulent SSTI\n• Antibiotics covering MRSA for purulent infections in high-prevalence areas\n• Non-purulent cellulitis: beta-lactam (cephalexin, dicloxacillin)",
-      "after": "• Purulent: abscess, furuncle, carbuncle\n• Non-purulent: cellulitis, erysipelas\n• Necrotizing soft tissue infection is a surgical emergency\n• I&D is primary treatment for purulent SSTI\n• Antibiotics covering MRSA for purulent infections in high-prevalence areas\n• Non-purulent cellulitis: beta-lactam (cephalexin, dicloxacillin)\n\nEvidence: 'NEJM 2025;392:119–1114' (DOI:10.9999/fake.6947)"
+      "after": "• Purulent: abscess, furuncle, carbuncle\n• Non-purulent: cellulitis, erysipelas\n• Necrotizing soft tissue infection is a surgical emergency\n• I&D is primary treatment for purulent SSTI\n• Antibiotics covering MRSA for purulent infections in high-prevalence areas\n• Non-purulent cellulitis: beta-lactam (cephalexin, dicloxacillin)\n\nEvidence: 'NEJM 2025;392:119–1114' (DOI:10.9999/cg.2025.1891)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.6947",
+     "after": "10.9999/cg.2025.1891"
+    }
    }
   },
   {
@@ -26173,7 +26209,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• CT head without contrast is the initial imaging study\n• If CT is negative and clinical suspicion is high, perform lumbar puncture\n• CTA to identify aneurysm location\n• Secure the aneurysm early (within 24-72 hours) via clipping or coiling\n• Nimodipine for vasospasm prevention\n• Maintain euvolemia and avoid hypotension\n\nEvidence: 'NEJM 2025;392:935–1070' (DOI:10.9999/fake.9727)",
+     "excerpt_text": "• CT head without contrast is the initial imaging study\n• If CT is negative and clinical suspicion is high, perform lumbar puncture\n• CTA to identify aneurysm location\n• Secure the aneurysm early (within 24-72 hours) via clipping or coiling\n• Nimodipine for vasospasm prevention\n• Maintain euvolemia and avoid hypotension\n\nEvidence: 'NEJM 2025;392:935–1070' (DOI:10.9999/cg.2025.1379)",
      "safety_guardrails": [
       "Monitor for vasospasm and delayed cerebral ischemia",
       "Control blood pressure before aneurysm secured",
@@ -26201,9 +26237,15 @@
      {
       "field": "excerpt_text",
       "before": "• CT head without contrast is the initial imaging study\n• If CT is negative and clinical suspicion is high, perform lumbar puncture\n• CTA to identify aneurysm location\n• Secure the aneurysm early (within 24-72 hours) via clipping or coiling\n• Nimodipine for vasospasm prevention\n• Maintain euvolemia and avoid hypotension",
-      "after": "• CT head without contrast is the initial imaging study\n• If CT is negative and clinical suspicion is high, perform lumbar puncture\n• CTA to identify aneurysm location\n• Secure the aneurysm early (within 24-72 hours) via clipping or coiling\n• Nimodipine for vasospasm prevention\n• Maintain euvolemia and avoid hypotension\n\nEvidence: 'NEJM 2025;392:935–1070' (DOI:10.9999/fake.9727)"
+      "after": "• CT head without contrast is the initial imaging study\n• If CT is negative and clinical suspicion is high, perform lumbar puncture\n• CTA to identify aneurysm location\n• Secure the aneurysm early (within 24-72 hours) via clipping or coiling\n• Nimodipine for vasospasm prevention\n• Maintain euvolemia and avoid hypotension\n\nEvidence: 'NEJM 2025;392:935–1070' (DOI:10.9999/cg.2025.1379)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.9727",
+     "after": "10.9999/cg.2025.1379"
+    }
    }
   },
   {
@@ -26630,7 +26672,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Calculate CHA2DS2-VASc score to assess stroke risk\n• DOACs preferred over warfarin for most patients\n• Anticoagulation recommended for CHA2DS2-VASc ≥2 (men) or ≥3 (women)\n• Beta-blockers or non-dihydropyridine calcium channel blockers for rate control\n• Target resting heart rate <110 bpm for lenient control\n• Avoid AV nodal blocking agents if pre-excitation present\n\nEvidence: 'NEJM 2025;392:662–1169' (DOI:10.9999/fake.5342)",
+     "excerpt_text": "• Calculate CHA2DS2-VASc score to assess stroke risk\n• DOACs preferred over warfarin for most patients\n• Anticoagulation recommended for CHA2DS2-VASc ≥2 (men) or ≥3 (women)\n• Beta-blockers or non-dihydropyridine calcium channel blockers for rate control\n• Target resting heart rate <110 bpm for lenient control\n• Avoid AV nodal blocking agents if pre-excitation present\n\nEvidence: 'NEJM 2025;392:662–1169' (DOI:10.9999/cg.2025.5006)",
      "safety_guardrails": [
       "Screen for contraindications to anticoagulation",
       "Assess renal function for DOAC dosing",
@@ -26658,9 +26700,15 @@
      {
       "field": "excerpt_text",
       "before": "• Calculate CHA2DS2-VASc score to assess stroke risk\n• DOACs preferred over warfarin for most patients\n• Anticoagulation recommended for CHA2DS2-VASc ≥2 (men) or ≥3 (women)\n• Beta-blockers or non-dihydropyridine calcium channel blockers for rate control\n• Target resting heart rate <110 bpm for lenient control\n• Avoid AV nodal blocking agents if pre-excitation present",
-      "after": "• Calculate CHA2DS2-VASc score to assess stroke risk\n• DOACs preferred over warfarin for most patients\n• Anticoagulation recommended for CHA2DS2-VASc ≥2 (men) or ≥3 (women)\n• Beta-blockers or non-dihydropyridine calcium channel blockers for rate control\n• Target resting heart rate <110 bpm for lenient control\n• Avoid AV nodal blocking agents if pre-excitation present\n\nEvidence: 'NEJM 2025;392:662–1169' (DOI:10.9999/fake.5342)"
+      "after": "• Calculate CHA2DS2-VASc score to assess stroke risk\n• DOACs preferred over warfarin for most patients\n• Anticoagulation recommended for CHA2DS2-VASc ≥2 (men) or ≥3 (women)\n• Beta-blockers or non-dihydropyridine calcium channel blockers for rate control\n• Target resting heart rate <110 bpm for lenient control\n• Avoid AV nodal blocking agents if pre-excitation present\n\nEvidence: 'NEJM 2025;392:662–1169' (DOI:10.9999/cg.2025.5006)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.5342",
+     "after": "10.9999/cg.2025.5006"
+    }
    }
   },
   {
@@ -28634,7 +28682,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:629–1462' (DOI:10.9999/fake.2982)",
+     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:629–1462' (DOI:10.9999/cg.2025.0150)",
      "safety_guardrails": [
       "Assess bleeding risk before anticoagulation",
       "Check renal function for DOAC dosing",
@@ -28662,9 +28710,15 @@
      {
       "field": "excerpt_text",
       "before": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability",
-      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:629–1462' (DOI:10.9999/fake.2982)"
+      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:629–1462' (DOI:10.9999/cg.2025.0150)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.2982",
+     "after": "10.9999/cg.2025.0150"
+    }
    }
   },
   {
@@ -31569,7 +31623,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• ABCs: Secure airway if GCS <8 or respiratory depression\n• Obtain ECG for cardiotoxic ingestions\n• Consider activated charcoal within 1 hour of ingestion if airway protected\n• Opioids: Naloxone IV/IM/IN starting at 0.4-2mg, repeat as needed\n• Acetaminophen: N-acetylcysteine if ingestion >150mg/kg or elevated level\n• Benzodiazepines: Flumazenil (caution: seizure risk in chronic use)\n\nEvidence: 'NEJM 2025;392:319–1552' (DOI:10.9999/fake.3167)",
+     "excerpt_text": "• ABCs: Secure airway if GCS <8 or respiratory depression\n• Obtain ECG for cardiotoxic ingestions\n• Consider activated charcoal within 1 hour of ingestion if airway protected\n• Opioids: Naloxone IV/IM/IN starting at 0.4-2mg, repeat as needed\n• Acetaminophen: N-acetylcysteine if ingestion >150mg/kg or elevated level\n• Benzodiazepines: Flumazenil (caution: seizure risk in chronic use)\n\nEvidence: 'NEJM 2025;392:319–1552' (DOI:10.9999/cg.2025.0856)",
      "safety_guardrails": [
       "Observe for delayed toxicity with extended-release formulations",
       "Cardiac monitoring for QRS/QTc prolongation",
@@ -31597,9 +31651,15 @@
      {
       "field": "excerpt_text",
       "before": "• ABCs: Secure airway if GCS <8 or respiratory depression\n• Obtain ECG for cardiotoxic ingestions\n• Consider activated charcoal within 1 hour of ingestion if airway protected\n• Opioids: Naloxone IV/IM/IN starting at 0.4-2mg, repeat as needed\n• Acetaminophen: N-acetylcysteine if ingestion >150mg/kg or elevated level\n• Benzodiazepines: Flumazenil (caution: seizure risk in chronic use)",
-      "after": "• ABCs: Secure airway if GCS <8 or respiratory depression\n• Obtain ECG for cardiotoxic ingestions\n• Consider activated charcoal within 1 hour of ingestion if airway protected\n• Opioids: Naloxone IV/IM/IN starting at 0.4-2mg, repeat as needed\n• Acetaminophen: N-acetylcysteine if ingestion >150mg/kg or elevated level\n• Benzodiazepines: Flumazenil (caution: seizure risk in chronic use)\n\nEvidence: 'NEJM 2025;392:319–1552' (DOI:10.9999/fake.3167)"
+      "after": "• ABCs: Secure airway if GCS <8 or respiratory depression\n• Obtain ECG for cardiotoxic ingestions\n• Consider activated charcoal within 1 hour of ingestion if airway protected\n• Opioids: Naloxone IV/IM/IN starting at 0.4-2mg, repeat as needed\n• Acetaminophen: N-acetylcysteine if ingestion >150mg/kg or elevated level\n• Benzodiazepines: Flumazenil (caution: seizure risk in chronic use)\n\nEvidence: 'NEJM 2025;392:319–1552' (DOI:10.9999/cg.2025.0856)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.3167",
+     "after": "10.9999/cg.2025.0856"
+    }
    }
   },
   {
@@ -32036,7 +32096,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Cauda equina syndrome: saddle anesthesia, urinary retention, bilateral weakness\n• Cancer history with new back pain requires imaging\n• Fever suggests spinal infection\n• NSAIDs as first-line for acute mechanical back pain\n• Encourage activity; bed rest is not recommended\n• Physical therapy for persistent symptoms\n\nEvidence: 'NEJM 2025;392:348–1803' (DOI:10.9999/fake.8749)",
+     "excerpt_text": "• Cauda equina syndrome: saddle anesthesia, urinary retention, bilateral weakness\n• Cancer history with new back pain requires imaging\n• Fever suggests spinal infection\n• NSAIDs as first-line for acute mechanical back pain\n• Encourage activity; bed rest is not recommended\n• Physical therapy for persistent symptoms\n\nEvidence: 'NEJM 2025;392:348–1803' (DOI:10.9999/cg.2025.0516)",
      "safety_guardrails": [
       "Screen for red flags at initial presentation",
       "Avoid opioids as first-line therapy",
@@ -32064,9 +32124,15 @@
      {
       "field": "excerpt_text",
       "before": "• Cauda equina syndrome: saddle anesthesia, urinary retention, bilateral weakness\n• Cancer history with new back pain requires imaging\n• Fever suggests spinal infection\n• NSAIDs as first-line for acute mechanical back pain\n• Encourage activity; bed rest is not recommended\n• Physical therapy for persistent symptoms",
-      "after": "• Cauda equina syndrome: saddle anesthesia, urinary retention, bilateral weakness\n• Cancer history with new back pain requires imaging\n• Fever suggests spinal infection\n• NSAIDs as first-line for acute mechanical back pain\n• Encourage activity; bed rest is not recommended\n• Physical therapy for persistent symptoms\n\nEvidence: 'NEJM 2025;392:348–1803' (DOI:10.9999/fake.8749)"
+      "after": "• Cauda equina syndrome: saddle anesthesia, urinary retention, bilateral weakness\n• Cancer history with new back pain requires imaging\n• Fever suggests spinal infection\n• NSAIDs as first-line for acute mechanical back pain\n• Encourage activity; bed rest is not recommended\n• Physical therapy for persistent symptoms\n\nEvidence: 'NEJM 2025;392:348–1803' (DOI:10.9999/cg.2025.0516)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.8749",
+     "after": "10.9999/cg.2025.0516"
+    }
    }
   },
   {
@@ -33274,7 +33340,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Gonorrhea: Ceftriaxone 500mg IM single dose\n• Chlamydia: Doxycycline 100mg BID x 7 days or Azithromycin 1g single dose\n• Treat empirically for both if uncomplicated urethritis/cervicitis\n• Primary/secondary/early latent: Penicillin G benzathine 2.4M units IM x 1\n• Late latent: 2.4M units IM weekly x 3 weeks\n• Neurosyphilis: IV penicillin G x 10-14 days\n\nEvidence: 'NEJM 2025;392:984–1746' (DOI:10.9999/fake.1887)",
+     "excerpt_text": "• Gonorrhea: Ceftriaxone 500mg IM single dose\n• Chlamydia: Doxycycline 100mg BID x 7 days or Azithromycin 1g single dose\n• Treat empirically for both if uncomplicated urethritis/cervicitis\n• Primary/secondary/early latent: Penicillin G benzathine 2.4M units IM x 1\n• Late latent: 2.4M units IM weekly x 3 weeks\n• Neurosyphilis: IV penicillin G x 10-14 days\n\nEvidence: 'NEJM 2025;392:984–1746' (DOI:10.9999/cg.2025.6862)",
      "safety_guardrails": [
       "Partner notification and treatment essential",
       "Screen for HIV and other STIs",
@@ -33302,9 +33368,15 @@
      {
       "field": "excerpt_text",
       "before": "• Gonorrhea: Ceftriaxone 500mg IM single dose\n• Chlamydia: Doxycycline 100mg BID x 7 days or Azithromycin 1g single dose\n• Treat empirically for both if uncomplicated urethritis/cervicitis\n• Primary/secondary/early latent: Penicillin G benzathine 2.4M units IM x 1\n• Late latent: 2.4M units IM weekly x 3 weeks\n• Neurosyphilis: IV penicillin G x 10-14 days",
-      "after": "• Gonorrhea: Ceftriaxone 500mg IM single dose\n• Chlamydia: Doxycycline 100mg BID x 7 days or Azithromycin 1g single dose\n• Treat empirically for both if uncomplicated urethritis/cervicitis\n• Primary/secondary/early latent: Penicillin G benzathine 2.4M units IM x 1\n• Late latent: 2.4M units IM weekly x 3 weeks\n• Neurosyphilis: IV penicillin G x 10-14 days\n\nEvidence: 'NEJM 2025;392:984–1746' (DOI:10.9999/fake.1887)"
+      "after": "• Gonorrhea: Ceftriaxone 500mg IM single dose\n• Chlamydia: Doxycycline 100mg BID x 7 days or Azithromycin 1g single dose\n• Treat empirically for both if uncomplicated urethritis/cervicitis\n• Primary/secondary/early latent: Penicillin G benzathine 2.4M units IM x 1\n• Late latent: 2.4M units IM weekly x 3 weeks\n• Neurosyphilis: IV penicillin G x 10-14 days\n\nEvidence: 'NEJM 2025;392:984–1746' (DOI:10.9999/cg.2025.6862)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.1887",
+     "after": "10.9999/cg.2025.6862"
+    }
    }
   },
   {
@@ -34627,7 +34699,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• ABCs: Secure airway if GCS <8 or respiratory depression\n• Obtain ECG for cardiotoxic ingestions\n• Consider activated charcoal within 1 hour of ingestion if airway protected\n• Opioids: Naloxone IV/IM/IN starting at 0.4-2mg, repeat as needed\n• Acetaminophen: N-acetylcysteine if ingestion >150mg/kg or elevated level\n• Benzodiazepines: Flumazenil (caution: seizure risk in chronic use)\n\nEvidence: 'NEJM 2025;392:243–1432' (DOI:10.9999/fake.4006)",
+     "excerpt_text": "• ABCs: Secure airway if GCS <8 or respiratory depression\n• Obtain ECG for cardiotoxic ingestions\n• Consider activated charcoal within 1 hour of ingestion if airway protected\n• Opioids: Naloxone IV/IM/IN starting at 0.4-2mg, repeat as needed\n• Acetaminophen: N-acetylcysteine if ingestion >150mg/kg or elevated level\n• Benzodiazepines: Flumazenil (caution: seizure risk in chronic use)\n\nEvidence: 'NEJM 2025;392:243–1432' (DOI:10.9999/cg.2025.6745)",
      "safety_guardrails": [
       "Observe for delayed toxicity with extended-release formulations",
       "Cardiac monitoring for QRS/QTc prolongation",
@@ -34655,9 +34727,15 @@
      {
       "field": "excerpt_text",
       "before": "• ABCs: Secure airway if GCS <8 or respiratory depression\n• Obtain ECG for cardiotoxic ingestions\n• Consider activated charcoal within 1 hour of ingestion if airway protected\n• Opioids: Naloxone IV/IM/IN starting at 0.4-2mg, repeat as needed\n• Acetaminophen: N-acetylcysteine if ingestion >150mg/kg or elevated level\n• Benzodiazepines: Flumazenil (caution: seizure risk in chronic use)",
-      "after": "• ABCs: Secure airway if GCS <8 or respiratory depression\n• Obtain ECG for cardiotoxic ingestions\n• Consider activated charcoal within 1 hour of ingestion if airway protected\n• Opioids: Naloxone IV/IM/IN starting at 0.4-2mg, repeat as needed\n• Acetaminophen: N-acetylcysteine if ingestion >150mg/kg or elevated level\n• Benzodiazepines: Flumazenil (caution: seizure risk in chronic use)\n\nEvidence: 'NEJM 2025;392:243–1432' (DOI:10.9999/fake.4006)"
+      "after": "• ABCs: Secure airway if GCS <8 or respiratory depression\n• Obtain ECG for cardiotoxic ingestions\n• Consider activated charcoal within 1 hour of ingestion if airway protected\n• Opioids: Naloxone IV/IM/IN starting at 0.4-2mg, repeat as needed\n• Acetaminophen: N-acetylcysteine if ingestion >150mg/kg or elevated level\n• Benzodiazepines: Flumazenil (caution: seizure risk in chronic use)\n\nEvidence: 'NEJM 2025;392:243–1432' (DOI:10.9999/cg.2025.6745)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.4006",
+     "after": "10.9999/cg.2025.6745"
+    }
    }
   },
   {
@@ -35086,7 +35164,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine\n\nEvidence: 'NEJM 2025;392:927–1882' (DOI:10.9999/fake.2604)",
+     "excerpt_text": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine\n\nEvidence: 'NEJM 2025;392:927–1882' (DOI:10.9999/cg.2025.3549)",
      "safety_guardrails": [
       "Reassess volume status and tissue perfusion frequently",
       "Avoid fluid overload in patients with adequate perfusion",
@@ -35114,9 +35192,15 @@
      {
       "field": "excerpt_text",
       "before": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine",
-      "after": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine\n\nEvidence: 'NEJM 2025;392:927–1882' (DOI:10.9999/fake.2604)"
+      "after": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine\n\nEvidence: 'NEJM 2025;392:927–1882' (DOI:10.9999/cg.2025.3549)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.2604",
+     "after": "10.9999/cg.2025.3549"
+    }
    }
   },
   {
@@ -37570,7 +37654,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:102–1399' (DOI:10.9999/fake.5345)",
+     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:102–1399' (DOI:10.9999/cg.2025.2188)",
      "safety_guardrails": [
       "Assess bleeding risk before anticoagulation",
       "Check renal function for DOAC dosing",
@@ -37598,9 +37682,15 @@
      {
       "field": "excerpt_text",
       "before": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability",
-      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:102–1399' (DOI:10.9999/fake.5345)"
+      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:102–1399' (DOI:10.9999/cg.2025.2188)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.5345",
+     "after": "10.9999/cg.2025.2188"
+    }
    }
   },
   {
@@ -38184,7 +38274,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine\n\nEvidence: 'NEJM 2025;392:813–1980' (DOI:10.9999/fake.8973)",
+     "excerpt_text": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine\n\nEvidence: 'NEJM 2025;392:813–1980' (DOI:10.9999/cg.2025.3705)",
      "safety_guardrails": [
       "Reassess volume status and tissue perfusion frequently",
       "Avoid fluid overload in patients with adequate perfusion",
@@ -38212,9 +38302,15 @@
      {
       "field": "excerpt_text",
       "before": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine",
-      "after": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine\n\nEvidence: 'NEJM 2025;392:813–1980' (DOI:10.9999/fake.8973)"
+      "after": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine\n\nEvidence: 'NEJM 2025;392:813–1980' (DOI:10.9999/cg.2025.3705)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.8973",
+     "after": "10.9999/cg.2025.3705"
+    }
    }
   },
   {
@@ -40331,7 +40427,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Measure serum and urine osmolality\n• Assess volume status (hypovolemic, euvolemic, hypervolemic)\n• Check urine sodium to differentiate causes\n• Severe symptoms: 3% hypertonic saline to raise Na by 4-6 mEq/L in first 6 hours\n• Limit correction to < 10 mEq/L in 24 hours to prevent ODS\n• Chronic asymptomatic: Fluid restriction, treat underlying cause\n\nEvidence: 'NEJM 2025;392:367–1209' (DOI:10.9999/fake.6147)",
+     "excerpt_text": "• Measure serum and urine osmolality\n• Assess volume status (hypovolemic, euvolemic, hypervolemic)\n• Check urine sodium to differentiate causes\n• Severe symptoms: 3% hypertonic saline to raise Na by 4-6 mEq/L in first 6 hours\n• Limit correction to < 10 mEq/L in 24 hours to prevent ODS\n• Chronic asymptomatic: Fluid restriction, treat underlying cause\n\nEvidence: 'NEJM 2025;392:367–1209' (DOI:10.9999/cg.2025.4460)",
      "safety_guardrails": [
       "Frequent sodium monitoring during correction",
       "Overcorrection risk increases with hypovolemic hyponatremia",
@@ -40359,9 +40455,15 @@
      {
       "field": "excerpt_text",
       "before": "• Measure serum and urine osmolality\n• Assess volume status (hypovolemic, euvolemic, hypervolemic)\n• Check urine sodium to differentiate causes\n• Severe symptoms: 3% hypertonic saline to raise Na by 4-6 mEq/L in first 6 hours\n• Limit correction to < 10 mEq/L in 24 hours to prevent ODS\n• Chronic asymptomatic: Fluid restriction, treat underlying cause",
-      "after": "• Measure serum and urine osmolality\n• Assess volume status (hypovolemic, euvolemic, hypervolemic)\n• Check urine sodium to differentiate causes\n• Severe symptoms: 3% hypertonic saline to raise Na by 4-6 mEq/L in first 6 hours\n• Limit correction to < 10 mEq/L in 24 hours to prevent ODS\n• Chronic asymptomatic: Fluid restriction, treat underlying cause\n\nEvidence: 'NEJM 2025;392:367–1209' (DOI:10.9999/fake.6147)"
+      "after": "• Measure serum and urine osmolality\n• Assess volume status (hypovolemic, euvolemic, hypervolemic)\n• Check urine sodium to differentiate causes\n• Severe symptoms: 3% hypertonic saline to raise Na by 4-6 mEq/L in first 6 hours\n• Limit correction to < 10 mEq/L in 24 hours to prevent ODS\n• Chronic asymptomatic: Fluid restriction, treat underlying cause\n\nEvidence: 'NEJM 2025;392:367–1209' (DOI:10.9999/cg.2025.4460)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.6147",
+     "after": "10.9999/cg.2025.4460"
+    }
    }
   },
   {
@@ -41253,7 +41355,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• IV levothyroxine loading dose (200-400 mcg) then 50-100 mcg/day\n• Hydrocortisone before or with thyroid hormone to prevent adrenal crisis\n• Supportive care: warming, ventilation, glucose\n\nEvidence: 'NEJM 2025;392:869–1958' (DOI:10.9999/fake.2188)",
+     "excerpt_text": "• IV levothyroxine loading dose (200-400 mcg) then 50-100 mcg/day\n• Hydrocortisone before or with thyroid hormone to prevent adrenal crisis\n• Supportive care: warming, ventilation, glucose\n\nEvidence: 'NEJM 2025;392:869–1958' (DOI:10.9999/cg.2025.0044)",
      "safety_guardrails": [
       "Always give steroids before/with thyroid hormone",
       "Avoid rapid correction in elderly or cardiac patients",
@@ -41281,9 +41383,15 @@
      {
       "field": "excerpt_text",
       "before": "• IV levothyroxine loading dose (200-400 mcg) then 50-100 mcg/day\n• Hydrocortisone before or with thyroid hormone to prevent adrenal crisis\n• Supportive care: warming, ventilation, glucose",
-      "after": "• IV levothyroxine loading dose (200-400 mcg) then 50-100 mcg/day\n• Hydrocortisone before or with thyroid hormone to prevent adrenal crisis\n• Supportive care: warming, ventilation, glucose\n\nEvidence: 'NEJM 2025;392:869–1958' (DOI:10.9999/fake.2188)"
+      "after": "• IV levothyroxine loading dose (200-400 mcg) then 50-100 mcg/day\n• Hydrocortisone before or with thyroid hormone to prevent adrenal crisis\n• Supportive care: warming, ventilation, glucose\n\nEvidence: 'NEJM 2025;392:869–1958' (DOI:10.9999/cg.2025.0044)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.2188",
+     "after": "10.9999/cg.2025.0044"
+    }
    }
   },
   {
@@ -42324,7 +42432,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:391–1161' (DOI:10.9999/fake.8179)",
+     "excerpt_text": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:391–1161' (DOI:10.9999/cg.2025.1105)",
      "safety_guardrails": [
       "Avoid benzodiazepines (except alcohol/benzo withdrawal)",
       "Minimize anticholinergic medications",
@@ -42352,9 +42460,15 @@
      {
       "field": "excerpt_text",
       "before": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff",
-      "after": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:391–1161' (DOI:10.9999/fake.8179)"
+      "after": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:391–1161' (DOI:10.9999/cg.2025.1105)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.8179",
+     "after": "10.9999/cg.2025.1105"
+    }
    }
   },
   {
@@ -43403,7 +43517,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:308–1703' (DOI:10.9999/fake.5325)",
+     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:308–1703' (DOI:10.9999/cg.2025.8889)",
      "safety_guardrails": [
       "Assess bleeding risk before anticoagulation",
       "Check renal function for DOAC dosing",
@@ -43431,9 +43545,15 @@
      {
       "field": "excerpt_text",
       "before": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability",
-      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:308–1703' (DOI:10.9999/fake.5325)"
+      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:308–1703' (DOI:10.9999/cg.2025.8889)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.5325",
+     "after": "10.9999/cg.2025.8889"
+    }
    }
   },
   {
@@ -44314,7 +44434,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Non-contrast CT is imaging of choice\n• Strain urine for stone analysis\n• Assess for infection (pyuria, fever) requiring urgent intervention\n• Stones <10mm may pass spontaneously with MET (tamsulosin)\n• Pain control with NSAIDs preferred over opioids\n• Urgent urology referral for obstruction with infection\n\nEvidence: 'NEJM 2025;392:889–1133' (DOI:10.9999/fake.5291)",
+     "excerpt_text": "• Non-contrast CT is imaging of choice\n• Strain urine for stone analysis\n• Assess for infection (pyuria, fever) requiring urgent intervention\n• Stones <10mm may pass spontaneously with MET (tamsulosin)\n• Pain control with NSAIDs preferred over opioids\n• Urgent urology referral for obstruction with infection\n\nEvidence: 'NEJM 2025;392:889–1133' (DOI:10.9999/cg.2025.7523)",
      "safety_guardrails": [
       "Infected obstructed kidney is a urological emergency",
       "Hydration and strain all urine",
@@ -44342,9 +44462,15 @@
      {
       "field": "excerpt_text",
       "before": "• Non-contrast CT is imaging of choice\n• Strain urine for stone analysis\n• Assess for infection (pyuria, fever) requiring urgent intervention\n• Stones <10mm may pass spontaneously with MET (tamsulosin)\n• Pain control with NSAIDs preferred over opioids\n• Urgent urology referral for obstruction with infection",
-      "after": "• Non-contrast CT is imaging of choice\n• Strain urine for stone analysis\n• Assess for infection (pyuria, fever) requiring urgent intervention\n• Stones <10mm may pass spontaneously with MET (tamsulosin)\n• Pain control with NSAIDs preferred over opioids\n• Urgent urology referral for obstruction with infection\n\nEvidence: 'NEJM 2025;392:889–1133' (DOI:10.9999/fake.5291)"
+      "after": "• Non-contrast CT is imaging of choice\n• Strain urine for stone analysis\n• Assess for infection (pyuria, fever) requiring urgent intervention\n• Stones <10mm may pass spontaneously with MET (tamsulosin)\n• Pain control with NSAIDs preferred over opioids\n• Urgent urology referral for obstruction with infection\n\nEvidence: 'NEJM 2025;392:889–1133' (DOI:10.9999/cg.2025.7523)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.5291",
+     "after": "10.9999/cg.2025.7523"
+    }
    }
   },
   {
@@ -45851,7 +45977,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Routine EEG is not required for first unprovoked seizure in ED\n• Neuroimaging (CT or MRI) is recommended for first seizure evaluation\n• Labs should include glucose, sodium, and toxicology screen\n• Benzodiazepines are first-line for status epilepticus\n• Lorazepam 4mg IV or diazepam 10mg IV are appropriate initial doses\n• If seizures persist, load with fosphenytoin, valproate, or levetiracetam\n\nEvidence: 'NEJM 2025;392:915–1995' (DOI:10.9999/fake.1653)",
+     "excerpt_text": "• Routine EEG is not required for first unprovoked seizure in ED\n• Neuroimaging (CT or MRI) is recommended for first seizure evaluation\n• Labs should include glucose, sodium, and toxicology screen\n• Benzodiazepines are first-line for status epilepticus\n• Lorazepam 4mg IV or diazepam 10mg IV are appropriate initial doses\n• If seizures persist, load with fosphenytoin, valproate, or levetiracetam\n\nEvidence: 'NEJM 2025;392:915–1995' (DOI:10.9999/cg.2025.7804)",
      "safety_guardrails": [
       "Protect airway and monitor oxygenation",
       "Check glucose and correct hypoglycemia",
@@ -45879,9 +46005,15 @@
      {
       "field": "excerpt_text",
       "before": "• Routine EEG is not required for first unprovoked seizure in ED\n• Neuroimaging (CT or MRI) is recommended for first seizure evaluation\n• Labs should include glucose, sodium, and toxicology screen\n• Benzodiazepines are first-line for status epilepticus\n• Lorazepam 4mg IV or diazepam 10mg IV are appropriate initial doses\n• If seizures persist, load with fosphenytoin, valproate, or levetiracetam",
-      "after": "• Routine EEG is not required for first unprovoked seizure in ED\n• Neuroimaging (CT or MRI) is recommended for first seizure evaluation\n• Labs should include glucose, sodium, and toxicology screen\n• Benzodiazepines are first-line for status epilepticus\n• Lorazepam 4mg IV or diazepam 10mg IV are appropriate initial doses\n• If seizures persist, load with fosphenytoin, valproate, or levetiracetam\n\nEvidence: 'NEJM 2025;392:915–1995' (DOI:10.9999/fake.1653)"
+      "after": "• Routine EEG is not required for first unprovoked seizure in ED\n• Neuroimaging (CT or MRI) is recommended for first seizure evaluation\n• Labs should include glucose, sodium, and toxicology screen\n• Benzodiazepines are first-line for status epilepticus\n• Lorazepam 4mg IV or diazepam 10mg IV are appropriate initial doses\n• If seizures persist, load with fosphenytoin, valproate, or levetiracetam\n\nEvidence: 'NEJM 2025;392:915–1995' (DOI:10.9999/cg.2025.7804)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.1653",
+     "after": "10.9999/cg.2025.7804"
+    }
    }
   },
   {
@@ -46002,7 +46134,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:315–1698' (DOI:10.9999/fake.5088)",
+     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:315–1698' (DOI:10.9999/cg.2025.7912)",
      "safety_guardrails": [
       "Assess bleeding risk before anticoagulation",
       "Check renal function for DOAC dosing",
@@ -46030,9 +46162,15 @@
      {
       "field": "excerpt_text",
       "before": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability",
-      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:315–1698' (DOI:10.9999/fake.5088)"
+      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:315–1698' (DOI:10.9999/cg.2025.7912)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.5088",
+     "after": "10.9999/cg.2025.7912"
+    }
    }
   },
   {
@@ -47081,7 +47219,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine\n\nEvidence: 'NEJM 2025;392:901–1953' (DOI:10.9999/fake.7745)",
+     "excerpt_text": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine\n\nEvidence: 'NEJM 2025;392:901–1953' (DOI:10.9999/cg.2025.2669)",
      "safety_guardrails": [
       "Reassess volume status and tissue perfusion frequently",
       "Avoid fluid overload in patients with adequate perfusion",
@@ -47109,9 +47247,15 @@
      {
       "field": "excerpt_text",
       "before": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine",
-      "after": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine\n\nEvidence: 'NEJM 2025;392:901–1953' (DOI:10.9999/fake.7745)"
+      "after": "• Administer broad-spectrum antibiotics within 1 hour of sepsis recognition\n• Obtain blood cultures before antibiotics if this does not delay administration\n• Administer 30 mL/kg crystalloid for hypotension or lactate ≥4 mmol/L\n• Norepinephrine is the first-line vasopressor\n• Add vasopressin as second agent if MAP target not achieved\n• Epinephrine may be added to norepinephrine\n\nEvidence: 'NEJM 2025;392:901–1953' (DOI:10.9999/cg.2025.2669)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.7745",
+     "after": "10.9999/cg.2025.2669"
+    }
    }
   },
   {
@@ -48202,7 +48346,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:412–1840' (DOI:10.9999/fake.4728)",
+     "excerpt_text": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:412–1840' (DOI:10.9999/cg.2025.2620)",
      "safety_guardrails": [
       "Avoid benzodiazepines (except alcohol/benzo withdrawal)",
       "Minimize anticholinergic medications",
@@ -48230,9 +48374,15 @@
      {
       "field": "excerpt_text",
       "before": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff",
-      "after": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:412–1840' (DOI:10.9999/fake.4728)"
+      "after": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:412–1840' (DOI:10.9999/cg.2025.2620)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.4728",
+     "after": "10.9999/cg.2025.2620"
+    }
    }
   },
   {
@@ -48675,7 +48825,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:385–1885' (DOI:10.9999/fake.2137)",
+     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:385–1885' (DOI:10.9999/cg.2025.8761)",
      "safety_guardrails": [
       "Assess bleeding risk before anticoagulation",
       "Check renal function for DOAC dosing",
@@ -48703,9 +48853,15 @@
      {
       "field": "excerpt_text",
       "before": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability",
-      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:385–1885' (DOI:10.9999/fake.2137)"
+      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:385–1885' (DOI:10.9999/cg.2025.8761)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.2137",
+     "after": "10.9999/cg.2025.8761"
+    }
    }
   },
   {
@@ -48825,7 +48981,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Emergent reversal of anticoagulation is recommended\n• For warfarin: 4-factor PCC + vitamin K\n• For dabigatran: idarucizumab\n• For SBP 150-220 mmHg, acute lowering to 140 mmHg is safe\n• Avoid SBP <110 mmHg in the acute phase\n• Continuous or frequent BP monitoring is recommended\n\nEvidence: 'NEJM 2025;392:756–1521' (DOI:10.9999/fake.7548)",
+     "excerpt_text": "• Emergent reversal of anticoagulation is recommended\n• For warfarin: 4-factor PCC + vitamin K\n• For dabigatran: idarucizumab\n• For SBP 150-220 mmHg, acute lowering to 140 mmHg is safe\n• Avoid SBP <110 mmHg in the acute phase\n• Continuous or frequent BP monitoring is recommended\n\nEvidence: 'NEJM 2025;392:756–1521' (DOI:10.9999/cg.2025.6603)",
      "safety_guardrails": [
       "Frequent neurological monitoring for deterioration",
       "DVT prophylaxis with compression devices initially",
@@ -48853,9 +49009,15 @@
      {
       "field": "excerpt_text",
       "before": "• Emergent reversal of anticoagulation is recommended\n• For warfarin: 4-factor PCC + vitamin K\n• For dabigatran: idarucizumab\n• For SBP 150-220 mmHg, acute lowering to 140 mmHg is safe\n• Avoid SBP <110 mmHg in the acute phase\n• Continuous or frequent BP monitoring is recommended",
-      "after": "• Emergent reversal of anticoagulation is recommended\n• For warfarin: 4-factor PCC + vitamin K\n• For dabigatran: idarucizumab\n• For SBP 150-220 mmHg, acute lowering to 140 mmHg is safe\n• Avoid SBP <110 mmHg in the acute phase\n• Continuous or frequent BP monitoring is recommended\n\nEvidence: 'NEJM 2025;392:756–1521' (DOI:10.9999/fake.7548)"
+      "after": "• Emergent reversal of anticoagulation is recommended\n• For warfarin: 4-factor PCC + vitamin K\n• For dabigatran: idarucizumab\n• For SBP 150-220 mmHg, acute lowering to 140 mmHg is safe\n• Avoid SBP <110 mmHg in the acute phase\n• Continuous or frequent BP monitoring is recommended\n\nEvidence: 'NEJM 2025;392:756–1521' (DOI:10.9999/cg.2025.6603)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.7548",
+     "after": "10.9999/cg.2025.6603"
+    }
    }
   },
   {
@@ -48976,7 +49138,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Topical antibiotic/steroid drops (e.g., ciprofloxacin/dexamethasone)\n• Keep ear dry; use cotton ball with petroleum jelly when showering\n• Wick placement if canal is swollen shut\n\nEvidence: 'NEJM 2025;392:128–1118' (DOI:10.9999/fake.5279)",
+     "excerpt_text": "• Topical antibiotic/steroid drops (e.g., ciprofloxacin/dexamethasone)\n• Keep ear dry; use cotton ball with petroleum jelly when showering\n• Wick placement if canal is swollen shut\n\nEvidence: 'NEJM 2025;392:128–1118' (DOI:10.9999/cg.2025.6004)",
      "safety_guardrails": [
       "Avoid ototoxic drops if tympanic membrane perforation suspected",
       "Consider fungal etiology if not improving",
@@ -49004,9 +49166,15 @@
      {
       "field": "excerpt_text",
       "before": "• Topical antibiotic/steroid drops (e.g., ciprofloxacin/dexamethasone)\n• Keep ear dry; use cotton ball with petroleum jelly when showering\n• Wick placement if canal is swollen shut",
-      "after": "• Topical antibiotic/steroid drops (e.g., ciprofloxacin/dexamethasone)\n• Keep ear dry; use cotton ball with petroleum jelly when showering\n• Wick placement if canal is swollen shut\n\nEvidence: 'NEJM 2025;392:128–1118' (DOI:10.9999/fake.5279)"
+      "after": "• Topical antibiotic/steroid drops (e.g., ciprofloxacin/dexamethasone)\n• Keep ear dry; use cotton ball with petroleum jelly when showering\n• Wick placement if canal is swollen shut\n\nEvidence: 'NEJM 2025;392:128–1118' (DOI:10.9999/cg.2025.6004)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.5279",
+     "after": "10.9999/cg.2025.6004"
+    }
    }
   },
   {
@@ -49720,7 +49888,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Immunocompetent: often self-limited; supportive care\n• Nitazoxanide 500mg BID x 3 days in immunocompetent adults\n• Immunocompromised: ART for HIV is primary treatment\n\nEvidence: 'NEJM 2025;392:846–1805' (DOI:10.9999/fake.6139)",
+     "excerpt_text": "• Immunocompetent: often self-limited; supportive care\n• Nitazoxanide 500mg BID x 3 days in immunocompetent adults\n• Immunocompromised: ART for HIV is primary treatment\n\nEvidence: 'NEJM 2025;392:846–1805' (DOI:10.9999/cg.2025.9124)",
      "safety_guardrails": [
       "Nitazoxanide less effective in immunocompromised",
       "Notify public health for outbreaks",
@@ -49748,9 +49916,15 @@
      {
       "field": "excerpt_text",
       "before": "• Immunocompetent: often self-limited; supportive care\n• Nitazoxanide 500mg BID x 3 days in immunocompetent adults\n• Immunocompromised: ART for HIV is primary treatment",
-      "after": "• Immunocompetent: often self-limited; supportive care\n• Nitazoxanide 500mg BID x 3 days in immunocompetent adults\n• Immunocompromised: ART for HIV is primary treatment\n\nEvidence: 'NEJM 2025;392:846–1805' (DOI:10.9999/fake.6139)"
+      "after": "• Immunocompetent: often self-limited; supportive care\n• Nitazoxanide 500mg BID x 3 days in immunocompetent adults\n• Immunocompromised: ART for HIV is primary treatment\n\nEvidence: 'NEJM 2025;392:846–1805' (DOI:10.9999/cg.2025.9124)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.6139",
+     "after": "10.9999/cg.2025.9124"
+    }
    }
   },
   {
@@ -50603,7 +50777,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Consider local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present\n\nEvidence: 'NEJM 2025;392:541–1071' (DOI:10.9999/fake.6409)",
+     "excerpt_text": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Consider local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present\n\nEvidence: 'NEJM 2025;392:541–1071' (DOI:10.9999/cg.2025.7557)",
      "safety_guardrails": [
       "Assess for drug allergies before prescribing",
       "Consider QT prolongation risk with fluoroquinolones and macrolides",
@@ -50631,9 +50805,15 @@
      {
       "field": "excerpt_text",
       "before": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Consider local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present",
-      "after": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Consider local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present\n\nEvidence: 'NEJM 2025;392:541–1071' (DOI:10.9999/fake.6409)"
+      "after": "• Amoxicillin or doxycycline for healthy outpatients without comorbidities\n• Respiratory fluoroquinolone OR beta-lactam + macrolide for outpatients with comorbidities\n• Consider local antibiotic resistance patterns\n• Non-ICU: Beta-lactam (ampicillin-sulbactam, ceftriaxone, cefotaxime) + macrolide OR respiratory fluoroquinolone\n• ICU: Beta-lactam + macrolide or beta-lactam + fluoroquinolone\n• Add MRSA coverage if risk factors present\n\nEvidence: 'NEJM 2025;392:541–1071' (DOI:10.9999/cg.2025.7557)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.6409",
+     "after": "10.9999/cg.2025.7557"
+    }
    }
   },
   {
@@ -50761,7 +50941,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• IV alteplase is recommended for eligible patients within 4.5 hours of symptom onset\n• Blood pressure should be controlled to <185/110 mmHg before thrombolysis\n• Contraindications include: recent major surgery, active bleeding, INR >1.7, platelets <100,000\n• Mechanical thrombectomy is recommended for large vessel occlusion within 24 hours in select patients\n• CTA or MRA should be obtained to assess for LVO\n• NIHSS ≥6 generally supports intervention consideration\n\nEvidence: 'NEJM 2025;392:779–1868' (DOI:10.9999/fake.3041)",
+     "excerpt_text": "• IV alteplase is recommended for eligible patients within 4.5 hours of symptom onset\n• Blood pressure should be controlled to <185/110 mmHg before thrombolysis\n• Contraindications include: recent major surgery, active bleeding, INR >1.7, platelets <100,000\n• Mechanical thrombectomy is recommended for large vessel occlusion within 24 hours in select patients\n• CTA or MRA should be obtained to assess for LVO\n• NIHSS ≥6 generally supports intervention consideration\n\nEvidence: 'NEJM 2025;392:779–1868' (DOI:10.9999/cg.2025.2497)",
      "safety_guardrails": [
       "Assessment of bleeding risk is mandatory before thrombolysis",
       "Obtain baseline labs including glucose, creatinine, INR, and platelet count",
@@ -50794,9 +50974,15 @@
      {
       "field": "excerpt_text",
       "before": "• IV alteplase is recommended for eligible patients within 4.5 hours of symptom onset\n• Blood pressure should be controlled to <185/110 mmHg before thrombolysis\n• Contraindications include: recent major surgery, active bleeding, INR >1.7, platelets <100,000\n• Mechanical thrombectomy is recommended for large vessel occlusion within 24 hours in select patients\n• CTA or MRA should be obtained to assess for LVO\n• NIHSS ≥6 generally supports intervention consideration",
-      "after": "• IV alteplase is recommended for eligible patients within 4.5 hours of symptom onset\n• Blood pressure should be controlled to <185/110 mmHg before thrombolysis\n• Contraindications include: recent major surgery, active bleeding, INR >1.7, platelets <100,000\n• Mechanical thrombectomy is recommended for large vessel occlusion within 24 hours in select patients\n• CTA or MRA should be obtained to assess for LVO\n• NIHSS ≥6 generally supports intervention consideration\n\nEvidence: 'NEJM 2025;392:779–1868' (DOI:10.9999/fake.3041)"
+      "after": "• IV alteplase is recommended for eligible patients within 4.5 hours of symptom onset\n• Blood pressure should be controlled to <185/110 mmHg before thrombolysis\n• Contraindications include: recent major surgery, active bleeding, INR >1.7, platelets <100,000\n• Mechanical thrombectomy is recommended for large vessel occlusion within 24 hours in select patients\n• CTA or MRA should be obtained to assess for LVO\n• NIHSS ≥6 generally supports intervention consideration\n\nEvidence: 'NEJM 2025;392:779–1868' (DOI:10.9999/cg.2025.2497)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.3041",
+     "after": "10.9999/cg.2025.2497"
+    }
    }
   },
   {
@@ -51370,7 +51556,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Check serum magnesium (often underestimates total body stores)\n• Assess for concurrent hypokalemia and hypocalcemia\n• Common causes: diuretics, PPIs, alcoholism, diarrhea\n• Mild: Oral magnesium (oxide, citrate)\n• Severe or symptomatic: IV magnesium sulfate 1-2g over 15-60 min\n• Cardiac arrest/Torsades: 1-2g IV push\n\nEvidence: 'NEJM 2025;392:512–1713' (DOI:10.9999/fake.5844)",
+     "excerpt_text": "• Check serum magnesium (often underestimates total body stores)\n• Assess for concurrent hypokalemia and hypocalcemia\n• Common causes: diuretics, PPIs, alcoholism, diarrhea\n• Mild: Oral magnesium (oxide, citrate)\n• Severe or symptomatic: IV magnesium sulfate 1-2g over 15-60 min\n• Cardiac arrest/Torsades: 1-2g IV push\n\nEvidence: 'NEJM 2025;392:512–1713' (DOI:10.9999/cg.2025.4019)",
      "safety_guardrails": [
       "Monitor for hypermagnesemia symptoms (hyporeflexia, respiratory depression)",
       "Reduce dose in renal impairment",
@@ -51398,9 +51584,15 @@
      {
       "field": "excerpt_text",
       "before": "• Check serum magnesium (often underestimates total body stores)\n• Assess for concurrent hypokalemia and hypocalcemia\n• Common causes: diuretics, PPIs, alcoholism, diarrhea\n• Mild: Oral magnesium (oxide, citrate)\n• Severe or symptomatic: IV magnesium sulfate 1-2g over 15-60 min\n• Cardiac arrest/Torsades: 1-2g IV push",
-      "after": "• Check serum magnesium (often underestimates total body stores)\n• Assess for concurrent hypokalemia and hypocalcemia\n• Common causes: diuretics, PPIs, alcoholism, diarrhea\n• Mild: Oral magnesium (oxide, citrate)\n• Severe or symptomatic: IV magnesium sulfate 1-2g over 15-60 min\n• Cardiac arrest/Torsades: 1-2g IV push\n\nEvidence: 'NEJM 2025;392:512–1713' (DOI:10.9999/fake.5844)"
+      "after": "• Check serum magnesium (often underestimates total body stores)\n• Assess for concurrent hypokalemia and hypocalcemia\n• Common causes: diuretics, PPIs, alcoholism, diarrhea\n• Mild: Oral magnesium (oxide, citrate)\n• Severe or symptomatic: IV magnesium sulfate 1-2g over 15-60 min\n• Cardiac arrest/Torsades: 1-2g IV push\n\nEvidence: 'NEJM 2025;392:512–1713' (DOI:10.9999/cg.2025.4019)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.5844",
+     "after": "10.9999/cg.2025.4019"
+    }
    }
   },
   {
@@ -52885,7 +53077,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:576–1452' (DOI:10.9999/fake.8244)",
+     "excerpt_text": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:576–1452' (DOI:10.9999/cg.2025.4853)",
      "safety_guardrails": [
       "Avoid benzodiazepines (except alcohol/benzo withdrawal)",
       "Minimize anticholinergic medications",
@@ -52913,9 +53105,15 @@
      {
       "field": "excerpt_text",
       "before": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff",
-      "after": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:576–1452' (DOI:10.9999/fake.8244)"
+      "after": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:576–1452' (DOI:10.9999/cg.2025.4853)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.8244",
+     "after": "10.9999/cg.2025.4853"
+    }
    }
   },
   {
@@ -53653,7 +53851,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• SABA (albuterol) via nebulizer or MDI with spacer q20min x3\n• Systemic corticosteroids: prednisone 40-60mg or methylprednisolone IV\n• Ipratropium bromide added to SABA in severe exacerbations\n• ICS is the cornerstone of controller therapy\n• Step up therapy: ICS-LABA combination for moderate-severe\n• LAMA add-on for severe asthma\n\nEvidence: 'NEJM 2025;392:195–1838' (DOI:10.9999/fake.4848)",
+     "excerpt_text": "• SABA (albuterol) via nebulizer or MDI with spacer q20min x3\n• Systemic corticosteroids: prednisone 40-60mg or methylprednisolone IV\n• Ipratropium bromide added to SABA in severe exacerbations\n• ICS is the cornerstone of controller therapy\n• Step up therapy: ICS-LABA combination for moderate-severe\n• LAMA add-on for severe asthma\n\nEvidence: 'NEJM 2025;392:195–1838' (DOI:10.9999/cg.2025.7858)",
      "safety_guardrails": [
       "Avoid intubation if possible; use non-invasive ventilation first",
       "Monitor for respiratory fatigue and silent chest",
@@ -53681,9 +53879,15 @@
      {
       "field": "excerpt_text",
       "before": "• SABA (albuterol) via nebulizer or MDI with spacer q20min x3\n• Systemic corticosteroids: prednisone 40-60mg or methylprednisolone IV\n• Ipratropium bromide added to SABA in severe exacerbations\n• ICS is the cornerstone of controller therapy\n• Step up therapy: ICS-LABA combination for moderate-severe\n• LAMA add-on for severe asthma",
-      "after": "• SABA (albuterol) via nebulizer or MDI with spacer q20min x3\n• Systemic corticosteroids: prednisone 40-60mg or methylprednisolone IV\n• Ipratropium bromide added to SABA in severe exacerbations\n• ICS is the cornerstone of controller therapy\n• Step up therapy: ICS-LABA combination for moderate-severe\n• LAMA add-on for severe asthma\n\nEvidence: 'NEJM 2025;392:195–1838' (DOI:10.9999/fake.4848)"
+      "after": "• SABA (albuterol) via nebulizer or MDI with spacer q20min x3\n• Systemic corticosteroids: prednisone 40-60mg or methylprednisolone IV\n• Ipratropium bromide added to SABA in severe exacerbations\n• ICS is the cornerstone of controller therapy\n• Step up therapy: ICS-LABA combination for moderate-severe\n• LAMA add-on for severe asthma\n\nEvidence: 'NEJM 2025;392:195–1838' (DOI:10.9999/cg.2025.7858)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.4848",
+     "after": "10.9999/cg.2025.7858"
+    }
    }
   },
   {
@@ -56709,7 +56913,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Cauda equina syndrome: saddle anesthesia, urinary retention, bilateral weakness\n• Cancer history with new back pain requires imaging\n• Fever suggests spinal infection\n• NSAIDs as first-line for acute mechanical back pain\n• Encourage activity; bed rest is not recommended\n• Physical therapy for persistent symptoms\n\nEvidence: 'NEJM 2025;392:873–1912' (DOI:10.9999/fake.8251)",
+     "excerpt_text": "• Cauda equina syndrome: saddle anesthesia, urinary retention, bilateral weakness\n• Cancer history with new back pain requires imaging\n• Fever suggests spinal infection\n• NSAIDs as first-line for acute mechanical back pain\n• Encourage activity; bed rest is not recommended\n• Physical therapy for persistent symptoms\n\nEvidence: 'NEJM 2025;392:873–1912' (DOI:10.9999/cg.2025.1771)",
      "safety_guardrails": [
       "Screen for red flags at initial presentation",
       "Avoid opioids as first-line therapy",
@@ -56737,9 +56941,15 @@
      {
       "field": "excerpt_text",
       "before": "• Cauda equina syndrome: saddle anesthesia, urinary retention, bilateral weakness\n• Cancer history with new back pain requires imaging\n• Fever suggests spinal infection\n• NSAIDs as first-line for acute mechanical back pain\n• Encourage activity; bed rest is not recommended\n• Physical therapy for persistent symptoms",
-      "after": "• Cauda equina syndrome: saddle anesthesia, urinary retention, bilateral weakness\n• Cancer history with new back pain requires imaging\n• Fever suggests spinal infection\n• NSAIDs as first-line for acute mechanical back pain\n• Encourage activity; bed rest is not recommended\n• Physical therapy for persistent symptoms\n\nEvidence: 'NEJM 2025;392:873–1912' (DOI:10.9999/fake.8251)"
+      "after": "• Cauda equina syndrome: saddle anesthesia, urinary retention, bilateral weakness\n• Cancer history with new back pain requires imaging\n• Fever suggests spinal infection\n• NSAIDs as first-line for acute mechanical back pain\n• Encourage activity; bed rest is not recommended\n• Physical therapy for persistent symptoms\n\nEvidence: 'NEJM 2025;392:873–1912' (DOI:10.9999/cg.2025.1771)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.8251",
+     "after": "10.9999/cg.2025.1771"
+    }
    }
   },
   {
@@ -58697,7 +58907,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:427–1914' (DOI:10.9999/fake.9849)",
+     "excerpt_text": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:427–1914' (DOI:10.9999/cg.2025.4356)",
      "safety_guardrails": [
       "Assess bleeding risk before anticoagulation",
       "Check renal function for DOAC dosing",
@@ -58725,9 +58935,15 @@
      {
       "field": "excerpt_text",
       "before": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability",
-      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:427–1914' (DOI:10.9999/fake.9849)"
+      "after": "• Calculate Wells score for DVT or PE probability\n• D-dimer for low/intermediate probability patients\n• Compression ultrasound for suspected DVT\n• Anticoagulation: DOAC preferred for unprovoked VTE\n• LMWH for cancer-associated VTE\n• Thrombolysis for massive PE with hemodynamic instability\n\nEvidence: 'NEJM 2025;392:427–1914' (DOI:10.9999/cg.2025.4356)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.9849",
+     "after": "10.9999/cg.2025.4356"
+    }
    }
   },
   {
@@ -59898,7 +60114,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Apply Ottawa rules to determine need for X-ray\n• Assess neurovascular status distal to injury\n• Check for open fracture requiring emergent management\n• Immobilize with splint or cast as appropriate\n• Analgesia for pain control\n• Refer to orthopedics for complex or displaced fractures\n\nEvidence: 'NEJM 2025;392:655–1477' (DOI:10.9999/fake.7812)",
+     "excerpt_text": "• Apply Ottawa rules to determine need for X-ray\n• Assess neurovascular status distal to injury\n• Check for open fracture requiring emergent management\n• Immobilize with splint or cast as appropriate\n• Analgesia for pain control\n• Refer to orthopedics for complex or displaced fractures\n\nEvidence: 'NEJM 2025;392:655–1477' (DOI:10.9999/cg.2025.7303)",
      "safety_guardrails": [
       "Document neurovascular status before and after intervention",
       "Provide compartment syndrome warning signs to patient",
@@ -59926,9 +60142,15 @@
      {
       "field": "excerpt_text",
       "before": "• Apply Ottawa rules to determine need for X-ray\n• Assess neurovascular status distal to injury\n• Check for open fracture requiring emergent management\n• Immobilize with splint or cast as appropriate\n• Analgesia for pain control\n• Refer to orthopedics for complex or displaced fractures",
-      "after": "• Apply Ottawa rules to determine need for X-ray\n• Assess neurovascular status distal to injury\n• Check for open fracture requiring emergent management\n• Immobilize with splint or cast as appropriate\n• Analgesia for pain control\n• Refer to orthopedics for complex or displaced fractures\n\nEvidence: 'NEJM 2025;392:655–1477' (DOI:10.9999/fake.7812)"
+      "after": "• Apply Ottawa rules to determine need for X-ray\n• Assess neurovascular status distal to injury\n• Check for open fracture requiring emergent management\n• Immobilize with splint or cast as appropriate\n• Analgesia for pain control\n• Refer to orthopedics for complex or displaced fractures\n\nEvidence: 'NEJM 2025;392:655–1477' (DOI:10.9999/cg.2025.7303)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.7812",
+     "after": "10.9999/cg.2025.7303"
+    }
    }
   },
   {
@@ -61900,7 +62122,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:784–1695' (DOI:10.9999/fake.7624)",
+     "excerpt_text": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:784–1695' (DOI:10.9999/cg.2025.3797)",
      "safety_guardrails": [
       "Avoid benzodiazepines (except alcohol/benzo withdrawal)",
       "Minimize anticholinergic medications",
@@ -61928,9 +62150,15 @@
      {
       "field": "excerpt_text",
       "before": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff",
-      "after": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:784–1695' (DOI:10.9999/fake.7624)"
+      "after": "• Use CAM (Confusion Assessment Method) for diagnosis\n• Identify and treat underlying cause (infection, medications, metabolic)\n• Review medication list for deliriogenic drugs\n• Non-pharmacological interventions first: reorientation, sleep hygiene\n• Avoid physical restraints when possible\n• Low-dose haloperidol only for severe agitation endangering patient/staff\n\nEvidence: 'NEJM 2025;392:784–1695' (DOI:10.9999/cg.2025.3797)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.7624",
+     "after": "10.9999/cg.2025.3797"
+    }
    }
   },
   {
@@ -65117,7 +65345,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Apply Ottawa rules to determine need for X-ray\n• Assess neurovascular status distal to injury\n• Check for open fracture requiring emergent management\n• Immobilize with splint or cast as appropriate\n• Analgesia for pain control\n• Refer to orthopedics for complex or displaced fractures\n\nEvidence: 'NEJM 2025;392:256–1244' (DOI:10.9999/fake.3068)",
+     "excerpt_text": "• Apply Ottawa rules to determine need for X-ray\n• Assess neurovascular status distal to injury\n• Check for open fracture requiring emergent management\n• Immobilize with splint or cast as appropriate\n• Analgesia for pain control\n• Refer to orthopedics for complex or displaced fractures\n\nEvidence: 'NEJM 2025;392:256–1244' (DOI:10.9999/cg.2025.2814)",
      "safety_guardrails": [
       "Document neurovascular status before and after intervention",
       "Provide compartment syndrome warning signs to patient",
@@ -65145,9 +65373,15 @@
      {
       "field": "excerpt_text",
       "before": "• Apply Ottawa rules to determine need for X-ray\n• Assess neurovascular status distal to injury\n• Check for open fracture requiring emergent management\n• Immobilize with splint or cast as appropriate\n• Analgesia for pain control\n• Refer to orthopedics for complex or displaced fractures",
-      "after": "• Apply Ottawa rules to determine need for X-ray\n• Assess neurovascular status distal to injury\n• Check for open fracture requiring emergent management\n• Immobilize with splint or cast as appropriate\n• Analgesia for pain control\n• Refer to orthopedics for complex or displaced fractures\n\nEvidence: 'NEJM 2025;392:256–1244' (DOI:10.9999/fake.3068)"
+      "after": "• Apply Ottawa rules to determine need for X-ray\n• Assess neurovascular status distal to injury\n• Check for open fracture requiring emergent management\n• Immobilize with splint or cast as appropriate\n• Analgesia for pain control\n• Refer to orthopedics for complex or displaced fractures\n\nEvidence: 'NEJM 2025;392:256–1244' (DOI:10.9999/cg.2025.2814)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.3068",
+     "after": "10.9999/cg.2025.2814"
+    }
    }
   },
   {
@@ -67275,7 +67509,7 @@
        "Referenced non-existent trial"
       ]
      },
-     "excerpt_text": "• Whipple's triad: symptoms, low glucose, resolution with glucose\n• Check insulin, C-peptide, proinsulin, sulfonylurea screen when hypoglycemic\n• High insulin + low C-peptide = exogenous insulin\n• Acute: Glucose replacement (oral or IV dextrose)\n• Sulfonylurea-induced: May require prolonged dextrose infusion\n• Insulinoma: Surgical resection\n\nEvidence: 'NEJM 2025;392:807–1850' (DOI:10.9999/fake.4978)",
+     "excerpt_text": "• Whipple's triad: symptoms, low glucose, resolution with glucose\n• Check insulin, C-peptide, proinsulin, sulfonylurea screen when hypoglycemic\n• High insulin + low C-peptide = exogenous insulin\n• Acute: Glucose replacement (oral or IV dextrose)\n• Sulfonylurea-induced: May require prolonged dextrose infusion\n• Insulinoma: Surgical resection\n\nEvidence: 'NEJM 2025;392:807–1850' (DOI:10.9999/cg.2025.7360)",
      "safety_guardrails": [
       "Prolonged hypoglycemia causes brain injury",
       "Monitor closely after sulfonylurea overdose (long half-life)",
@@ -67303,9 +67537,15 @@
      {
       "field": "excerpt_text",
       "before": "• Whipple's triad: symptoms, low glucose, resolution with glucose\n• Check insulin, C-peptide, proinsulin, sulfonylurea screen when hypoglycemic\n• High insulin + low C-peptide = exogenous insulin\n• Acute: Glucose replacement (oral or IV dextrose)\n• Sulfonylurea-induced: May require prolonged dextrose infusion\n• Insulinoma: Surgical resection",
-      "after": "• Whipple's triad: symptoms, low glucose, resolution with glucose\n• Check insulin, C-peptide, proinsulin, sulfonylurea screen when hypoglycemic\n• High insulin + low C-peptide = exogenous insulin\n• Acute: Glucose replacement (oral or IV dextrose)\n• Sulfonylurea-induced: May require prolonged dextrose infusion\n• Insulinoma: Surgical resection\n\nEvidence: 'NEJM 2025;392:807–1850' (DOI:10.9999/fake.4978)"
+      "after": "• Whipple's triad: symptoms, low glucose, resolution with glucose\n• Check insulin, C-peptide, proinsulin, sulfonylurea screen when hypoglycemic\n• High insulin + low C-peptide = exogenous insulin\n• Acute: Glucose replacement (oral or IV dextrose)\n• Sulfonylurea-induced: May require prolonged dextrose infusion\n• Insulinoma: Surgical resection\n\nEvidence: 'NEJM 2025;392:807–1850' (DOI:10.9999/cg.2025.7360)"
      }
-    ]
+    ],
+    "self_label_fix": {
+     "rule": "neutral_doi_suffix",
+     "field": "excerpt_text",
+     "before": "10.9999/fake.4978",
+     "after": "10.9999/cg.2025.7360"
+    }
    }
   },
   {
