@@ -579,3 +579,30 @@ def test_run_refuses_exclusions_made_on_another_stimulus_file(world, tmp_path):
 def test_run_records_gee_convergence(world, tmp_path):
     repeated.run(world["runs_main"], analysis_dir=tmp_path / "a", **_kw(world))
     assert json.loads((tmp_path / "a" / "headline.json").read_text())["gee_converged"] is True
+
+
+# ---- final review M1: per-model incident files and main/_superseded/ date the main run too ----
+def test_rep_call_dates_read_per_model_incident_files_and_superseded_records(tmp_path):
+    from r2.run.harness import incidents_path
+    out = tmp_path / "main"
+    (out / "_superseded").mkdir(parents=True)
+    specs = [{"original_name": "m1", "model_id": "org/m1"}, {"original_name": "m2", "model_id": "m2"}]
+    base = {"case_id": "C1", "order": "TS", "labels": {"A": "T", "B": "S"}, "status": "ok", "attempts": [{}],
+            "selected_tool": "A", "correct": 1}
+    (out / "org_m1.jsonl").write_text(json.dumps({**base, "original_name": "m1",
+                                                  "finished_at": "2026-11-05T09:00:00+00:00"}) + "\n")
+    (out / "m2.jsonl").write_text(json.dumps({**base, "original_name": "m2",
+                                              "finished_at": "2026-11-06T09:00:00+00:00"}) + "\n")
+    # a model-mismatch paid call of m1 (no cell record): only in its own incident file
+    incidents_path(specs[0], out).write_text(json.dumps({"kind": "model_mismatch", "original_name": "m1",
+                                                         "logged_at": "2026-11-12T10:00:00+00:00"}) + "\n")
+    # the records of a substituted model, moved aside: paid calls of the main run
+    (out / "_superseded" / "old-model.jsonl").write_text(json.dumps(
+        {**base, "original_name": "old", "finished_at": "2026-11-02T08:00:00+00:00"}) + "\n")
+    (out / "_superseded" / "old-model.incidents.jsonl").write_text(json.dumps(
+        {"kind": "stopped", "original_name": "old", "logged_at": "2026-11-01T07:00:00+00:00"}) + "\n")
+    dates = repeated.call_dates(out, specs)
+    assert dates["per_model"]["m1"] == {"first": "2026-11-05T09:00:00+00:00", "last": "2026-11-12T10:00:00+00:00"}
+    assert dates["first"] == "2026-11-01T07:00:00+00:00"  # the superseded model's first call
+    assert dates["last"] == "2026-11-12T10:00:00+00:00"
+    assert "old" not in dates["per_model"]  # not a current model: it dates the run, not a model

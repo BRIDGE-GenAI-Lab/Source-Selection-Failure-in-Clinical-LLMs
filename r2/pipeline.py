@@ -12,8 +12,10 @@
   probe --yes | pilot --yes [--models M] | main --yes [--models M] [--retry-persistent] [--accept-spec-change]
                                             [--accept-unpublished-freeze]
       thin wrappers over r2.run.probe_models and r2.run.harness; each prints the exact command it runs and
-      spends money only with --yes. main also needs the freeze tag and the public timestamp of the freeze
-      (record-public); --accept-unpublished-freeze is the only override and writes an incident line.
+      spends money only with --yes. For main the harness verifies the freeze (r2.run.harness.verify_freeze: the
+      tag, the SHA-256 of the five frozen files against FREEZE_RECORD.md at the tag or a dated change entry, the
+      public timestamp of the freeze from record-public); this wrapper runs the same check first.
+      --accept-unpublished-freeze is the only override of the public timestamp; the harness writes the incident.
   pilot-summary [DIR]
       read-only: per model, the pilot's valid replies, non-responses, API errors, truncations, served
       identifiers and median tokens (the facts PILOT_REVIEW.md records); DIR defaults to r2_runs/pilot.
@@ -21,7 +23,8 @@
       wraps python -m r2.freeze (local commit and tag; never pushes).
   record-public URL [--date YYYY-MM-DD]
       after the authors approved and made the freeze public: records the pushed tag's URL, an OSF registration
-      or a Zenodo DOI, the day, and the tag commit in docs/r2/FREEZE_RECORD.md (commit that file).
+      or a Zenodo DOI, the day (from the freeze commit's date to today), and the tag commit in
+      docs/r2/FREEZE_RECORD.md (commit that file).
   record [--release-tag TAG] [--zenodo-doi DOI]
       writes the release facts the documents cite (docs/r2/PUBLIC_RECORD.json) after the authors' release.
   scan-legacy-keys [ROOT]
@@ -31,6 +34,13 @@
       completeness gate -> repeated analyses -> order check (freeze and public timestamp before the first
       main-run call) -> supplement tables -> Table 1 -> Figures 2-4 -> numbers.json -> manuscript, supplement,
       response -> QA scripts (any failure stops) -> PENDING_INDEX.md -> remaining markers by class.
+  package-runs
+      after the main run: analysis_repeated/r2_runs_manifest.json (SHA-256 and size of every file under r2_runs/,
+      with totals) and the tarball r2_runs_archive/r2_runs.tar.gz of r2_runs/ (pilot, main, incidents, logs) for the
+      Zenodo deposit; refuses while a harness runs or when a log holds a plaintext key.
+  release-check
+      the release QA before any tag, push or Zenodo step: a clean tree, docs/DATA_FILES.md current, the run-log
+      manifest current, numbers.json consistent (edits/test_numbers.py), the four QA scripts, and the test suite.
   markers
       the remaining pending markers of the three documents, NUMERIC (must be filled) or PROSE (author text).
   sandbox-init DIR
@@ -42,6 +52,7 @@ calls a real API.
 """
 import argparse
 import csv
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -310,8 +321,9 @@ def import_edits(xlsx, author="A.G.", date=None):
         raise Refused(f"no physician edit for {len(missing)} queued pairs: {missing[:10]}")
     try:
         cases, unresolved = build_v2(manual, strict=True)  # re-audits every pair: identical renders raise
-    except ValueError as exc:
-        raise Refused(f"the rebuild of pairs_v2.json failed (nothing was written): {exc}") from exc
+    except (ValueError, AssertionError) as exc:
+        raise Refused(f"the rebuild of pairs_v2.json failed: {type(exc).__name__}: {exc}. data/v2/manual_edits.json "
+                      "holds the imported edits (a rerun re-imports them); pairs_v2.json is unchanged") from exc
     write_outputs(cases, unresolved)
     pairs = _pairs()
     sha = _sha(paths.DATA_V2 / "pairs_v2.json")
@@ -335,6 +347,28 @@ def _mark_synthetic(path):
         path.write_text(json.dumps({**d, "synthetic": True}, indent=2), encoding="utf-8")
 
 
+REVIEWER_NAMES = {"AG": "A.G.", "MO": "M.O."}  # as r2.verify.build_packets writes them into Instructions!A1
+
+
+def _check_workbook(book, reviewer, label):
+    """Refuse a workbook whose Instructions!A1 ("Reviewer: A.G.    Round: round1", written by build_packets) names
+    another reviewer or round than the argument position it was given in (swapped files would mix raters)."""
+    from openpyxl import load_workbook
+    from r2.verify import build_packets as BP
+    try:
+        wb = load_workbook(book, read_only=True)
+        a1 = str(wb[BP.INSTRUCTIONS]["A1"].value or "") if BP.INSTRUCTIONS in wb.sheetnames else None
+        wb.close()
+    except Exception as exc:  # not a workbook at all
+        raise Refused(f"{book}: cannot read the workbook ({type(exc).__name__}: {exc})") from exc
+    m = re.fullmatch(r"Reviewer: (\S+)\s+Round: (\S+)", (a1 or "").strip())
+    who = REVIEWER_NAMES[reviewer]
+    if not m or (m.group(1), m.group(2)) != (who, label):
+        raise Refused(f"{Path(book).name} was given as the {label} workbook of {who}, but its "
+                      f"{BP.INSTRUCTIONS}!A1 reads {a1!r}; check the order of the four workbooks "
+                      "(AG_r1 MO_r1 AG_r2 MO_r2)")
+
+
 def consensus(ag1, mo1, ag2, mo2, consensus_file=None):
     from r2.verify import build_packets as BP
     from r2.verify import score_review as SR
@@ -344,15 +378,23 @@ def consensus(ag1, mo1, ag2, mo2, consensus_file=None):
     _need(*books.values())
     if not _complete(_pairs()):
         raise Refused("pairs_v2.json is not complete (500 pairs, none unresolved): run import-edits first")
-    for (label, reviewer), book in books.items():
+    for (label, reviewer), book in books.items():  # every workbook is the reviewer's and round's it is given as
         _need(paths.VERIFY_DIR / label / BP.MANIFEST)
+        _check_workbook(book, reviewer, label)
+    for (label, reviewer), book in books.items():
         try:
             BP.import_review_xlsx(book, paths.VERIFY_DIR / label / f"review_{reviewer}.csv")
         except ValueError as exc:
             raise Refused(f"{book}: review form rejected: {exc}") from exc
-    BP.merge_rounds(["round1", "round2"])
+    try:
+        BP.merge_rounds(["round1", "round2"])
+    except (ValueError, RuntimeError) as exc:
+        raise Refused(f"merging round 1 and round 2 failed: {exc}") from exc
     a, b = paths.VERIFY_DIR / "review_AG.csv", paths.VERIFY_DIR / "review_MO.csv"
-    _, disagreements = SR.score(a, b)
+    try:
+        _, disagreements = SR.score(a, b)
+    except ValueError as exc:
+        raise Refused(f"scoring the merged forms failed: {exc}") from exc
     cons = paths.VERIFY_DIR / "consensus.csv"
     if consensus_file:
         src = Path(consensus_file)
@@ -369,7 +411,10 @@ def consensus(ag1, mo1, ag2, mo2, consensus_file=None):
                               f"consensus answer for each and write {cons} (columns case_id,item,consensus), "
                               "then rerun this command")
         cons.write_text("case_id,item,consensus\n", encoding="utf-8")
-    excluded, flags = SR.apply_consensus(a, b, cons)
+    try:
+        excluded, flags = SR.apply_consensus(a, b, cons)
+    except ValueError as exc:
+        raise Refused(f"{cons}: consensus rejected: {exc}") from exc
     if paths.SANDBOX is not None:
         for name in ("excluded_pairs.json", "flags.json"):
             _mark_synthetic(paths.VERIFY_DIR / name)
@@ -400,7 +445,7 @@ def probe(yes=False, client_factory=None, sleep=None):
     return 0
 
 
-def harness_argv(kind, models="all", retry_persistent=False, accept_spec_change=False):
+def harness_argv(kind, models="all", retry_persistent=False, accept_spec_change=False, accept_unpublished_freeze=False):
     argv = ["--models", models]
     if kind == "pilot":
         argv = ["--pilot", "--limit", str(PILOT_PAIRS)] + argv
@@ -408,15 +453,19 @@ def harness_argv(kind, models="all", retry_persistent=False, accept_spec_change=
         argv.append("--retry-persistent")
     if accept_spec_change:
         argv.append("--accept-spec-change")
+    if accept_unpublished_freeze and kind == "main":
+        argv.append("--accept-unpublished-freeze")
     return argv
 
 
 def run_harness(kind, yes=False, client_factory=None, sleep=None, accept_unpublished_freeze=False, **flags):
     """kind 'pilot' or 'main'. Returns the harness exit status (1: a model stopped or cells need a resume).
-    The main run also needs the freeze tag and a public timestamp of the freeze in FREEZE_RECORD.md (record-public);
-    the only override, accept_unpublished_freeze, writes an incident line."""
+    For the main run the harness itself verifies the freeze (r2.run.harness.verify_freeze: the tag, the SHA-256 of
+    every frozen file against FREEZE_RECORD.md at the tag, the public timestamp); this wrapper runs the same check
+    first, so a refusal is a REFUSED line (exit status 2). accept_unpublished_freeze passes
+    --accept-unpublished-freeze to the harness, which writes the incident line."""
     check_write_paths()
-    argv = harness_argv(kind, **flags)
+    argv = harness_argv(kind, accept_unpublished_freeze=accept_unpublished_freeze, **flags)
     _show(["python", "-m", "r2.run.harness", *argv])
     _spend_guard(yes, f"the {kind} run")
     if kind == "main":
@@ -428,19 +477,18 @@ def run_harness(kind, yes=False, client_factory=None, sleep=None, accept_unpubli
     if client_factory is None and paths.SANDBOX is not None:
         raise Refused("R2_SANDBOX is set: a sandbox never calls a real API (use r2.rehearse)")
     if kind == "main":
-        pub = public_timestamp()
+        from r2.run import harness
+        try:
+            _, stim_sha = harness.load_v2_cases(paths.DATA_V2 / "pairs_v2.json")
+            checked = harness.verify_freeze(stim_sha, accept_unpublished=accept_unpublished_freeze)
+        except (SystemExit, ValueError) as exc:
+            raise Refused(str(exc).removeprefix("refusing the main run: ")) from exc
+        pub = checked["public"]
         if pub is not None:
             print(f"public timestamp of the freeze: {pub['kind']} {pub['url']} (public since {pub['since']})")
-        elif not accept_unpublished_freeze:
-            raise Refused(f"{paths.FREEZE_RECORD} records no public timestamp of the freeze. Pushing the tag needs "
-                          "the authors' approval; once the freeze is public (the pushed tag, an OSF registration or a "
-                          "Zenodo DOI), run python -m r2.pipeline record-public <url> and rerun. The only override is "
-                          "--accept-unpublished-freeze, which writes an incident line")
         else:
-            where = _pipeline_incident({"kind": "unpublished_freeze", "freeze_record": str(paths.FREEZE_RECORD),
-                                        "argv": argv, "note": "main run started before the freeze was public"})
-            print(f"ACCEPTED: main run without a public timestamp of the freeze (--accept-unpublished-freeze); "
-                  f"incident written to {where}")
+            print("the freeze is not public: the harness runs with --accept-unpublished-freeze and writes an "
+                  f"unpublished_freeze incident to {paths.RUNS_V2 / 'main' / harness.FREEZE_INCIDENTS}")
     if client_factory is None:
         return subprocess.run([PY, "-m", "r2.run.harness", *argv], cwd=paths.REPO).returncode
     from r2.run import harness
@@ -543,9 +591,13 @@ def _sandbox_freeze_repo():
         sandbox_git.init_repo(repo, paths.SANDBOX)
     except sandbox_git.SandboxGitError as exc:
         raise Refused(f"sandbox freeze repository: {exc}") from exc
+    from r2.freeze import PLAN, draft_plan
     for rel, src in FREEZE_INPUTS.items():
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src(), repo / rel)
+        if rel == PLAN:  # the draft, also once the real plan is frozen (r2.freeze.draft_plan undoes the fill)
+            (repo / rel).write_text(draft_plan(src().read_text(encoding="utf-8")), encoding="utf-8")
+        else:
+            shutil.copyfile(src(), repo / rel)
     if _git(repo, "status", "--porcelain", check=True).stdout.strip():
         _git(repo, "add", "-A", check=True)
         _git(repo, *GIT_ID, "commit", "-q", "-m", "sandbox: inputs to freeze (simulated)", check=True)
@@ -599,47 +651,39 @@ def freeze(dry_run=False, yes=False):
 
 
 # ---------------------------------------------------------------- the public timestamp of the freeze
-FREEZE_TAG_NAME = "r2-analysis-plan-frozen"
-PUBLIC_KINDS = (
-    ("pushed tag", re.compile(r"https://(?:github\.com|gitlab\.com)/[\w.-]+/[\w.-]+/(?:releases/tag|tree|-/tags)/"
-                              + re.escape(FREEZE_TAG_NAME) + r"/?")),
-    ("OSF registration", re.compile(r"https://osf\.io/[a-z0-9]{5,}/?|https://doi\.org/10\.17605/OSF\.IO/[A-Z0-9]{5,}")),
-    ("Zenodo DOI", re.compile(r"(?:https://doi\.org/)?10\.5281/zenodo\.\d+|https://zenodo\.org/records?/\d+")),
-)
-PIPELINE_INCIDENTS = "pipeline.incidents.jsonl"  # under r2_runs/main; check_complete ignores *.incidents.jsonl
+# The run-level incidents of the main run (unpublished_freeze, frozen_input_changed) are written by the harness to
+# r2_runs/main/freeze.incidents.jsonl; check_complete ignores every *.incidents.jsonl file.
+PIPELINE_INCIDENTS = "freeze.incidents.jsonl"
 
 
 def public_kind(url):
-    """'pushed tag', 'OSF registration', 'Zenodo DOI', or None for anything else."""
-    for kind, rx in PUBLIC_KINDS:
-        if rx.fullmatch(url.strip()):
-            return kind
-    return None
+    """'pushed tag', 'OSF registration', 'Zenodo DOI', or None for anything else (r2.freeze.public_kind)."""
+    from r2.freeze import public_kind as kind
+    return kind(url)
 
 
 def _freeze_date(text=None):
+    from r2.freeze import record_date
     if text is None:
         if not paths.FREEZE_RECORD.exists():
             return None
         text = paths.FREEZE_RECORD.read_text(encoding="utf-8")
-    m = re.search(r"^- Date: (\d{4}-\d{2}-\d{2})$", text, re.M)
-    return m.group(1) if m else None
+    return record_date(text)
 
 
 def public_timestamp():
     """The public timestamp FREEZE_RECORD.md records ({url, kind, since, tag_commit}), or None (not recorded, or
     not a valid public URL)."""
+    from r2.freeze import public_timestamp as parse
     if not paths.FREEZE_RECORD.exists():
         return None
-    text = paths.FREEZE_RECORD.read_text(encoding="utf-8")
-    got = {k: (m.group(1).strip() if m else None) for k, m in (
-        ("url", re.search(r"^- Public URL: (\S+)$", text, re.M)),
-        ("kind", re.search(r"^- Kind: (.+)$", text, re.M)),
-        ("since", re.search(r"^- Public since: (\d{4}-\d{2}-\d{2})$", text, re.M)),
-        ("tag_commit", re.search(r"^- Tag commit: (\S+)$", text, re.M)))}
-    if not got["url"] or not got["since"] or public_kind(got["url"]) is None:
-        return None
-    return got
+    return parse(paths.FREEZE_RECORD.read_text(encoding="utf-8"))
+
+
+def _commit_day(commit):
+    """The UTC day of a commit's committer date in FREEZE_REPO."""
+    stamp = _git(paths.FREEZE_REPO, "log", "-1", "--format=%ct", commit, check=True).stdout.strip()
+    return datetime.fromtimestamp(int(stamp), timezone.utc).strftime("%Y-%m-%d")
 
 
 def _calendar_date(value, what):
@@ -666,11 +710,13 @@ def record_public(url, date=None):
                       f"(https://github.com/<owner>/<repo>/releases/tag/{TAG} or .../tree/{TAG}), an OSF link "
                       "(https://osf.io/<id>) or a Zenodo DOI (10.5281/zenodo.<n>)")
     since = _calendar_date(date or _today(), "--date")
-    frozen = _freeze_date()
+    frozen, committed = _freeze_date(), _commit_day(commit)
     if frozen and since < frozen:
         raise Refused(f"--date {since} is before the freeze ({frozen})")
+    if since < committed:
+        raise Refused(f"--date {since} is before the freeze commit's date ({committed}, commit {commit[:12]})")
     if since > _today():
-        raise Refused(f"--date {since} is in the future")
+        raise Refused(f"--date {since} is after today ({_today()}): a date in the future")
     current = public_timestamp()
     if current:
         if current["url"] != url:
@@ -689,23 +735,10 @@ def record_public(url, date=None):
     return {"url": url, "kind": kind, "since": since, "tag_commit": commit}
 
 
-def _pipeline_incident(rec):
-    """One line in r2_runs/main/pipeline.incidents.jsonl (evidence, archived with the run logs)."""
-    path = paths.RUNS_V2 / "main" / PIPELINE_INCIDENTS
-    path.parent.mkdir(parents=True, exist_ok=True)
-    line = {"at": datetime.now(timezone.utc).isoformat(), **rec}
-    if paths.SANDBOX is not None:
-        line["synthetic"] = True
-    with open(path, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(line) + "\n")
-    return path
-
-
 def _pipeline_incidents():
-    path = paths.RUNS_V2 / "main" / PIPELINE_INCIDENTS
-    if not path.exists():
-        return []
-    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+    """The run-level incidents of the main run (r2.run.harness.run_incidents of r2_runs/main)."""
+    from r2.run import harness
+    return harness.run_incidents(paths.RUNS_V2 / "main")
 
 
 # ---------------------------------------------------------------- record (public facts after the release)
@@ -732,6 +765,175 @@ def record(release_tag=None, zenodo_doi=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(dict(sorted(data.items())), indent=1) + "\n", encoding="utf-8")
     return data
+
+
+# ---------------------------------------------------------------- package-runs (the raw logs for the archive)
+RUNS_MANIFEST = "r2_runs_manifest.json"   # in analysis_repeated/ (tracked: the release tag pins it)
+RUNS_TARBALL = "r2_runs.tar.gz"           # in RUNS_ARCHIVE (outside the repository; uploaded to the Zenodo version)
+RUNS_EXCLUDED = ("*.lock", "._*", ".DS_Store")
+
+
+def _runs_files(root):
+    """The run-log files under `root` (r2_runs/), as sorted POSIX paths relative to it: every regular file except
+    *.lock, ._* and .DS_Store (and __pycache__). A symbolic link is refused: the archive holds files, not links."""
+    from fnmatch import fnmatch
+    out = []
+    for p in sorted(Path(root).rglob("*")):
+        rel = p.relative_to(root).as_posix()
+        if "__pycache__" in p.parts or any(fnmatch(p.name, pat) for pat in RUNS_EXCLUDED):
+            continue
+        if p.is_symlink():
+            raise Refused(f"{p} is a symbolic link; the run-log archive holds regular files only")
+        if p.is_file():
+            out.append(rel)
+    return out
+
+
+def _file_digest(path, chunk=1 << 20):
+    h, n = hashlib.sha256(), 0
+    with open(path, "rb") as fh:
+        while True:
+            b = fh.read(chunk)
+            if not b:
+                return h.hexdigest(), n
+            h.update(b)
+            n += len(b)
+
+
+def _held_locks(root):
+    held = []
+    for lock in sorted(Path(root).rglob("*.lock")):
+        if lock.name.startswith("._"):
+            continue
+        with open(lock, "a") as fh:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                held.append(str(lock))
+    return held
+
+
+def _write_tarball(root, files, dest):
+    """A deterministic gzip tarball of `files` under the top directory r2_runs/: sorted members, owner 0 and no
+    owner names, mode 0644, the files' own mtimes (whole seconds), and a gzip header without a timestamp. Written to
+    a temporary file and renamed, so a failed run leaves no partial tarball."""
+    import gzip
+    import tarfile
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".partial")
+    with open(tmp, "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as gz, \
+            tarfile.open(fileobj=gz, mode="w", format=tarfile.GNU_FORMAT) as tar:
+        for rel in files:
+            src = Path(root) / rel
+            info = tar.gettarinfo(str(src), arcname=f"r2_runs/{rel}")
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            info.mode = 0o644
+            info.mtime = int(info.mtime)
+            with open(src, "rb") as fh:
+                tar.addfile(info, fh)
+    os.replace(tmp, dest)
+    return dest
+
+
+def _tarball_members(path):
+    """{member name: SHA-256} of every regular member of the tarball."""
+    import tarfile
+    out = {}
+    with tarfile.open(path, "r:gz") as tar:
+        for m in tar.getmembers():
+            if m.isfile():
+                out[m.name] = hashlib.sha256(tar.extractfile(m).read()).hexdigest()
+    return out
+
+
+def package_runs():
+    """analysis_repeated/r2_runs_manifest.json (path, size and SHA-256 of every run-log file under r2_runs/: pilot,
+    main with its incident files and _superseded/, job logs, the probe's availability file; totals by top
+    directory) and RUNS_ARCHIVE/r2_runs.tar.gz holding exactly those files, its own SHA-256 and size recorded in the
+    manifest. Excludes *.lock, ._* and .DS_Store. Refuses while a harness holds a model lock, and when a file holds
+    a plaintext API key (named by file and provider, never shown). Deterministic: a rerun on the same files writes
+    the same bytes. Run after the completeness gate and post-results; commit the manifest; upload the tarball and
+    the manifest to the Zenodo version (docs/r2/RUNBOOK.md, section 9)."""
+    check_write_paths()
+    root = Path(paths.RUNS_V2)
+    _need(root / "main")
+    if paths.SANDBOX is not None:
+        from r2.analysis.synthetic import _within
+        if not _within(Path(paths.RUNS_ARCHIVE).expanduser().resolve(), Path(paths.SANDBOX).resolve()):
+            raise Refused(f"R2_SANDBOX={paths.SANDBOX}: the archive location {paths.RUNS_ARCHIVE} is outside it")
+    held = _held_locks(root)
+    if held:
+        raise Refused(f"{', '.join(held)} is held by a running harness; package the run logs after every job ended")
+    files = _runs_files(root)
+    keys = {}
+    for rel in files:
+        text = (root / rel).read_bytes().decode("utf-8", "replace")
+        found = sorted({(_sk_provider(m.group(0), text) if prov == "sk-" else prov)
+                        for prov, rx in KEY_PATTERNS for m in rx.finditer(text)})
+        if found:
+            keys[rel] = found
+    if keys:
+        raise Refused("plaintext API keys in the run logs (scrub them, then rerun): "
+                      + "; ".join(f"{rel}: {', '.join(p)}" for rel, p in keys.items()))
+    entries, by_dir = [], {}
+    for rel in files:
+        digest, size = _file_digest(root / rel)
+        entries.append({"path": rel, "bytes": size, "sha256": digest})
+        top = rel.split("/", 1)[0] if "/" in rel else "."
+        d = by_dir.setdefault(top, {"files": 0, "bytes": 0})
+        d["files"] += 1
+        d["bytes"] += size
+    tarball = _write_tarball(root, files, Path(paths.RUNS_ARCHIVE) / RUNS_TARBALL)
+    members = _tarball_members(tarball)
+    want = {f"r2_runs/{e['path']}": e["sha256"] for e in entries}
+    if members != want:
+        raise Refused(f"{tarball} does not hold exactly the manifest files (a file changed while it was packaged?); "
+                      "rerun")
+    tar_sha, tar_size = _file_digest(tarball)
+    manifest = {
+        "_doc": ("SHA-256 and size of every run-log file of the repeated experiment (python -m r2.pipeline "
+                 "package-runs). Paths are relative to the run directory; in the tarball they sit under r2_runs/."),
+        "source": str(root), "archive_root": "r2_runs", "excluded_patterns": list(RUNS_EXCLUDED),
+        "totals": {"files": len(entries), "bytes": sum(e["bytes"] for e in entries),
+                   "by_directory": dict(sorted(by_dir.items()))},
+        "tarball": {"name": RUNS_TARBALL, "sha256": tar_sha, "bytes": tar_size, "location": str(tarball)},
+        "files": entries,
+    }
+    if paths.SANDBOX is not None:
+        manifest["synthetic"] = True
+    dest = Path(paths.ANALYSIS_REPEATED) / RUNS_MANIFEST
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
+    print(f"packaged {len(entries)} run-log files ({manifest['totals']['bytes']:,} bytes) into {tarball} "
+          f"(sha256 {tar_sha}); manifest {dest}; commit the manifest and upload both to the Zenodo version")
+    return {"files": len(entries), "bytes": manifest["totals"]["bytes"], "manifest": str(dest),
+            "tarball": str(tarball), "tarball_sha256": tar_sha}
+
+
+def check_runs_manifest():
+    """Problems (a list of strings; empty when current) between analysis_repeated/r2_runs_manifest.json, the files
+    under r2_runs/ and the tarball: a file changed, missing or not in the manifest, or a tarball whose SHA-256 or
+    size differs."""
+    path = Path(paths.ANALYSIS_REPEATED) / RUNS_MANIFEST
+    if not path.exists():
+        return [f"{path} does not exist (python -m r2.pipeline package-runs)"]
+    man = json.loads(path.read_text(encoding="utf-8"))
+    root = Path(paths.RUNS_V2)
+    listed = {e["path"]: e for e in man["files"]}
+    on_disk = set(_runs_files(root)) if root.exists() else set()
+    problems = [f"{rel}: in the manifest but missing under {root}" for rel in sorted(set(listed) - on_disk)]
+    problems += [f"{rel}: under {root} but not in the manifest" for rel in sorted(on_disk - set(listed))]
+    for rel in sorted(on_disk & set(listed)):
+        digest, size = _file_digest(root / rel)
+        if (digest, size) != (listed[rel]["sha256"], listed[rel]["bytes"]):
+            problems.append(f"{rel}: changed since it was packaged")
+    tar = Path(paths.RUNS_ARCHIVE) / man["tarball"]["name"]
+    if not tar.exists():
+        problems.append(f"tarball {tar} does not exist")
+    elif _file_digest(tar) != (man["tarball"]["sha256"], man["tarball"]["bytes"]):
+        problems.append(f"tarball {tar}: SHA-256 or size differs from the manifest")
+    return problems
 
 
 # ---------------------------------------------------------------- post-results
@@ -822,7 +1024,8 @@ def order_check():
         problem = f"no public timestamp in {rec} (python -m r2.pipeline record-public <url>)"
     accepted = [i for i in _pipeline_incidents() if i.get("kind") == "unpublished_freeze"]
     if not ok_pub and accepted:
-        print(f"ORDER CHECK public: ACCEPTED by --accept-unpublished-freeze (incident of {accepted[0]['at']} in "
+        print(f"ORDER CHECK public: ACCEPTED by --accept-unpublished-freeze (incident of "
+              f"{accepted[0].get('logged_at') or accepted[0].get('at')} in "
               f"{paths.RUNS_V2 / 'main' / PIPELINE_INCIDENTS})", flush=True)
     elif not ok_pub:
         problems.append(problem)
@@ -833,9 +1036,21 @@ def order_check():
 
 
 def data_files_table():
-    """tables/S_data_files.csv (Supplementary Table S15) from docs/DATA_FILES.md, once the release is recorded."""
+    """tables/S_data_files.csv (Supplementary Table S15) from docs/DATA_FILES.md, once the release is recorded.
+    Outside a sandbox it refuses a DATA_FILES.md that differs from a fresh build (python -m r2.data_files_doc), or
+    that still has a "Not yet present" row: S15 lists the released files as they are. (A sandbox builds S15 from
+    the real, pre-results document, marked synthetic.)"""
+    from r2 import data_files_doc
     from r2.analysis.supp_tables import write_csv
     src = paths.REPO / "docs" / "DATA_FILES.md"
+    if paths.SANDBOX is None:
+        if not data_files_doc.is_current():
+            raise Refused(f"{src} is stale (it differs from a fresh build): run python -m r2.data_files_doc, commit "
+                          "it, and rerun")
+        pending = _pending_data_files()
+        if pending:
+            raise Refused(f"{src} still lists files that are not present: {pending}; S15 would describe files that "
+                          "do not exist (finish the steps that write them, commit, regenerate)")
     rows = []
     for line in src.read_text(encoding="utf-8").splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
@@ -847,6 +1062,7 @@ def data_files_table():
     out = paths.TABLES_DIR / "S_data_files.csv"
     if paths.SANDBOX is not None:
         rows = [{**r, "synthetic": True} for r in rows]
+    out.parent.mkdir(parents=True, exist_ok=True)
     write_csv(out, rows)
     return len(rows)
 
@@ -869,6 +1085,10 @@ def post_results(render=True):
             res = fn()
         except SystemExit as exc:  # check_complete's gate and the CLIs exit with a message
             raise Refused(f"{name}: {exc}") from exc
+        except (Refused, NeedsHumans):
+            raise  # already a refusal with its reason
+        except (ValueError, RuntimeError, AssertionError) as exc:  # e.g. a stimulus mismatch or a GEE failure
+            raise Refused(f"{name}: {type(exc).__name__}: {exc}") from exc
         steps[name] = {"result": res, "seconds": round(time.time() - t0, 1)}
         return res
 
@@ -889,6 +1109,79 @@ def post_results(render=True):
     step("pending_index", lambda: _doc_script(["make_pending_index.py"])["rc"])
     step("markers", lambda: markers()["counts"])
     return steps
+
+
+# ---------------------------------------------------------------- release-check (the release QA before any tag)
+RELEASE_CHECKS = ("clean tree", "DATA_FILES.md current", "DATA_FILES.md complete", "run-log manifest", "numbers.json",
+                  "QA scripts", "test suite")
+
+
+def _pending_data_files():
+    """The paths docs/DATA_FILES.md still lists as "Not yet present"."""
+    src = paths.REPO / "docs" / "DATA_FILES.md"
+    return [line.split("`")[1] for line in src.read_text(encoding="utf-8").splitlines()
+            if line.startswith("| `") and "Not yet present" in line and line.rstrip().endswith("| n/a |")]
+
+
+def _numbers_test():
+    """edits/test_numbers.py of the document folder: every numbers.json value re-read from its source."""
+    out = _doc_script(["-m", "pytest", "edits/test_numbers.py", "-q", "--import-mode=importlib", "-p",
+                       "no:cacheprovider"], check=False)
+    return [] if out["rc"] == 0 else [f"{out['command']} exited {out['rc']}: {out.get('tail', '')[-800:]}"]
+
+
+def _suite():
+    """The repository's test suite (tests/r2), without R2_SANDBOX."""
+    env = {k: v for k, v in os.environ.items() if k != "R2_SANDBOX"}
+    cmd = [PY, "-m", "pytest", "tests/r2", "-q", "-p", "no:cacheprovider"]
+    _show(["python", *cmd[1:]])
+    res = subprocess.run(cmd, cwd=paths.REPO, env=env, capture_output=True, text=True)
+    return [] if res.returncode == 0 else [f"pytest exited {res.returncode}: {res.stdout[-1200:]}"]
+
+
+def release_check(run_suite=True):
+    """The release QA, run BEFORE any tag, push or Zenodo step (docs/r2/RUNBOOK.md, section 9). Every check runs and
+    prints one line, "RELEASE CHECK <name>: PASS" or "FAIL: <why>":
+    - clean tree: the outputs of post-results, package-runs and data_files_doc are committed;
+    - DATA_FILES.md current: docs/DATA_FILES.md equals a fresh build (files, SHA-256, roles read from the files);
+    - DATA_FILES.md complete: no "Not yet present" row is left (Supplementary Table S15 is built from it);
+    - run-log manifest: analysis_repeated/r2_runs_manifest.json matches every file under r2_runs/ and the tarball;
+    - numbers.json: edits/test_numbers.py re-reads every value from its source;
+    - QA scripts: the four QA verdicts are 0 (run_qa);
+    - test suite: python -m pytest tests/r2 (skipped with run_suite=False).
+    Any failure stops with Refused naming the failed checks. Refuses under R2_SANDBOX: it checks the real repository."""
+    from r2 import data_files_doc
+    if paths.SANDBOX is not None:
+        raise Refused("release-check checks the real repository and its release files; run it without R2_SANDBOX")
+    checks = {
+        "clean tree": lambda: [f"uncommitted: {x}" for x in _git(paths.REPO, "status", "--porcelain").stdout.splitlines()],
+        "DATA_FILES.md current": lambda: [] if data_files_doc.is_current() else [
+            "docs/DATA_FILES.md differs from a fresh build: run python -m r2.data_files_doc and commit it"],
+        "DATA_FILES.md complete": lambda: [f"still 'Not yet present': {p}" for p in _pending_data_files()],
+        "run-log manifest": check_runs_manifest,
+        "numbers.json": _numbers_test,
+        "QA scripts": lambda: (run_qa(), [])[1],
+        "test suite": _suite if run_suite else None,
+    }
+    results, failed = {}, []
+    for name in RELEASE_CHECKS:
+        fn = checks[name]
+        if fn is None:
+            print(f"RELEASE CHECK {name}: SKIPPED", flush=True)
+            continue
+        try:
+            problems = fn()
+        except (Refused, OSError, ValueError, KeyError) as exc:
+            problems = [f"{type(exc).__name__}: {exc}"]
+        results[name] = not problems
+        print(f"RELEASE CHECK {name}: " + ("PASS" if not problems else "FAIL: " + "; ".join(problems)[:1500]),
+              flush=True)
+        if problems:
+            failed.append(name)
+    if failed:
+        raise Refused("release check failed: " + ", ".join(failed) + " (nothing may be tagged, pushed or deposited "
+                      "until every RELEASE CHECK line says PASS)")
+    return results
 
 
 # ---------------------------------------------------------------- markers
@@ -982,6 +1275,9 @@ def build_parser():
     p.add_argument("root", nargs="?", default=None, help=f"default {paths.LEGACY_ROOT}")
     p = sub.add_parser("post-results")
     p.add_argument("--no-render", action="store_true")
+    sub.add_parser("package-runs")
+    p = sub.add_parser("release-check")
+    p.add_argument("--no-suite", action="store_true", help="skip the test suite (it runs last otherwise)")
     sub.add_parser("markers")
     p = sub.add_parser("sandbox-init")
     p.add_argument("dir")
@@ -1015,6 +1311,10 @@ def dispatch(a, client_factory=None, sleep=None):
         return {"files": len(res["files"]), "providers": res["providers"]}
     if a.cmd == "post-results":
         return post_results(render=not a.no_render)
+    if a.cmd == "package-runs":
+        return package_runs()
+    if a.cmd == "release-check":
+        return release_check(run_suite=not a.no_suite)
     if a.cmd == "markers":
         return markers()
     if a.cmd == "sandbox-init":

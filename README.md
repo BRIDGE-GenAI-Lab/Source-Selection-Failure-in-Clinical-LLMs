@@ -86,27 +86,32 @@ python -m r2.analysis.original_corrected # reanalysis -> analysis_original/
 
 ## 5. Reproduce the repeated experiment
 
-Results will be added after the run. The commands below are the pipeline; API keys are read from
-`.env` or the environment (copy `.env.example`, which lists `OPENAI_API_KEY`, `TOGETHER_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`; never commit `.env`).
+Results will be added after the run. The operator's sequence, from the physicians' returned forms to the
+release, is [docs/r2/RUNBOOK.md](docs/r2/RUNBOOK.md); every step is one command of `python -m r2.pipeline`
+(`r2/pipeline.py`), and `python -m r2.rehearse <empty dir>` rehearses all of them in a sandbox with simulated
+physicians and a simulated API. API keys are read from `.env` (copy `.env.example`, which lists `OPENAI_API_KEY`,
+`TOGETHER_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`; never commit `.env`); `.env` wins over an exported
+variable of the same name.
 
 ```bash
-python -m r2.stimuli.build_v2            # corrected stimuli -> data/v2/pairs_v2.json (strict mode)
-python -m r2.verify.build_packets round1 # physician review forms -> verification/
-python -m r2.verify.score_review score   # agreement, flags, exclusions (after both reviews)
-python -m r2.verify.score_review consensus
-# freeze: the analysis plan (docs/r2/ANALYSIS_PLAN.md, not yet written; created before the repeated
-# experiment) is tagged r2-analysis-plan-frozen (not yet created) before any main-run call
-python -m r2.run.probe_models            # is each model served, and under which identifier
-python -m r2.run.harness --pilot --models all --limit 10 --out "$R2_RUNS_V2/pilot"
-python -m r2.run.harness --models all --out "$R2_RUNS_V2/main"   # logs every call
-python -m r2.run.check_complete "$R2_RUNS_V2/main"               # completeness gate
-python -m r2.analysis.repeated           # pre-specified analyses -> analysis_repeated/
+python -m r2.pipeline import-edits AG_r1.xlsx     # the physician-written edits -> pairs_v2.json, round-2 forms
+python -m r2.pipeline consensus AG_r1.xlsx MO_r1.xlsx AG_r2.xlsx MO_r2.xlsx   # kappa, exclusions, flags
+python -m r2.pipeline probe --yes                 # is each model served, and under which identifier
+python -m r2.pipeline pilot --yes                 # 10 pairs, every model, both orders
+python -m r2.pipeline freeze --yes                # docs/r2/ANALYSIS_PLAN.md frozen, tag r2-analysis-plan-frozen
+python -m r2.pipeline record-public <url>         # the public timestamp of the freeze, before the main run
+python -m r2.pipeline main --yes                  # the main run; logs every call to $R2_RUNS_V2/main
+python -m r2.pipeline post-results                # completeness gate, analyses, tables, figures, documents, QA
+python -m r2.pipeline package-runs                # SHA-256 manifest and tarball of the run logs (Zenodo)
+python -m r2.pipeline release-check               # release QA, before any tag, push or Zenodo step
 ```
 
-`R2_RUNS_V2` defaults to `/Volumes/Lexar/LLM_Tool_use/r2_runs`. Only analyses written into
-`docs/r2/ANALYSIS_PLAN.md` (not yet written; created before the repeated experiment) before the
-freeze tag `r2-analysis-plan-frozen` (not yet created) are called pre-specified; the plan was written
-after the original results were known. Run `python -m pytest tests/r2 -q` for the test suite.
+The main run is guarded by the harness itself, also when it is called directly as `python -m r2.run.harness`: it
+refuses unless the freeze tag exists, each of the five frozen files has the SHA-256 recorded in
+`docs/r2/FREEZE_RECORD.md` at the tag (or a dated change entry gives its new hash), and the freeze has a public
+timestamp. `R2_RUNS_V2` defaults to `/Volumes/Lexar/LLM_Tool_use/r2_runs`. Only analyses written into
+`docs/r2/ANALYSIS_PLAN.md` before the freeze tag `r2-analysis-plan-frozen` are called pre-specified; the plan was
+written after the original results were known. Run `python -m pytest tests/r2 -q` for the test suite.
 
 ## 6. Mapping a case to its input and its result
 
@@ -115,7 +120,9 @@ after the original results were known. Run `python -m pytest tests/r2 -q` for th
   `data/results_10500.csv`) on model and `case_id`. `audit/pair_audit.csv` says what the models
   could see for that `case_id`.
 - **Repeated experiment.** `case_id` joins `data/v2/pairs_v2.json` (the stimuli), the logged `user`
-  text of each call in `r2_runs/`, and `data/v2/results_repeated.csv` (produced after the run).
+  text of each call in `r2_runs/` (archived as `r2_runs.tar.gz` with the Zenodo version; every file's SHA-256 is
+  in `analysis_repeated/r2_runs_manifest.json`), and `analysis_repeated/results_repeated.csv` (produced after
+  the run).
 
 ## 7. File roles
 
@@ -169,15 +176,15 @@ absolute paths from the authors' working tree.
   are in this repository, `data/results_10500.csv`, and the as-run case file is
   `data/original/500cases_with_real_tools.as_run.json`. The R1 Data Availability sentence that said
   the records were archived at Zenodo was incorrect. A new Zenodo version, tied to the release tag,
-  will archive the as-run inputs, the original and repeated outputs and the audit files.
+  will archive the as-run inputs, the original and repeated outputs and the audit files, plus the raw log of
+  every repeated-experiment call (`r2_runs.tar.gz`, uploaded with its manifest; docs/r2/RUNBOOK.md, section 9).
 
 ## Installation
 
 ```bash
 python -m venv venv
 source venv/bin/activate
-pip install -e .
-pip install numpy pandas scipy statsmodels matplotlib
+pip install -e .                 # the dependencies of r2/ are declared in pyproject.toml
 ```
 
 ## License

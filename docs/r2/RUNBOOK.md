@@ -59,10 +59,20 @@ sandbox (`r2/sandbox_git.py`); `python -m r2.freeze` refuses to run under `R2_SA
 3. Copy `.env.example` to `~/npj_r2/r2_repo/.env`. The `.env` file is gitignored. Put the new keys there, and
    only there, under the four names it lists: `OPENAI_API_KEY`, `TOGETHER_API_KEY`, `DEEPSEEK_API_KEY` and
    `GEMINI_API_KEY`.
-4. Check that no key is tracked: run the secrets `git grep` of the project constraints
-   (`.superpowers/sdd/2026-10-05-npj-r2-integrity-revision/global-constraints.md`, "Secrets"). It must print
-   nothing. That pattern misses OpenAI's `sk-proj-` keys, so also run
+4. Check that no key is tracked. This must print nothing:
+
+   ```bash
+   git grep -nE "tgp[_]v1[_]|s[k]-[A-Za-z0-9]{20}|AI[z]a[0-9A-Za-z_-]{20}|gs[k]_[A-Za-z0-9]{20}"
+   ```
+
+   (The pattern of the project constraints, written with one-character classes so that this file does not match
+   itself.)
+
+   That pattern misses OpenAI's `sk-proj-` keys, so also run
    `$PY -m r2.pipeline scan-legacy-keys ~/npj_r2/r2_repo`: it must list only `.env`.
+5. The harness and the probe read the keys from `.env`, which wins over an exported variable of the same name.
+   Each run prints where every key comes from (`key OPENAI_API_KEY: .../.env`), never any part of it, and a
+   `WARNING` when an exported value differs from `.env` (for example a revoked legacy key still exported).
 
 ## 2. Round 1 back: import the 23 physician-written edits
 
@@ -140,6 +150,16 @@ Only these changes are allowed before the freeze, each logged in `PILOT_REVIEW.m
 - a `served_prefix`;
 - a substitution under the plan's substitution rule.
 
+How to record a substitution in `r2/run/models_v2.json` (S4 and S5/E2 depend on it):
+- keep `original_name` exactly as in the original experiment: S5 and E2 join the two experiments on it;
+- set `model_id` (and `provider` if it changes) to the new identifier, and `served_prefix` if the provider serves
+  it under another name;
+- add `"substituted_for": "<the model_id of the original experiment>"`: S4 excludes every spec that has it;
+- log it in `PILOT_REVIEW.md` with the reason.
+
+After the freeze, models_v2.json is a frozen input: a substitution then also needs a dated entry in
+`docs/r2/FREEZE_RECORD.md` (section 7), and the superseded results file moves to `r2_runs/main/_superseded/`.
+
 After any change, rerun the pilot. The pilot is never analyzed. The supplement marker "pilot dates, parse rate
 per model and any change it prompted" is written by the authors from `PILOT_REVIEW.md` and the pilot keys.
 
@@ -175,24 +195,44 @@ git add docs/r2/FREEZE_RECORD.md && git commit -m "r2: public timestamp of the f
 ```
 
 `record-public` accepts only the pushed tag's URL (`.../releases/tag/r2-analysis-plan-frozen` or
-`.../tree/r2-analysis-plan-frozen`), an OSF link or a Zenodo DOI, and a calendar date between the freeze and
-today. It writes the URL, its kind, the date and the tag commit into `FREEZE_RECORD.md`, in place of "Public
+`.../tree/r2-analysis-plan-frozen`), an OSF link or a Zenodo DOI, and a calendar date from the freeze day (the
+record's date and the freeze commit's date, UTC) to today. A GitHub tag date is set by the client; prefer an OSF
+registration or a Zenodo deposit of the frozen plan, whose date the server sets, and keep its JSON record. It writes the URL, its kind, the date and the tag commit into `FREEZE_RECORD.md`, in place of "Public
 timestamp: pending a push". These fill the "public timestamp of the freeze" markers.
 
 **`pipeline main` refuses until `FREEZE_RECORD.md` records the public timestamp** (`REFUSED: ... records no
 public timestamp of the freeze`). The only override is `--accept-unpublished-freeze`: the run then starts, the
 command prints `ACCEPTED: main run without a public timestamp ...`, and an incident of kind
-`unpublished_freeze` is written to `r2_runs/main/pipeline.incidents.jsonl`. Use it only on the authors'
+`unpublished_freeze` is written to `r2_runs/main/freeze.incidents.jsonl`. Use it only on the authors'
 explicit decision. Post-results checks the order (section 8) and fails if the freeze date or the public
 timestamp is after the first main-run call, unless that incident exists (then it prints `ACCEPTED`).
 
 ## 7. Main run
 
-`pipeline main` refuses unless the tag `r2-analysis-plan-frozen` exists and `FREEZE_RECORD.md` records the
-public timestamp (section 6). The harness then refuses unless:
+The harness itself enforces the freeze before any main-run call, so a direct `python -m r2.run.harness` call
+is guarded too; `pipeline main` runs the same check first and refuses with `REFUSED` (exit status 2). The main
+run refuses unless:
 - the tag `r2-analysis-plan-frozen` exists;
 - `pairs_v2.json` has the hash recorded in `excluded_pairs.json`;
-- `r2/`, `data/v2/` and `tests/` are committed.
+- `FREEZE_RECORD.md` at the tag holds the five frozen hashes, and the current `FREEZE_RECORD.md` keeps those lines
+  unchanged;
+- each of the five frozen files (`data/v2/pairs_v2.json`, `r2/stimuli/render.py`,
+  `verification/excluded_pairs.json`, `r2/run/models_v2.json`, `r2/run/harness.py`) has its frozen SHA-256, or a
+  dated entry under "Changes after the freeze" in `FREEZE_RECORD.md` gives its new SHA-256 (see below);
+- `FREEZE_RECORD.md` records the public timestamp (section 6), unless `--accept-unpublished-freeze`;
+- `r2/`, `data/v2/`, `tests/`, `verification/` and `docs/r2/FREEZE_RECORD.md` are committed.
+
+**A change to a frozen file after the freeze** (for example a bug fix in `harness.py` during the run, or a
+substitution in `models_v2.json`) needs the authors' decision. Then add one line under "Changes after the
+freeze" in `docs/r2/FREEZE_RECORD.md`, dated from the freeze day to today, and commit it with the change:
+
+```
+- YYYY-MM-DD: <path> sha256 <new SHA-256>: <reason>
+```
+
+The harness then prints `FROZEN INPUT CHANGED <path>` and writes a `frozen_input_changed` incident to
+`r2_runs/main/freeze.incidents.jsonl` at every main-run start. Report every such change in the paper. Never edit
+the frozen hash lines themselves: the harness reads them from the tag.
 
 Run one background job per provider. The command prints the exact harness call:
 
@@ -223,11 +263,15 @@ What to do for each line the harness prints:
 | `STOPPED <model>: unexpected ...` | A bug or an unknown error. | Stop and report with the traceback. |
 | `REFUSED: the analysis plan is not frozen: ...` | No freeze tag. | Go back to step 6. |
 | `REFUSED: ... records no public timestamp of the freeze` | The freeze is not public yet. | Section 6: the authors approve the push; then `record-public`. |
-| `ACCEPTED: main run without a public timestamp ...` | `--accept-unpublished-freeze` was given. Incident `unpublished_freeze` in `pipeline.incidents.jsonl`. | Only on the authors' decision; the methods must then say so. |
-| `refusing the main run: ...` | The freeze tag is missing, or the stimulus hash differs. | Go back to step 6, or rebuild consistently. |
-| `commit r2/, data/v2/ and tests/ before running` | Code or stimuli are uncommitted. | Commit, then rerun. |
+| `ACCEPTED: main run without a public timestamp ...` | `--accept-unpublished-freeze` was given. Incident `unpublished_freeze` in `freeze.incidents.jsonl`. | Only on the authors' decision; the methods must then say so. |
+| `refusing the main run: <path> has sha256 ..., but FREEZE_RECORD.md at the tag records ...` | A frozen file changed after the freeze, without a dated change entry. | Revert the change, or (authors' decision) add the dated entry above, commit, rerun. |
+| `FROZEN INPUT CHANGED <path>: ...` | A documented change to a frozen file. Incident `frozen_input_changed`. | Nothing more; the paper reports it. |
+| `refusing the main run: ...` (other) | The freeze tag is missing, the stimulus hash differs, the record at the tag is missing, or its hash lines were edited. | Go back to step 6, or rebuild consistently. |
+| `commit r2/, data/v2/, tests/, verification/, docs/r2/FREEZE_RECORD.md before running` | Code, stimuli, verification files or the freeze record are uncommitted. | Commit, then rerun. |
+| `STOPPED <model>: StaleRecords ... a response to another input is never kept` | A stored record's prompt or model mapping differs. `--accept-spec-change` covers decoding changes only. | Restore the spec, or move the file aside under the substitution rule. |
 
-Archive every `*.incidents.jsonl` file (including `pipeline.incidents.jsonl`) with the run logs.
+Every `*.incidents.jsonl` file (including `freeze.incidents.jsonl`) and the job logs in `r2_runs/logs/` stay in
+`r2_runs/`; `package-runs` (section 9) archives all of them with a SHA-256 manifest.
 
 ## 8. Post-results: analyses, tables, figures, documents, checks
 
@@ -238,7 +282,8 @@ $PY -m r2.pipeline post-results                # add --no-render to skip the Lib
 The steps run in order. The first failure stops the command with `REFUSED: <step>: <reason>` (exit status 2):
 1. the completeness gate (`check_complete`): every model has 1,000 cells, no duplicates, no invalid records and
    no unresolved errors. On failure, read the `UNRESOLVED` lines and go back to step 7;
-2. the repeated analyses (`analysis_repeated/`);
+2. the repeated analyses (`analysis_repeated/`); the flat export `analysis_repeated/results_repeated.csv` is
+   written by the gate (not into `data/v2/`, so a later harness run is not blocked);
 3. the order check. It prints two lines, and both must say PASS:
    `ORDER CHECK freeze: <freeze date> <= first main-run call <time>: PASS` and
    `ORDER CHECK public: <public date> <= first main-run call <time>: PASS` (compared by day). It fails when either
@@ -276,22 +321,59 @@ Then the authors:
 
 Rerun `post-results` after every change.
 
-## 9. Release [authors approve]
+## 9. Release QA, then the release [authors approve the release]
 
-After approval, in this order:
-1. create the release tag (`git tag -a <tag> -m ...`);
-2. push the branch and the tags;
-3. mint the new Zenodo version from the pushed tag.
+**Every check runs before any tag, push or Zenodo step.** A stale or failing file found after the tag is public
+and the DOI is minted cannot be fixed in that release.
 
-Then record the release and rebuild:
+1. post-results has passed (section 8): every ORDER CHECK and QA line says PASS, and `NUMERIC` counts only the
+   release markers.
+2. Package the run logs (every job has ended; no harness may be running):
+
+   ```bash
+   $PY -m r2.pipeline package-runs
+   ```
+
+   It writes `analysis_repeated/r2_runs_manifest.json` (path, size and SHA-256 of every file under `r2_runs/`:
+   the pilot, the main run with its incident files and `_superseded/`, the job logs, the probe's availability
+   file; totals by directory) and the tarball `r2_runs_archive/r2_runs.tar.gz` next to `r2_runs/`, holding exactly
+   those files; the manifest records the tarball's SHA-256 and size. It excludes `*.lock`, `._*` and
+   `.DS_Store`, and refuses while a harness holds a model lock or when a log holds a plaintext key. Before
+   archiving, read the incident files for provider error text that echoes part of a key, and scrub it.
+3. Regenerate the data-file list: `$PY -m r2.data_files_doc`.
+4. Commit the outputs: `git add analysis_repeated docs && git commit -m "r2: repeated-experiment results"`.
+5. The release QA:
+
+   ```bash
+   $PY -m r2.pipeline release-check
+   ```
+
+   It prints one line per check, and every line must say PASS: `RELEASE CHECK clean tree`, `DATA_FILES.md
+   current`, `DATA_FILES.md complete` (no "Not yet present" row left; Supplementary Table S15 is built from it),
+   `run-log manifest` (the manifest matches every file under `r2_runs/` and the tarball), `numbers.json`
+   (`edits/test_numbers.py`), `QA scripts` (the four verdicts) and `test suite`. On a FAIL, fix the cause, rerun
+   the step that writes the file, commit, and rerun `release-check`. Nothing is tagged until it passes.
+
+Then, after the authors approve, in this order:
+
+6. create the release tag (`git tag -a <tag> -m ...`);
+7. push the branch and the tags;
+8. mint the new Zenodo version from the pushed tag. The GitHub integration archives only the git tree, so
+   upload `r2_runs_archive/r2_runs.tar.gz` and `analysis_repeated/r2_runs_manifest.json` to that version as
+   separate files, and check the uploaded tarball's SHA-256 against the manifest. These are the logs of every
+   repeated-experiment call that the Data Availability statement promises.
+
+Then record the release and fill the release markers:
 
 ```bash
 $PY -m r2.pipeline record --release-tag <tag> --zenodo-doi 10.5281/zenodo.<n>   # the tag must exist
-$PY -m r2.data_files_doc && git diff --stat docs/DATA_FILES.md   # must be current at the tag
-$PY -m r2.pipeline post-results
+$PY -m r2.pipeline post-results                # fills release_tag, zenodo_new_doi and Supplementary Table S15
+git add docs/r2/PUBLIC_RECORD.json && git commit -m "r2: release record"
 ```
 
-**Success:** `NUMERIC (should be 0): 0`. Before submission, PROSE must also be 0: no `⟦PENDING` anywhere.
+S15 is built only from a `DATA_FILES.md` that equals a fresh build and has no "Not yet present" row; otherwise
+post-results refuses. **Success:** `NUMERIC (should be 0): 0`, and `git status` shows no change under
+`analysis_repeated/`. Before submission, PROSE must also be 0: no `⟦PENDING` anywhere.
 
 ## Files each step writes
 
@@ -304,6 +386,9 @@ $PY -m r2.pipeline post-results
 | pilot-summary | `analysis_repeated/pilot_summary.csv` |
 | freeze | `docs/r2/ANALYSIS_PLAN.md` (filled), `docs/r2/FREEZE_RECORD.md`, one commit, one local tag |
 | record-public | `docs/r2/FREEZE_RECORD.md` (the public timestamp) |
-| main with `--accept-unpublished-freeze` | `r2_runs/main/pipeline.incidents.jsonl` |
+| main | `r2_runs/main/freeze.incidents.jsonl` (`unpublished_freeze` with `--accept-unpublished-freeze`; `frozen_input_changed` for a documented change) |
 | record | `docs/r2/PUBLIC_RECORD.json` |
-| post-results | `analysis_repeated/*`, `data/v2/results_repeated.csv`, `npj_R2_WORKING/{tables,05_Figures}/*`, the three documents, their PDFs and side files |
+| post-results | `analysis_repeated/*` (with `results_repeated.csv`), `npj_R2_WORKING/{tables,05_Figures}/*`, the three documents, their PDFs and side files |
+| package-runs | `analysis_repeated/r2_runs_manifest.json`, `r2_runs_archive/r2_runs.tar.gz` (next to `r2_runs/`) |
+| data_files_doc | `docs/DATA_FILES.md` |
+| release-check | nothing (the QA scripts rewrite their reports in `npj_R2_WORKING`) |

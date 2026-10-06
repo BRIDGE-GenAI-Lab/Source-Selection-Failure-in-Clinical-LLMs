@@ -20,7 +20,7 @@ def sandboxed(tmp_path, monkeypatch):
     layout = {"DATA_V2": box / "data" / "v2", "VERIFY_DIR": box / "verification", "RUNS_V2": box / "r2_runs",
               "ANALYSIS_REPEATED": box / "analysis_repeated", "R2_WORKING": box / "npj_R2_WORKING",
               "MODELS_FILE": box / "models_v2.json", "FREEZE_REPO": box / "freeze_repo",
-              "PUBLIC_RECORD": box / "PUBLIC_RECORD.json"}
+              "PUBLIC_RECORD": box / "PUBLIC_RECORD.json", "RUNS_ARCHIVE": box / "r2_runs_archive"}
     layout.update({"TABLES_DIR": layout["R2_WORKING"] / "tables", "FIGURES_DIR": layout["R2_WORKING"] / "05_Figures",
                    "FREEZE_RECORD": layout["FREEZE_REPO"] / "docs" / "r2" / "FREEZE_RECORD.md"})
     monkeypatch.setattr(paths, "SANDBOX", box)
@@ -463,7 +463,8 @@ def test_order_check_failures_stop_post_results(sandboxed, freeze_date, public, 
 
 def test_order_check_accepts_a_logged_unpublished_freeze(sandboxed, capsys):
     _order_world("2026-10-06", "2026-10-07T09:00:00+00:00")
-    pipeline._pipeline_incident({"kind": "unpublished_freeze", "freeze_record": str(paths.FREEZE_RECORD)})
+    harness._log_run_incident(paths.RUNS_V2 / "main", {"kind": "unpublished_freeze",
+                                                      "freeze_record": str(paths.FREEZE_RECORD)})
     assert pipeline.order_check()["ok"] is True
     assert "ACCEPTED by --accept-unpublished-freeze" in capsys.readouterr().out
 
@@ -558,3 +559,133 @@ def test_the_physician_edit_confirmation_needs_the_queue_count_and_the_named_aut
     assert not fill.confirmed("physician_edits", {**good, **v(v2_n_physician_edits="22", v2_unresolved="22")})
     assert not fill.confirmed("physician_edits", {**good, **v(v2_identical_all500="1")})
     assert not fill.confirmed("physician_edits", {k: x for k, x in good.items() if k != "v2_n_queue_round1"})
+
+
+# ---------------------------------------------------------------- final review M3: refusals, not tracebacks
+def _imported_world(make_pairs, monkeypatch):
+    from r2.verify import build_packets as BP
+    paths.DATA_V2.mkdir(parents=True)
+    (paths.DATA_V2 / "pairs_v2.json").write_text(json.dumps(make_pairs(["C1", "C2"])))
+    (paths.DATA_V2 / "manual_edits.json").write_text("{}")
+    (paths.VERIFY_DIR / "round1").mkdir(parents=True)
+    (paths.VERIFY_DIR / "round1" / BP.MANIFEST).write_text(json.dumps({"unresolved": []}))
+    book = paths.SANDBOX / "AG_r1.xlsx"
+    book.write_text("x")
+    monkeypatch.setattr(pipeline, "_workbook_edits", lambda xlsx: {})
+    return book
+
+
+@pytest.mark.parametrize("exc", [AssertionError("identical render for CASE_007"), ValueError("bad edit")])
+def test_import_edits_turns_a_rebuild_failure_into_a_refusal(sandboxed, make_pairs, monkeypatch, exc):
+    from r2.stimuli import build_v2 as B
+    book = _imported_world(make_pairs, monkeypatch)
+
+    def boom(*a, **k):
+        raise exc
+    monkeypatch.setattr(B, "build_v2", boom)
+    with pytest.raises(pipeline.Refused, match="the rebuild of pairs_v2.json failed") as got:
+        pipeline.import_edits(book)
+    assert str(exc) in str(got.value)
+    assert "nothing was written" not in str(got.value)       # M13: manual_edits.json may have been written
+    assert "pairs_v2.json is unchanged" in str(got.value)
+
+
+@pytest.mark.parametrize("where", ["merge_rounds", "score", "apply_consensus"])
+def test_consensus_turns_value_errors_into_refusals(sandboxed, make_pairs, monkeypatch, where):
+    from r2.verify import build_packets as BP
+    from r2.verify import score_review as SR
+    paths.DATA_V2.mkdir(parents=True)
+    (paths.DATA_V2 / "pairs_v2.json").write_text(json.dumps(make_pairs([f"CASE_{i:03d}" for i in range(1, 501)])))
+    books = []
+    for label in ("round1", "round2"):
+        (paths.VERIFY_DIR / label).mkdir(parents=True)
+        (paths.VERIFY_DIR / label / BP.MANIFEST).write_text("{}")
+    for name in ("AG_r1", "MO_r1", "AG_r2", "MO_r2"):
+        books.append(paths.SANDBOX / f"{name}.xlsx")
+        books[-1].write_text("x")
+    monkeypatch.setattr(pipeline, "_check_workbook", lambda *a: None)
+    monkeypatch.setattr(BP, "import_review_xlsx", lambda *a: None)
+    monkeypatch.setattr(BP, "merge_rounds", lambda *a: None)
+    monkeypatch.setattr(SR, "score", lambda *a: ([], []))
+    monkeypatch.setattr(SR, "_load", lambda *a: [])
+
+    def boom(*a, **k):
+        raise ValueError(f"{where} says no")
+    monkeypatch.setattr({"merge_rounds": BP, "score": SR, "apply_consensus": SR}[where], where, boom)
+    with pytest.raises(pipeline.Refused, match=f"{where} says no"):
+        pipeline.consensus(*books)
+
+
+def _post_world(sandboxed):
+    for p in (paths.DATA_V2 / "pairs_v2.json", paths.VERIFY_DIR / "excluded_pairs.json",
+              paths.ANALYSIS_REPEATED / "model_availability.csv", paths.R2_WORKING / "edits" / "numbers.py"):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("{}")
+    (paths.RUNS_V2 / "main").mkdir(parents=True)
+
+
+@pytest.mark.parametrize("exc,name", [(ValueError("corrected stimulus set still has 23 unresolved"), "check_complete"),
+                                      (RuntimeError("GEE did not converge"), "repeated"),
+                                      (AssertionError("x"), "repeated")])
+def test_post_results_turns_errors_into_refusals_naming_the_step(sandboxed, monkeypatch, exc, name):
+    from r2.analysis import repeated
+    from r2.run import check_complete
+    _post_world(sandboxed)
+
+    def boom(*a, **k):
+        raise exc
+    monkeypatch.setattr(check_complete, "main", boom if name == "check_complete" else (lambda *a, **k: None))
+    monkeypatch.setattr(repeated, "run", boom)
+    with pytest.raises(pipeline.Refused, match=f"^{name}: {type(exc).__name__}: {exc}"):
+        pipeline.post_results(render=False)
+
+
+def test_post_results_keeps_a_step_refusal_as_it_is(sandboxed, monkeypatch):
+    from r2.analysis import repeated
+    from r2.run import check_complete
+    _post_world(sandboxed)
+    monkeypatch.setattr(check_complete, "main", lambda *a, **k: None)
+    monkeypatch.setattr(repeated, "run", lambda *a, **k: {})
+    monkeypatch.setattr(pipeline, "order_check", lambda: (_ for _ in ()).throw(pipeline.Refused("order check failed: x")))
+    with pytest.raises(pipeline.Refused, match="^order check failed: x$"):
+        pipeline.post_results(render=False)
+
+
+# ---------------------------------------------------------------- final review M7: each workbook is who it claims
+def _book(path, a1):
+    from openpyxl import Workbook
+
+    from r2.verify import build_packets as BP
+    wb = Workbook()
+    wb.active.title = BP.INSTRUCTIONS
+    wb.active["A1"] = a1
+    wb.save(path)
+    return path
+
+
+@pytest.mark.parametrize("a1,ok", [("Reviewer: A.G.    Round: round1", True), ("Reviewer: M.O.    Round: round1", False),
+                                   ("Reviewer: A.G.    Round: round2", False), ("something else", False)])
+def test_check_workbook_reads_the_reviewer_and_round_from_instructions_a1(tmp_path, a1, ok):
+    book = _book(tmp_path / "AG_r1.xlsx", a1)
+    if ok:
+        pipeline._check_workbook(book, "AG", "round1")
+    else:
+        with pytest.raises(pipeline.Refused, match="given as the round1 workbook of A.G."):
+            pipeline._check_workbook(book, "AG", "round1")
+
+
+def test_consensus_refuses_swapped_workbooks_before_importing_anything(sandboxed, make_pairs, monkeypatch):
+    from r2.verify import build_packets as BP
+    paths.DATA_V2.mkdir(parents=True)
+    (paths.DATA_V2 / "pairs_v2.json").write_text(json.dumps(make_pairs([f"CASE_{i:03d}" for i in range(1, 501)])))
+    for label in ("round1", "round2"):
+        (paths.VERIFY_DIR / label).mkdir(parents=True)
+        (paths.VERIFY_DIR / label / BP.MANIFEST).write_text("{}")
+    names = {("AG", "round1"): "MO", ("MO", "round1"): "AG", ("AG", "round2"): "AG", ("MO", "round2"): "MO"}
+    books = [_book(paths.SANDBOX / f"{r}_{l}.xlsx", f"Reviewer: {pipeline.REVIEWER_NAMES[names[(r, l)]]}    Round: {l}")
+             for l in ("round1", "round2") for r in ("AG", "MO")]
+    imported = []
+    monkeypatch.setattr(BP, "import_review_xlsx", lambda *a: imported.append(a))
+    with pytest.raises(pipeline.Refused, match="AG_round1.xlsx"):
+        pipeline.consensus(*books)
+    assert imported == []

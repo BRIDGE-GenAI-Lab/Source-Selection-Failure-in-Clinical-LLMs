@@ -60,6 +60,7 @@ def world(tmp_path, monkeypatch):
     for mod in (check_complete, repeated):
         monkeypatch.setattr(mod, "load_specs", lambda *a, **k: [SPEC])
         monkeypatch.setattr(mod, "DATA_V2", data)
+    monkeypatch.setattr(check_complete, "ANALYSIS_REPEATED", tmp_path / "analysis_repeated")  # the export (M5)
     monkeypatch.setattr(repeated, "VERIFY_DIR", verify)
     return cases, sha, out, data
 

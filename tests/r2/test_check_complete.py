@@ -55,10 +55,10 @@ def test_two_non_superseded_records_are_a_duplicate(tmp_path):
 def test_export_flat_tolerates_error_cells(tmp_path, monkeypatch):
     from r2.run import check_complete
 
-    # Monkeypatch DATA_V2 to tmp_path
+    # the export goes to ANALYSIS_REPEATED (final review M5)
     data_dir = tmp_path / "data"
     data_dir.mkdir()
-    monkeypatch.setattr(check_complete, "DATA_V2", data_dir)
+    monkeypatch.setattr(check_complete, "ANALYSIS_REPEATED", data_dir)
     monkeypatch.setattr(check_complete, "load_specs", lambda *a, **k: [{"original_name": "m", "model_id": "m-1"}])
 
     # Create the results directory
@@ -126,7 +126,7 @@ def test_export_flat_uses_last_record_per_cell(tmp_path, monkeypatch):
     from r2.run import check_complete
     data_dir = tmp_path / "data"
     data_dir.mkdir()
-    monkeypatch.setattr(check_complete, "DATA_V2", data_dir)
+    monkeypatch.setattr(check_complete, "ANALYSIS_REPEATED", data_dir)
     monkeypatch.setattr(check_complete, "load_specs", lambda *a, **k: [{"original_name": "m", "model_id": "m-1"}])
     results = tmp_path / "results"
     results.mkdir()
@@ -198,7 +198,7 @@ def test_gate_fails_on_invalid_records(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["check_complete", str(out)])
     with pytest.raises(SystemExit, match="invalid records"):
         check_complete.main()
-    assert not (tmp_path / "results_repeated.csv").exists()
+    assert not (tmp_path / "analysis_repeated" / "results_repeated.csv").exists()
     report = list(csv.DictReader(open(tmp_path / "analysis_repeated" / "completeness.csv")))
     assert report[0]["invalid_records"] == "1"
 
@@ -207,7 +207,7 @@ def test_export_flat_reads_only_current_spec_files(tmp_path, monkeypatch):
     import csv
 
     from r2.run import check_complete
-    monkeypatch.setattr(check_complete, "DATA_V2", tmp_path)
+    monkeypatch.setattr(check_complete, "ANALYSIS_REPEATED", tmp_path)
     monkeypatch.setattr(check_complete, "load_specs", lambda *a, **k: [{"original_name": "m", "model_id": "m-1"},
                                                                         {"original_name": "n", "model_id": "n-1"}])
     results = tmp_path / "results"
@@ -233,7 +233,7 @@ def _full(rec, **extra):
 
 def test_export_flat_and_check_skip_blank_lines(tmp_path, monkeypatch):
     from r2.run import check_complete
-    monkeypatch.setattr(check_complete, "DATA_V2", tmp_path)
+    monkeypatch.setattr(check_complete, "ANALYSIS_REPEATED", tmp_path)
     results = tmp_path / "results"
     results.mkdir()
     a, b = _full(_rec("C1", "TS", "ok")), _full(_rec("C1", "ST", "ok"))
@@ -267,7 +267,7 @@ def test_main_with_no_specs_fails_clearly(tmp_path, monkeypatch):
 def test_loaders_tolerate_missing_model_served_on_error_cells(tmp_path, monkeypatch, served):
     from r2.run import check_complete
     from r2.run.harness import final_records
-    monkeypatch.setattr(check_complete, "DATA_V2", tmp_path)
+    monkeypatch.setattr(check_complete, "ANALYSIS_REPEATED", tmp_path)
     results = tmp_path / "results"
     results.mkdir()
     err = _full(_rec("C1", "ST", "non_response", "BadRequestError: x"), system_fingerprint=None)
@@ -318,7 +318,7 @@ def test_unresolved_errors_are_counted_listed_and_fail_the_gate(tmp_path, monkey
         mod.main()
     report = list(csv.DictReader(open(tmp_path / "analysis_repeated" / "completeness.csv")))
     assert report[0]["unresolved_errors"] == "1" and report[0]["unresolved_cells"] == "C1/ST"
-    assert not (tmp_path / "results_repeated.csv").exists()
+    assert not (tmp_path / "analysis_repeated" / "results_repeated.csv").exists()
 
 
 def test_persistent_errors_pass_the_gate_and_are_exported(tmp_path, monkeypatch):
@@ -327,7 +327,7 @@ def test_persistent_errors_pass_the_gate_and_are_exported(tmp_path, monkeypatch)
     recs = [_rec("C1", "TS", "ok"), _rec("C1", "ST", "non_response", "BadRequestError: x"), pers]
     mod, out = _gate(tmp_path, monkeypatch, recs)
     mod.main()
-    rows = _flat_rows(tmp_path / "results_repeated.csv")
+    rows = _flat_rows(tmp_path / "analysis_repeated" / "results_repeated.csv")
     assert [(r["order"], r["persistent_error"]) for r in rows] == [("TS", "0"), ("ST", "1")]
 
 
@@ -337,3 +337,20 @@ def test_gate_on_a_torn_file_fails_with_a_clear_message(tmp_path, monkeypatch):
         fh.write(b'{"case_id": "C1", "note": "\xe2')
     with pytest.raises(SystemExit, match="gate failed: .*resume the model"):
         mod.main()
+
+
+# ---- final review M5: the export goes to analysis_repeated/, never into data/v2/ (a harness CODE_PATHS directory) ----
+def test_export_flat_writes_into_analysis_repeated_not_data_v2(tmp_path, monkeypatch):
+    from r2.run import check_complete
+    from r2.run.harness import CODE_PATHS
+    data, ana = tmp_path / "data_v2", tmp_path / "analysis_repeated"
+    data.mkdir()
+    monkeypatch.setattr(check_complete, "DATA_V2", data)
+    monkeypatch.setattr(check_complete, "ANALYSIS_REPEATED", ana)
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "m-1.jsonl").write_text(json.dumps(_full(_rec("C1", "TS", "ok"))) + "\n")
+    dest = export_flat(results, [SPEC])
+    assert dest == ana / "results_repeated.csv" and dest.exists()
+    assert list(data.iterdir()) == []
+    assert not any(str(dest.relative_to(tmp_path)).startswith(p) for p in CODE_PATHS)

@@ -2,7 +2,10 @@
 simulated documents, and leaves every real location unchanged."""
 import hashlib
 import json
+import os
+import shutil
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -25,7 +28,7 @@ def _independent_hashes():
     """Hashes taken here, not by r2.rehearse: the real .docx files and the real state directories."""
     out = {}
     roots = [REAL_DOCS, Path(paths.REAL_DATA_V2), Path(paths.REAL_VERIFY_DIR), Path(paths.REAL_ANALYSIS_REPEATED),
-             Path(paths.REAL_RUNS_V2)]
+             Path(paths.REAL_RUNS_V2), Path(paths.REAL_RUNS_ARCHIVE)]
     for root in roots:
         if root.exists():
             for p in sorted(root.rglob("*")):
@@ -109,3 +112,69 @@ def test_post_results_checks_pass_in_the_rehearsal(rehearsal):
     assert oc["ok"] is True and oc["public_since"] and oc["freeze_date"] <= oc["first_main_call"][:10]
     record = (rehearsal["root"] / "freeze_repo" / "docs" / "r2" / "FREEZE_RECORD.md").read_text()
     assert f"- Public URL: {rehearse.SIM_TAG_URL}" in record
+
+
+def test_rehearsal_packages_the_run_logs(rehearsal):
+    """Final fix I3: the run-log manifest covers the sandbox r2_runs/ and its tarball sits in the sandbox."""
+    from r2 import pipeline
+    root = rehearsal["root"]
+    man = json.loads((root / "analysis_repeated" / pipeline.RUNS_MANIFEST).read_text())
+    assert man["synthetic"] is True and man["totals"]["by_directory"]["main"]["files"] > 0
+    assert {"main", "pilot"} <= set(man["totals"]["by_directory"])
+    tar = root / "r2_runs_archive" / pipeline.RUNS_TARBALL
+    assert hashlib.sha256(tar.read_bytes()).hexdigest() == man["tarball"]["sha256"]
+    assert not any(f["path"].endswith(".lock") for f in man["files"])
+
+
+def test_rehearsal_reports_a_raised_max_tokens_as_a_range(rehearsal):
+    """Final review I4: one model's higher max_tokens (a pilot change the RUNBOOK allows) does not stop the numbers
+    step; the per-class limit becomes a range and the exception is named."""
+    vals = json.loads((rehearsal["root"] / "npj_R2_WORKING" / "edits" / "numbers.json").read_text())["values"]
+    assert " to " in vals["rep_maxtok_nonreasoning"]["text"]
+    assert vals["rep_maxtok_exceptions"]["text"] != "none" and "tokens" in vals["rep_maxtok_exceptions"]["text"]
+
+
+GIT_ID = ["-c", "user.name=T", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c",
+          "tag.gpgsign=false", "-c", "core.hooksPath=/dev/null"]
+
+
+def test_the_suite_stays_green_with_the_post_results_files_committed(rehearsal, tmp_path):
+    """Final review I2: a scratch clone of this checkout's HEAD (no remote) with the rehearsal's post-results files at
+    their real locations (data/v2, verification, analysis_repeated, the filled plan and the freeze record),
+    committed, and DATA_FILES.md regenerated: data_files_doc has a rule for every file, no "Not yet present" row
+    is left, and the test suite passes in the clone (the rehearsal tests excepted: they made these files)."""
+    from r2.sandbox_git import clean_env
+    root, clone = rehearsal["root"], tmp_path / "clone"
+    env = clean_env({k: v for k, v in os.environ.items() if k not in ("R2_SANDBOX", "R2_REPO", "R2_RUNS_V2")})
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=paths.REPO, env=env, capture_output=True, text=True,
+                          check=True).stdout.strip()
+
+    def g(*a):
+        return subprocess.run(["git", *GIT_ID, *a], cwd=clone, env=env, capture_output=True, text=True, check=True)
+    subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(paths.REPO), str(clone)], env=env, check=True,
+                   capture_output=True)
+    g("remote", "remove", "origin")
+    g("checkout", "-q", "--detach", head)
+    ignore = shutil.ignore_patterns("._*", ".DS_Store", "__pycache__")
+    for rel in ("data/v2", "verification", "analysis_repeated"):
+        shutil.rmtree(clone / rel, ignore_errors=True)
+        shutil.copytree(root / rel, clone / rel, ignore=ignore)
+    for rel in ("docs/r2/FREEZE_RECORD.md", "docs/r2/ANALYSIS_PLAN.md"):
+        shutil.copyfile(root / "freeze_repo" / rel, clone / rel)
+    g("add", "-A")
+    g("commit", "-qm", "SIMULATED post-results files")
+    doc = subprocess.run([sys.executable, "-m", "r2.data_files_doc"], cwd=clone, env=env, capture_output=True,
+                         text=True)
+    assert doc.returncode == 0, doc.stdout + doc.stderr      # before the fix: "no rule for data/v2/manual_edits.json"
+    g("add", "-A")
+    g("commit", "-qm", "DATA_FILES.md")
+    files = (clone / "docs" / "DATA_FILES.md").read_text().split("## Not in this repository")[0]
+    rows = [line for line in files.splitlines() if line.startswith("| `")]
+    assert not [r for r in rows if "Not yet present" in r]
+    assert any(r.startswith("| `analysis_repeated/r2_runs_manifest.json` |") for r in rows)
+    suite = subprocess.run([sys.executable, "-m", "pytest", "tests/r2", "-q", "-p", "no:cacheprovider",
+                            "--ignore=tests/r2/test_rehearse.py"], cwd=clone, capture_output=True, text=True,
+                           env={**env, "R2_RUNS_V2": str(root / "r2_runs"), "PYTHONDONTWRITEBYTECODE": "1"},
+                           timeout=1500)
+    assert suite.returncode == 0, suite.stdout[-5000:]
+    assert g("status", "--porcelain").stdout.strip() == ""   # the suite wrote nothing into the clone

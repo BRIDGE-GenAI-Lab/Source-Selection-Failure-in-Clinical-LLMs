@@ -3,7 +3,7 @@
 Sandbox mode: with R2_SANDBOX=<dir> set (an absolute directory outside the repository, the legacy root and
 the real run directory), every path the pipeline WRITES or keeps state in resolves inside <dir> (DATA_V2,
 VERIFY_DIR, RUNS_V2, ANALYSIS_REPEATED, R2_WORKING with its tables and figures, MODELS_FILE, FREEZE_REPO,
-PUBLIC_RECORD). Read-only inputs (code, original data, audit, legacy results) stay real. WRITE_PATHS lists
+PUBLIC_RECORD, RUNS_ARCHIVE). Read-only inputs (code, original data, audit, legacy results) stay real. WRITE_PATHS lists
 the written locations; r2/pipeline.py and r2/rehearse.py use them. Without R2_SANDBOX every path is the
 real one, as before.
 """
@@ -30,6 +30,7 @@ REAL_RUNS_V2 = Path(os.environ.get("R2_RUNS_V2", str(LEGACY_ROOT / "r2_runs")))
 REAL_ANALYSIS_REPEATED = REPO / "analysis_repeated"
 REAL_R2_WORKING = LEGACY_ROOT / "npj_R2_WORKING"  # the manuscript, supplement and response build folder
 REAL_MODELS_FILE = REPO / "r2" / "run" / "models_v2.json"
+REAL_RUNS_ARCHIVE = REAL_RUNS_V2.parent / "r2_runs_archive"  # the tarball of r2_runs/ (pipeline package-runs)
 
 
 def _key(path):
@@ -68,6 +69,7 @@ if SANDBOX is None:
     MODELS_FILE = REAL_MODELS_FILE
     FREEZE_REPO = REPO  # where the freeze tag lives
     PUBLIC_RECORD = REPO / "docs" / "r2" / "PUBLIC_RECORD.json"
+    RUNS_ARCHIVE = REAL_RUNS_ARCHIVE
 else:
     DATA_V2 = SANDBOX / "data" / "v2"
     VERIFY_DIR = SANDBOX / "verification"
@@ -77,6 +79,7 @@ else:
     MODELS_FILE = SANDBOX / "models_v2.json"
     FREEZE_REPO = SANDBOX / "freeze_repo"  # a throwaway git repository holding copies of the frozen inputs
     PUBLIC_RECORD = SANDBOX / "PUBLIC_RECORD.json"
+    RUNS_ARCHIVE = SANDBOX / "r2_runs_archive"
 TABLES_DIR = R2_WORKING / "tables"
 FIGURES_DIR = R2_WORKING / "05_Figures"
 FREEZE_RECORD = FREEZE_REPO / "docs" / "r2" / "FREEZE_RECORD.md"
@@ -85,6 +88,7 @@ FREEZE_RECORD = FREEZE_REPO / "docs" / "r2" / "FREEZE_RECORD.md"
 # freeze commits and tags the repository), so it is listed only when sandboxed.
 WRITE_PATHS = {"DATA_V2": DATA_V2, "VERIFY_DIR": VERIFY_DIR, "RUNS_V2": RUNS_V2,
                "ANALYSIS_REPEATED": ANALYSIS_REPEATED, "R2_WORKING": R2_WORKING, "TABLES_DIR": TABLES_DIR,
-               "FIGURES_DIR": FIGURES_DIR, "MODELS_FILE": MODELS_FILE, "PUBLIC_RECORD": PUBLIC_RECORD}
+               "FIGURES_DIR": FIGURES_DIR, "MODELS_FILE": MODELS_FILE, "PUBLIC_RECORD": PUBLIC_RECORD,
+               "RUNS_ARCHIVE": RUNS_ARCHIVE}
 if SANDBOX is not None:
     WRITE_PATHS.update({"FREEZE_REPO": FREEZE_REPO, "FREEZE_RECORD": FREEZE_RECORD})

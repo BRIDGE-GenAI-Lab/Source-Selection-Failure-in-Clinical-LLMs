@@ -397,7 +397,8 @@ def modifications_by_type():
                     "pairs_total": total[t], "pairs_visible_in_original_runs": visible[t],
                     "original_transform": n["original_transform"], "rule_typosquat": n["rule_typosquat"],
                     "rule_inversion_extended": n["rule_inversion_extended"],
-                    "pending_physician_edit": n["pending_physician_edit"]})
+                    "pending_physician_edit": n["pending_physician_edit"],
+                    "physician_manual": n["physician_manual"]})  # the physician-written edits, once imported
     return out
 
 
