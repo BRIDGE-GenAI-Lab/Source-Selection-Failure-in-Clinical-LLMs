@@ -169,7 +169,9 @@ def test_the_suite_stays_green_with_the_post_results_files_committed(rehearsal, 
     g("add", "-A")
     g("commit", "-qm", "DATA_FILES.md")
     files = (clone / "docs" / "DATA_FILES.md").read_text().split("## Not in this repository")[0]
-    assert "Not yet present" not in files and "`analysis_repeated/r2_runs_manifest.json`" in files
+    rows = [line for line in files.splitlines() if line.startswith("| `")]
+    assert not [r for r in rows if "Not yet present" in r]
+    assert any(r.startswith("| `analysis_repeated/r2_runs_manifest.json` |") for r in rows)
     suite = subprocess.run([sys.executable, "-m", "pytest", "tests/r2", "-q", "-p", "no:cacheprovider",
                             "--ignore=tests/r2/test_rehearse.py"], cwd=clone, capture_output=True, text=True,
                            env={**env, "R2_RUNS_V2": str(root / "r2_runs"), "PYTHONDONTWRITEBYTECODE": "1"},
