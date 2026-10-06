@@ -611,12 +611,16 @@ CODE_PATHS = ("r2", "data/v2", "tests")  # must be committed: harness_commit ide
 
 
 def _sandbox_commit():
-    """Under R2_SANDBOX: "sandbox:<HEAD>", with "+dirty" when r2/ or tests/ have uncommitted changes. The sandbox
-    stimuli are not in the repository, so data/v2 is not checked; nothing here is ever analysed as data."""
-    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
-    dirty = subprocess.run(["git", "status", "--porcelain", "r2", "tests"], cwd=REPO, capture_output=True,
-                           text=True).stdout.strip()
-    return f"sandbox:{head or 'unknown'}" + ("+dirty" if dirty else "")
+    """Under R2_SANDBOX: "sandbox:code-<16 hex>", a SHA-256 over the paths and bytes of r2/**/*.py and
+    tests/**/*.py. It runs no git: a sandbox runs no git command outside itself (r2.sandbox_git). The sandbox
+    stimuli are not in the repository, so data/v2 is not included; nothing here is ever analysed as data."""
+    h = hashlib.sha256()
+    for top in ("r2", "tests"):
+        for p in sorted((REPO / top).rglob("*.py")):
+            if p.name.startswith("._") or "__pycache__" in p.parts:
+                continue
+            h.update(p.relative_to(REPO).as_posix().encode() + b"\0" + p.read_bytes() + b"\0")
+    return f"sandbox:code-{h.hexdigest()[:16]}"
 
 
 def _clean_commit():
@@ -654,9 +658,20 @@ def _select(specs, selector):
 
 
 def _tag_exists(tag, repo=None):
-    """The tag exists in FREEZE_REPO: the repository itself, or the sandbox's freeze repository under R2_SANDBOX."""
-    res = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"],
-                         cwd=FREEZE_REPO if repo is None else repo, capture_output=True, text=True)
+    """The tag exists in FREEZE_REPO: the repository itself, or the sandbox's freeze repository under R2_SANDBOX
+    (checked through r2.sandbox_git: no inherited GIT_* variables, and the repository must lie in the sandbox)."""
+    repo = FREEZE_REPO if repo is None else repo
+    if SANDBOX is not None:
+        from r2 import sandbox_git
+        if not Path(repo).exists():
+            return False
+        try:
+            res = sandbox_git.run(repo, "rev-parse", "-q", "--verify", f"refs/tags/{tag}", sandbox=SANDBOX)
+        except sandbox_git.SandboxGitError as exc:
+            raise SystemExit(f"refusing the main run: {exc}") from exc
+        return res.returncode == 0
+    res = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], cwd=repo,
+                         capture_output=True, text=True)
     return res.returncode == 0
 
 

@@ -49,7 +49,7 @@ def rehearsal(tmp_path_factory):
 
 def test_smoke_rehearsal_fills_every_numeric_marker(rehearsal):
     res = rehearsal["result"]
-    assert rehearsal["rc"] == 0, [s for s in res["steps"] if s["status"] not in ("ok", "waiting")]
+    assert rehearsal["rc"] == 0, [s for s in res["steps"] if s["status"] not in rehearse.OK_STATUS]
     assert res["markers_before"]["counts"]["NUMERIC"] > 0
     assert res["markers_after"]["counts"] == {**res["markers_after"]["counts"], "NUMERIC": 0, "UNCLASSIFIED": 0}
     assert res["markers_after"]["counts"]["PROSE"] > 0           # author-written results text stays pending
@@ -66,6 +66,8 @@ def test_smoke_rehearsal_exercises_the_harness_failure_paths(rehearsal):
     assert len(res["persistent_records"]) == 1 and "<req>" in res["persistent_records"][0]["error_key"]
     steps = {s["step"]: s for s in res["steps"]}
     assert steps["pipeline consensus (stops for adjudication)"]["status"] == "waiting"
+    refused = steps["pipeline main before the freeze is public (refused, as designed)"]
+    assert refused["status"] == "refused (expected)" and "no public timestamp" in refused["result"]
     assert steps["pipeline main (fake API, first pass)"]["result"] == 1   # cells need a resume
     assert steps["pipeline main (resume)"]["result"] == 0
 
@@ -98,3 +100,12 @@ def test_rehearse_refuses_a_real_location(where):
     with pytest.raises(ValueError, match="not a sandbox"):
         rehearse.rehearse(target)
     assert not target.exists()
+
+
+def test_post_results_checks_pass_in_the_rehearsal(rehearsal):
+    post = {s["step"]: s for s in rehearsal["result"]["steps"]}["pipeline post-results"]["result"]
+    assert all(v["failures"] == 0 and v["rc"] == 0 for v in post["qa"]["result"].values())
+    oc = post["order_check"]["result"]
+    assert oc["ok"] is True and oc["public_since"] and oc["freeze_date"] <= oc["first_main_call"][:10]
+    record = (rehearsal["root"] / "freeze_repo" / "docs" / "r2" / "FREEZE_RECORD.md").read_text()
+    assert f"- Public URL: {rehearse.SIM_TAG_URL}" in record

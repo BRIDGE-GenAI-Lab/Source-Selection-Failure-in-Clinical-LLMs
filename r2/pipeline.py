@@ -10,18 +10,27 @@
       adjudication_needed.csv) and, once verification/consensus.csv resolves every disagreement, applies the
       exclusion and flag rules (excluded_pairs.json, flags.json, final_review.csv).
   probe --yes | pilot --yes [--models M] | main --yes [--models M] [--retry-persistent] [--accept-spec-change]
+                                            [--accept-unpublished-freeze]
       thin wrappers over r2.run.probe_models and r2.run.harness; each prints the exact command it runs and
-      spends money only with --yes.
+      spends money only with --yes. main also needs the freeze tag and the public timestamp of the freeze
+      (record-public); --accept-unpublished-freeze is the only override and writes an incident line.
   pilot-summary [DIR]
       read-only: per model, the pilot's valid replies, non-responses, API errors, truncations, served
       identifiers and median tokens (the facts PILOT_REVIEW.md records); DIR defaults to r2_runs/pilot.
   freeze [--dry-run | --yes]
       wraps python -m r2.freeze (local commit and tag; never pushes).
-  record [--freeze-pushed YYYY-MM-DD] [--release-tag TAG] [--zenodo-doi DOI]
-      writes the public facts the documents cite (docs/r2/PUBLIC_RECORD.json) after the authors' push/release.
+  record-public URL [--date YYYY-MM-DD]
+      after the authors approved and made the freeze public: records the pushed tag's URL, an OSF registration
+      or a Zenodo DOI, the day, and the tag commit in docs/r2/FREEZE_RECORD.md (commit that file).
+  record [--release-tag TAG] [--zenodo-doi DOI]
+      writes the release facts the documents cite (docs/r2/PUBLIC_RECORD.json) after the authors' release.
+  scan-legacy-keys [ROOT]
+      read-only: the files under ROOT (default the legacy tree) that hold a plaintext API key, and the provider
+      of each key; never any part of a key.
   post-results [--no-render]
-      completeness gate -> repeated analyses -> supplement tables -> Table 1 -> Figures 2-4 -> numbers.json ->
-      manuscript, supplement, response -> QA scripts -> PENDING_INDEX.md -> remaining markers by class.
+      completeness gate -> repeated analyses -> order check (freeze and public timestamp before the first
+      main-run call) -> supplement tables -> Table 1 -> Figures 2-4 -> numbers.json -> manuscript, supplement,
+      response -> QA scripts (any failure stops) -> PENDING_INDEX.md -> remaining markers by class.
   markers
       the remaining pending markers of the three documents, NUMERIC (must be filled) or PROSE (author text).
   sandbox-init DIR
@@ -32,6 +41,7 @@ R2_SANDBOX every write goes to the sandbox (r2.paths), every write location is c
 calls a real API.
 """
 import argparse
+import csv
 import hashlib
 import importlib.util
 import json
@@ -150,6 +160,86 @@ def sandbox_init(root, n_models=None):
     return {"root": str(root), "models": [m["original_name"] for m in models["models"]]}
 
 
+# ---------------------------------------------------------------- scan-legacy-keys
+# The key patterns of the global constraints (plus OpenAI's sk-proj- form, which their sk- pattern misses).
+# Written with character classes so that this file never matches the secrets grep itself.
+KEY_PATTERNS = (("Together", re.compile(r"tgp[_]v1[_][A-Za-z0-9_-]{20,}")),
+                ("Groq", re.compile(r"gsk[_][A-Za-z0-9]{20,}")),
+                ("Google Gemini", re.compile(r"AIz[a][0-9A-Za-z_-]{20,}")),
+                ("OpenAI", re.compile(r"s[k]-proj-[A-Za-z0-9_-]{20,}")),
+                ("sk-", re.compile(r"(?<![A-Za-z0-9])s[k]-[A-Za-z0-9]{20,}")))
+SCAN_SKIP_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules", "site-packages", ".pytest_cache"}
+BINARY_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".docx", ".xlsx", ".pptx", ".zip", ".gz", ".tar",
+                   ".pyc", ".ashx", ".parquet", ".pkl", ".npz", ".npy", ".mp4", ".mov", ".tif", ".tiff", ".svgz"}
+
+
+def _sk_provider(key, text):
+    """An sk- key is DeepSeek's (sk- + 32 hex) or OpenAI's; the file's text decides when the form does not."""
+    low = text.lower()
+    if re.fullmatch(r"s[k]-[0-9a-f]{32}", key) or ("deepseek" in low and "openai.com" not in low):
+        return "DeepSeek"
+    return "OpenAI" if "openai" in low else "OpenAI or DeepSeek"
+
+
+def scan_legacy_keys(root=None, quiet=False):
+    """Plaintext API keys under `root` (default the legacy tree): the files and the provider of each key, never
+    any part of a key. Skips ._* files, git repositories below root (check those with the secrets git grep),
+    virtual environments and binary files. Returns {files: {path: [providers]}, providers: {name: {files,
+    distinct_keys}}, skipped_repositories: [...], files_read: n}."""
+    root = Path(root or paths.LEGACY_ROOT)
+    _need(root)
+    files, seen, repos, n_read = {}, {}, [], 0
+    for d, dirs, names in os.walk(root):
+        here = Path(d)
+        keep = []
+        for name in sorted(dirs):
+            sub_dir = here / name
+            if name in SCAN_SKIP_DIRS or name.startswith("._"):
+                continue
+            if (sub_dir / ".git").exists():
+                repos.append(str(sub_dir))
+                continue
+            keep.append(name)
+        dirs[:] = keep
+        for name in sorted(names):
+            path = here / name
+            if name.startswith("._") or path.suffix.lower() in BINARY_SUFFIXES or not path.is_file():
+                continue
+            try:
+                data = path.read_bytes()
+            except OSError:
+                continue
+            if b"\x00" in data[:8192]:
+                continue
+            n_read += 1
+            text = data.decode("utf-8", "replace")
+            found = set()
+            for provider, rx in KEY_PATTERNS:
+                for m in rx.finditer(text):
+                    name_ = _sk_provider(m.group(0), text) if provider == "sk-" else provider
+                    found.add(name_)
+                    seen.setdefault(name_, {"files": set(), "keys": set()})
+                    seen[name_]["files"].add(str(path))
+                    seen[name_]["keys"].add(hashlib.sha256(m.group(0).encode()).hexdigest())  # counted, never shown
+            if found:
+                files[str(path)] = sorted(found)
+    providers = {k: {"files": len(v["files"]), "distinct_keys": len(v["keys"])} for k, v in sorted(seen.items())}
+    if not quiet:
+        print(f"plaintext API keys under {root} ({n_read} text files read; skipped ._* files, virtual environments, "
+              f"binary files and {len(repos)} git repositories):")
+        for path, provs in files.items():
+            print(f"  {path}: {', '.join(provs)}")
+        for name, v in providers.items():
+            print(f"  {name}: {v['distinct_keys']} distinct key(s) in {v['files']} file(s)")
+        for r in repos:
+            print(f"  skipped git repository (run the secrets git grep there): {r}")
+        if providers:
+            print("Revoke EVERY key of each provider above in that provider's dashboard (not only the keys these "
+                  "files hold), create new keys, and put them only in ~/npj_r2/r2_repo/.env "
+                  "(docs/r2/RUNBOOK.md, section 1).")
+    return {"files": files, "providers": providers, "skipped_repositories": repos, "files_read": n_read}
+
+
 # ---------------------------------------------------------------- import-edits
 def _workbook_edits(xlsx):
     """(case_id -> {field, find, replace}) from the Author_edits sheet, as build_packets reads it."""
@@ -197,7 +287,10 @@ def import_edits(xlsx, author="A.G.", date=None):
     manual_path = paths.DATA_V2 / "manual_edits.json"
     result = {"workbook": str(xlsx)}
     if pairs.get("unresolved"):
-        edits = BP.import_author_edits(xlsx, author, date or _today())
+        try:
+            edits = BP.import_author_edits(xlsx, author, date or _today())
+        except ValueError as exc:  # a rejected edit: nothing was written; send the row back to the physician
+            raise Refused(f"author edit rejected: {exc}") from exc
         result["edits_imported"] = len(edits)
     else:  # already imported: the workbook must agree with manual_edits.json (idempotent rerun)
         _need(manual_path)
@@ -215,7 +308,10 @@ def import_edits(xlsx, author="A.G.", date=None):
     missing = sorted(set(queue) - set(manual))
     if missing:
         raise Refused(f"no physician edit for {len(missing)} queued pairs: {missing[:10]}")
-    cases, unresolved = build_v2(manual, strict=True)  # re-audits every pair: identical renders raise
+    try:
+        cases, unresolved = build_v2(manual, strict=True)  # re-audits every pair: identical renders raise
+    except ValueError as exc:
+        raise Refused(f"the rebuild of pairs_v2.json failed (nothing was written): {exc}") from exc
     write_outputs(cases, unresolved)
     pairs = _pairs()
     sha = _sha(paths.DATA_V2 / "pairs_v2.json")
@@ -250,7 +346,10 @@ def consensus(ag1, mo1, ag2, mo2, consensus_file=None):
         raise Refused("pairs_v2.json is not complete (500 pairs, none unresolved): run import-edits first")
     for (label, reviewer), book in books.items():
         _need(paths.VERIFY_DIR / label / BP.MANIFEST)
-        BP.import_review_xlsx(book, paths.VERIFY_DIR / label / f"review_{reviewer}.csv")
+        try:
+            BP.import_review_xlsx(book, paths.VERIFY_DIR / label / f"review_{reviewer}.csv")
+        except ValueError as exc:
+            raise Refused(f"{book}: review form rejected: {exc}") from exc
     BP.merge_rounds(["round1", "round2"])
     a, b = paths.VERIFY_DIR / "review_AG.csv", paths.VERIFY_DIR / "review_MO.csv"
     _, disagreements = SR.score(a, b)
@@ -312,17 +411,37 @@ def harness_argv(kind, models="all", retry_persistent=False, accept_spec_change=
     return argv
 
 
-def run_harness(kind, yes=False, client_factory=None, sleep=None, **flags):
-    """kind 'pilot' or 'main'. Returns the harness exit status (1: a model stopped or cells need a resume)."""
+def run_harness(kind, yes=False, client_factory=None, sleep=None, accept_unpublished_freeze=False, **flags):
+    """kind 'pilot' or 'main'. Returns the harness exit status (1: a model stopped or cells need a resume).
+    The main run also needs the freeze tag and a public timestamp of the freeze in FREEZE_RECORD.md (record-public);
+    the only override, accept_unpublished_freeze, writes an incident line."""
     check_write_paths()
     argv = harness_argv(kind, **flags)
     _show(["python", "-m", "r2.run.harness", *argv])
     _spend_guard(yes, f"the {kind} run")
     if kind == "main":
+        from r2.freeze import TAG
         _need(paths.VERIFY_DIR / "excluded_pairs.json")
+        if not _tag_commit(TAG):
+            raise Refused(f"the analysis plan is not frozen: no tag {TAG} in {paths.FREEZE_REPO} "
+                          "(python -m r2.pipeline freeze)")
+    if client_factory is None and paths.SANDBOX is not None:
+        raise Refused("R2_SANDBOX is set: a sandbox never calls a real API (use r2.rehearse)")
+    if kind == "main":
+        pub = public_timestamp()
+        if pub is not None:
+            print(f"public timestamp of the freeze: {pub['kind']} {pub['url']} (public since {pub['since']})")
+        elif not accept_unpublished_freeze:
+            raise Refused(f"{paths.FREEZE_RECORD} records no public timestamp of the freeze. Pushing the tag needs "
+                          "the authors' approval; once the freeze is public (the pushed tag, an OSF registration or a "
+                          "Zenodo DOI), run python -m r2.pipeline record-public <url> and rerun. The only override is "
+                          "--accept-unpublished-freeze, which writes an incident line")
+        else:
+            where = _pipeline_incident({"kind": "unpublished_freeze", "freeze_record": str(paths.FREEZE_RECORD),
+                                        "argv": argv, "note": "main run started before the freeze was public"})
+            print(f"ACCEPTED: main run without a public timestamp of the freeze (--accept-unpublished-freeze); "
+                  f"incident written to {where}")
     if client_factory is None:
-        if paths.SANDBOX is not None:
-            raise Refused("R2_SANDBOX is set: a sandbox never calls a real API (use r2.rehearse)")
         return subprocess.run([PY, "-m", "r2.run.harness", *argv], cwd=paths.REPO).returncode
     from r2.run import harness
     return harness.cli(argv, client_factory=client_factory, **({"sleep": sleep} if sleep else {}))
@@ -333,8 +452,11 @@ def _median(xs):
     return None if not xs else (xs[len(xs) // 2] if len(xs) % 2 else (xs[len(xs) // 2 - 1] + xs[len(xs) // 2]) / 2)
 
 
-def pilot_summary(out_dir=None):
-    """Read-only summary of a pilot run: one row per model of the current specs."""
+def pilot_summary(out_dir=None, write=True):
+    """Summary of a pilot run, one row per model of the current specs: valid replies, non-responses, API errors,
+    truncations, served identifiers, median tokens, first and last call and the parse rate. Reads the pilot
+    records only; with write=True it also writes analysis_repeated/pilot_summary.csv (the pilot keys of
+    numbers.json, for the authors' pilot sentence; the pilot is never analysed)."""
     from r2.run.harness import final_records, load_specs, results_path
     out_dir = Path(out_dir or paths.RUNS_V2 / "pilot")
     _need(out_dir)
@@ -352,8 +474,19 @@ def pilot_summary(out_dir=None):
                      "truncated": sum(f == "length" for f in finish),
                      "served": ";".join(sorted({r["model_served"] for r in final if r.get("model_served")})),
                      "median_prompt_tokens": _median([u.get("prompt_tokens") for u in usage]),
-                     "median_completion_tokens": _median([u.get("completion_tokens") for u in usage])})
-    head = list(rows[0]) if rows else []
+                     "median_completion_tokens": _median([u.get("completion_tokens") for u in usage]),
+                     "first_call": min((r["finished_at"] for r in final if r.get("finished_at")), default=""),
+                     "last_call": max((r["finished_at"] for r in final if r.get("finished_at")), default=""),
+                     "parse_rate": (sum(r.get("status") == "ok" for r in final) / len(final)) if final else ""})
+    if write and rows:
+        dest = paths.ANALYSIS_REPEATED / "pilot_summary.csv"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        extra = {"synthetic": True} if paths.SANDBOX is not None else {}
+        with open(dest, "w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(rows[0]) + list(extra))
+            w.writeheader()
+            w.writerows({**r, **extra} for r in rows)
+    head = [k for k in (rows[0] if rows else []) if k not in ("first_call", "last_call", "parse_rate")]
     print("| " + " | ".join(head) + " |\n|" + "---|" * len(head))
     for r in rows:
         rate = f"{100 * r['ok'] / r['cells']:.0f}%" if r["cells"] else "no records"
@@ -374,39 +507,71 @@ GIT_ID = ["-c", "user.name=R2 sandbox", "-c", "user.email=sandbox@rehearsal.inva
           "-c", "tag.gpgsign=false"]
 
 
-def _git(repo, *args):
-    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True)
+def _git(repo, *args, check=False):
+    """git in `repo`. Under R2_SANDBOX through r2.sandbox_git (no inherited GIT_* variables, no hooks, and the
+    repository must lie inside the sandbox); a failure or a refusal becomes Refused."""
+    if paths.SANDBOX is None:
+        res = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True)
+        if check and res.returncode:
+            raise Refused(f"git {' '.join(args)} failed in {repo}: {res.stderr.strip()}")
+        return res
+    from r2 import sandbox_git
+    try:
+        return sandbox_git.run(repo, *args, sandbox=paths.SANDBOX, check=check)
+    except sandbox_git.SandboxGitError as exc:
+        raise Refused(str(exc)) from exc
+
+
+def _tag_commit(tag, repo=None):
+    """The commit the tag points to in `repo` (default FREEZE_REPO), or None when the tag does not exist."""
+    repo = Path(repo or paths.FREEZE_REPO)
+    if not (repo / ".git").exists():
+        return None
+    if _git(repo, "rev-parse", "-q", "--verify", f"refs/tags/{tag}").returncode:
+        return None
+    return _git(repo, "rev-parse", f"{tag}^{{commit}}", check=True).stdout.strip()
 
 
 def _sandbox_freeze_repo():
     """Under R2_SANDBOX: a throwaway git repository (paths.FREEZE_REPO) holding copies of the frozen inputs, so
     that r2.freeze runs unchanged without touching the real repository. Synced and committed until frozen."""
+    from r2 import sandbox_git
     from r2.analysis.synthetic import assert_sandbox
     repo = assert_sandbox(paths.FREEZE_REPO)
     _need(*(src() for src in FREEZE_INPUTS.values()))
-    if not (repo / ".git").exists():
-        repo.mkdir(parents=True, exist_ok=True)
-        _git(repo, "init", "-q")
-        for k, v in (("user.name", "R2 sandbox"), ("user.email", "sandbox@rehearsal.invalid"),
-                     ("commit.gpgsign", "false"), ("tag.gpgsign", "false")):
-            _git(repo, "config", k, v)
+    try:
+        sandbox_git.init_repo(repo, paths.SANDBOX)
+    except sandbox_git.SandboxGitError as exc:
+        raise Refused(f"sandbox freeze repository: {exc}") from exc
     for rel, src in FREEZE_INPUTS.items():
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src(), repo / rel)
-    if _git(repo, "status", "--porcelain").stdout.strip():
-        _git(repo, "add", "-A")
-        res = _git(repo, *GIT_ID, "commit", "-q", "-m", "sandbox: inputs to freeze (simulated)")
-        if res.returncode:
-            raise Refused(f"sandbox freeze repository: git commit failed: {res.stderr.strip()}")
+    if _git(repo, "status", "--porcelain", check=True).stdout.strip():
+        _git(repo, "add", "-A", check=True)
+        _git(repo, *GIT_ID, "commit", "-q", "-m", "sandbox: inputs to freeze (simulated)", check=True)
     return repo
+
+
+def _guarded_freeze_git(F):
+    """r2.freeze._git for the sandbox freeze: every call through r2.sandbox_git (r2/freeze.py is unchanged)."""
+    from r2 import sandbox_git
+
+    def _git_in_sandbox(repo, *args, check=True):
+        try:
+            res = sandbox_git.run(repo, *args, sandbox=paths.SANDBOX)
+        except sandbox_git.SandboxGitError as exc:
+            raise F.FreezeRefused(str(exc)) from exc
+        if check and res.returncode != 0:
+            raise F.FreezeRefused(f"git {' '.join(args)} failed: {res.stderr.strip()}")
+        return res
+    return _git_in_sandbox
 
 
 def freeze(dry_run=False, yes=False):
     from r2 import freeze as F
     check_write_paths()
-    repo = paths.FREEZE_REPO
-    if (repo / ".git").exists() and _git(repo, "rev-parse", "-q", "--verify", f"refs/tags/{F.TAG}").returncode == 0:
-        commit = _git(repo, "rev-parse", f"{F.TAG}^{{commit}}").stdout.strip()
+    commit = _tag_commit(F.TAG)
+    if commit:
         print(f"already frozen: tag {F.TAG} -> {commit}")
         return {"frozen": True, "commit": commit, "already": True}
     cmd = ["python", "-m", "r2.freeze"] + (["--dry-run"] if dry_run else [])
@@ -419,27 +584,145 @@ def freeze(dry_run=False, yes=False):
         if rc:
             raise Refused(f"python -m r2.freeze exited {rc} (its REFUSED line says why)")
         return {"frozen": not dry_run, "dry_run": dry_run}
+    from r2 import sandbox_git
     repo = _sandbox_freeze_repo()
+    original = F._git
+    F._git = _guarded_freeze_git(F)
     try:
-        commit = F.freeze(repo=repo, runs_v2=paths.RUNS_V2, dry_run=dry_run)
+        with sandbox_git.isolated():
+            commit = F.freeze(repo=repo, runs_v2=paths.RUNS_V2, dry_run=dry_run)
     except F.FreezeRefused as exc:
         raise Refused(f"r2.freeze: {exc}") from exc
+    finally:
+        F._git = original
     return {"frozen": not dry_run, "dry_run": dry_run, "commit": commit, "repo": str(repo)}
 
 
-# ---------------------------------------------------------------- record (public facts after a push / release)
-def record(freeze_pushed=None, release_tag=None, zenodo_doi=None):
+# ---------------------------------------------------------------- the public timestamp of the freeze
+FREEZE_TAG_NAME = "r2-analysis-plan-frozen"
+PUBLIC_KINDS = (
+    ("pushed tag", re.compile(r"https://(?:github\.com|gitlab\.com)/[\w.-]+/[\w.-]+/(?:releases/tag|tree|-/tags)/"
+                              + re.escape(FREEZE_TAG_NAME) + r"/?")),
+    ("OSF registration", re.compile(r"https://osf\.io/[a-z0-9]{5,}/?|https://doi\.org/10\.17605/OSF\.IO/[A-Z0-9]{5,}")),
+    ("Zenodo DOI", re.compile(r"(?:https://doi\.org/)?10\.5281/zenodo\.\d+|https://zenodo\.org/records?/\d+")),
+)
+PIPELINE_INCIDENTS = "pipeline.incidents.jsonl"  # under r2_runs/main; check_complete ignores *.incidents.jsonl
+
+
+def public_kind(url):
+    """'pushed tag', 'OSF registration', 'Zenodo DOI', or None for anything else."""
+    for kind, rx in PUBLIC_KINDS:
+        if rx.fullmatch(url.strip()):
+            return kind
+    return None
+
+
+def _freeze_date(text=None):
+    if text is None:
+        if not paths.FREEZE_RECORD.exists():
+            return None
+        text = paths.FREEZE_RECORD.read_text(encoding="utf-8")
+    m = re.search(r"^- Date: (\d{4}-\d{2}-\d{2})$", text, re.M)
+    return m.group(1) if m else None
+
+
+def public_timestamp():
+    """The public timestamp FREEZE_RECORD.md records ({url, kind, since, tag_commit}), or None (not recorded, or
+    not a valid public URL)."""
+    if not paths.FREEZE_RECORD.exists():
+        return None
+    text = paths.FREEZE_RECORD.read_text(encoding="utf-8")
+    got = {k: (m.group(1).strip() if m else None) for k, m in (
+        ("url", re.search(r"^- Public URL: (\S+)$", text, re.M)),
+        ("kind", re.search(r"^- Kind: (.+)$", text, re.M)),
+        ("since", re.search(r"^- Public since: (\d{4}-\d{2}-\d{2})$", text, re.M)),
+        ("tag_commit", re.search(r"^- Tag commit: (\S+)$", text, re.M)))}
+    if not got["url"] or not got["since"] or public_kind(got["url"]) is None:
+        return None
+    return got
+
+
+def _calendar_date(value, what):
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        raise Refused(f"{what} must be a calendar date YYYY-MM-DD, got {value!r} (not a calendar date)") from None
+
+
+def record_public(url, date=None):
+    """Record the public timestamp of the freeze in FREEZE_RECORD.md: the pushed tag's URL, an OSF registration
+    or a Zenodo DOI, and the date it became public (default today, UTC). Run after the authors approved and made
+    the push. Idempotent for the same URL; refuses a different one."""
+    from r2.freeze import TAG
     check_write_paths()
-    if not (freeze_pushed or release_tag or zenodo_doi):
-        raise Refused("nothing to record: give --freeze-pushed, --release-tag and/or --zenodo-doi")
-    if freeze_pushed and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", freeze_pushed):
-        raise Refused(f"--freeze-pushed must be YYYY-MM-DD, got {freeze_pushed!r}")
+    _need(paths.FREEZE_RECORD)
+    commit = _tag_commit(TAG)
+    if not commit:
+        raise Refused(f"no tag {TAG} in {paths.FREEZE_REPO}: freeze first")
+    url = url.strip()
+    kind = public_kind(url)
+    if kind is None:
+        raise Refused(f"{url!r} is not a public timestamp: give the pushed tag's URL "
+                      f"(https://github.com/<owner>/<repo>/releases/tag/{TAG} or .../tree/{TAG}), an OSF link "
+                      "(https://osf.io/<id>) or a Zenodo DOI (10.5281/zenodo.<n>)")
+    since = _calendar_date(date or _today(), "--date")
+    frozen = _freeze_date()
+    if frozen and since < frozen:
+        raise Refused(f"--date {since} is before the freeze ({frozen})")
+    if since > _today():
+        raise Refused(f"--date {since} is in the future")
+    current = public_timestamp()
+    if current:
+        if current["url"] != url:
+            raise Refused(f"{paths.FREEZE_RECORD} already records the public timestamp {current['url']}; "
+                          "edit the record by hand, with a dated entry, if it changed")
+        return {**current, "already": True}
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    block = (f"Public timestamp: recorded by python -m r2.pipeline record-public on {stamp}.\n\n"
+             f"- Public URL: {url}\n- Kind: {kind}\n- Public since: {since}\n- Tag commit: {commit}")
+    text = paths.FREEZE_RECORD.read_text(encoding="utf-8")
+    new, n = re.subn(r"Public timestamp: pending a push\..*?(?=\n\n|\Z)", lambda m: block, text, count=1, flags=re.S)
+    if not n:
+        new = text.rstrip("\n") + "\n\n" + block + "\n"
+    paths.FREEZE_RECORD.write_text(new, encoding="utf-8")
+    print(f"recorded in {paths.FREEZE_RECORD}: {kind} {url} (public since {since}); commit this file")
+    return {"url": url, "kind": kind, "since": since, "tag_commit": commit}
+
+
+def _pipeline_incident(rec):
+    """One line in r2_runs/main/pipeline.incidents.jsonl (evidence, archived with the run logs)."""
+    path = paths.RUNS_V2 / "main" / PIPELINE_INCIDENTS
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = {"at": datetime.now(timezone.utc).isoformat(), **rec}
+    if paths.SANDBOX is not None:
+        line["synthetic"] = True
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(line) + "\n")
+    return path
+
+
+def _pipeline_incidents():
+    path = paths.RUNS_V2 / "main" / PIPELINE_INCIDENTS
+    if not path.exists():
+        return []
+    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+
+# ---------------------------------------------------------------- record (public facts after the release)
+def record(release_tag=None, zenodo_doi=None):
+    """The release facts the documents cite (docs/r2/PUBLIC_RECORD.json), after the authors approved and made the
+    release. The release tag must exist (in FREEZE_REPO: the repository, or the sandbox's freeze repository)."""
+    check_write_paths()
+    if not (release_tag or zenodo_doi):
+        raise Refused("nothing to record: give --release-tag and/or --zenodo-doi (the public timestamp of the "
+                      "freeze is recorded by record-public)")
+    if release_tag and not _tag_commit(release_tag):
+        raise Refused(f"no tag {release_tag} in {paths.FREEZE_REPO}: create the release tag first")
     if zenodo_doi and not DOI_RE.fullmatch(zenodo_doi):
         raise Refused(f"--zenodo-doi must be a DOI (10.xxxx/...), got {zenodo_doi!r}")
     path = paths.PUBLIC_RECORD
     data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    new = {k: v for k, v in (("freeze_pushed", freeze_pushed), ("release_tag", release_tag),
-                             ("zenodo_new_doi", zenodo_doi)) if v}
+    new = {k: v for k, v in (("release_tag", release_tag), ("zenodo_new_doi", zenodo_doi)) if v}
     clash = {k: (data[k], v) for k, v in new.items() if k in data and data[k] != v}
     if clash:
         raise Refused(f"{path} already records different values: {clash}; edit it by hand if a fact changed")
@@ -453,11 +736,21 @@ def record(freeze_pushed=None, release_tag=None, zenodo_doi=None):
 
 # ---------------------------------------------------------------- post-results
 QA_SCRIPTS = ("qa_numbers.py", "qa_xref.py", "qa_keyfacts.py", "qa_hygiene.py")
+QA_VERDICTS = {  # script -> (report, verdict line pattern, label); the verdict must be 0 and the exit status 0
+    "qa_numbers.py": ("qa_numbers_report.md", r"\*\*UNEXPLAINED: (\d+)\*\*", "UNEXPLAINED"),
+    "qa_xref.py": ("qa_xref_report.md", r"^Cross-reference failures: (\d+)$", "Cross-reference failures"),
+    "qa_keyfacts.py": ("qa_keyfacts_report.md", r"^Key-fact failures: (\d+)$", "Key-fact failures"),
+    "qa_hygiene.py": ("qa_hygiene_report.md", r"^## Total hygiene hits: (\d+)$", "Total hygiene hits"),
+}
 
 
 def _doc_env():
+    """The document scripts' environment. Under R2_SANDBOX without GIT_* variables (r2.sandbox_git.clean_env):
+    their only git commands are read-only reads of the code checkout for the code listings."""
     env = {**os.environ, "R2_REPO": str(paths.REPO), "PYTHONDONTWRITEBYTECODE": "1"}
     if paths.SANDBOX is not None:
+        from r2 import sandbox_git
+        env = sandbox_git.clean_env(env)
         env["R2_SANDBOX"] = str(paths.SANDBOX)
     else:
         env.pop("R2_SANDBOX", None)
@@ -470,11 +763,73 @@ def _doc_script(args, check=True):
     _show(["python", *args])
     t0 = time.time()
     res = subprocess.run(cmd, cwd=paths.R2_WORKING, env=_doc_env(), capture_output=True, text=True)
-    out = {"command": shlex.join(["python", *args]), "rc": res.returncode, "seconds": round(time.time() - t0, 1),
-           "tail": (res.stdout[-1500:] + ("\n" + res.stderr[-1500:] if res.stderr.strip() else "")).strip()}
+    out = {"command": shlex.join(["python", *args]), "rc": res.returncode, "seconds": round(time.time() - t0, 1)}
+    if res.returncode:
+        out["tail"] = (res.stdout[-1500:] + ("\n" + res.stderr[-1500:] if res.stderr.strip() else "")).strip()
     if check and res.returncode:
         raise Refused(f"{out['command']} exited {res.returncode}:\n{out['tail']}")
     return out
+
+
+def run_qa():
+    """The four QA scripts. Prints each verdict on its own line; any failure (a verdict above 0, a non-zero exit
+    status, or no verdict) stops with Refused naming the script, the verdict and the report."""
+    results, failed = {}, []
+    for script in QA_SCRIPTS:
+        report, rx, label = QA_VERDICTS[script]
+        path = paths.R2_WORKING / report
+        out = _doc_script([script], check=False)
+        m = re.search(rx, path.read_text(encoding="utf-8"), re.M) if path.exists() else None
+        n = int(m.group(1)) if m else None
+        ok = out["rc"] == 0 and n == 0
+        verdict = f"{label}: {n}" if n is not None else f"no verdict in {report}"
+        print(f"QA {script}: {verdict}: {'PASS' if ok else 'FAIL'}" + ("" if ok else f" (exit status {out['rc']})"),
+              flush=True)
+        results[script] = {"rc": out["rc"], "failures": n, "report": str(path)}
+        if not ok:
+            failed.append(f"{script}: {verdict} (exit status {out['rc']}; see {path})")
+    if failed:
+        raise Refused("QA failed: " + "; ".join(failed))
+    return results
+
+
+def order_check():
+    """The freeze date and the public timestamp (FREEZE_RECORD.md) are on or before the first main-run call
+    (headline.json rep_call_dates.first), compared by day. Prints each comparison; any failure, or a check that
+    cannot be made, stops with Refused. A main run started with --accept-unpublished-freeze (an incident line)
+    passes the public comparison as ACCEPTED."""
+    rec, head = paths.FREEZE_RECORD, paths.ANALYSIS_REPEATED / "headline.json"
+    first = (json.loads(head.read_text()).get("rep_call_dates") or {}).get("first") if head.exists() else None
+    frozen = _freeze_date()
+    if not first or not frozen:
+        why = [w for w, bad in ((f"no freeze date in {rec}", not frozen),
+                                (f"no rep_call_dates.first in {head}", not first)) if bad]
+        raise Refused("ORDER CHECK cannot be made: " + "; ".join(why))
+    day, problems = first[:10], []
+    ok = frozen <= day
+    print(f"ORDER CHECK freeze: {frozen} <= first main-run call {first}: {'PASS' if ok else 'FAIL'}", flush=True)
+    if not ok:
+        problems.append(f"the freeze date {frozen} is after the first main-run call {first}")
+    pub = public_timestamp()
+    if pub:
+        ok_pub = pub["since"] <= day
+        print(f"ORDER CHECK public: {pub['since']} <= first main-run call {first}: {'PASS' if ok_pub else 'FAIL'}",
+              flush=True)
+        problem = f"the public timestamp {pub['since']} is after the first main-run call {first}"
+    else:
+        ok_pub = False
+        print(f"ORDER CHECK public: no public timestamp in {rec}: FAIL", flush=True)
+        problem = f"no public timestamp in {rec} (python -m r2.pipeline record-public <url>)"
+    accepted = [i for i in _pipeline_incidents() if i.get("kind") == "unpublished_freeze"]
+    if not ok_pub and accepted:
+        print(f"ORDER CHECK public: ACCEPTED by --accept-unpublished-freeze (incident of {accepted[0]['at']} in "
+              f"{paths.RUNS_V2 / 'main' / PIPELINE_INCIDENTS})", flush=True)
+    elif not ok_pub:
+        problems.append(problem)
+    if problems:
+        raise Refused("order check failed: " + "; ".join(problems))
+    return {"ok": True, "freeze_date": frozen, "public_since": pub["since"] if pub else None,
+            "first_main_call": first, "accepted_unpublished_freeze": bool(accepted and not (pub and ok_pub))}
 
 
 def data_files_table():
@@ -497,7 +852,9 @@ def data_files_table():
 
 
 def post_results(render=True):
-    """Every post-results step in order; returns {step: result}. Stops at the first failing step (Refused)."""
+    """Every post-results step in order; returns {step: result}. Stops at the first failing step (Refused): the
+    completeness gate, the order check (freeze and public timestamp before the first main-run call), a document
+    build, or a QA verdict."""
     from r2.analysis import figures, repeated, supp_tables, table1
     from r2.run import check_complete
     check_write_paths()
@@ -518,6 +875,7 @@ def post_results(render=True):
     step("check_complete", lambda: (check_complete.main([str(paths.RUNS_V2 / "main")]),
                                     str(paths.ANALYSIS_REPEATED / "completeness.csv"))[1])
     step("repeated", lambda: {k: v for k, v in repeated.run().items() if k in ("n_models", "n_pairs", "n_cells")})
+    step("order_check", order_check)  # before any document is built: a failure stops here
     step("supp_tables", lambda: supp_tables.write_repeated())
     step("table1", lambda: len(table1.write_table1(paths.TABLES_DIR)))
     step("figures", lambda: {k: str(v["png"]) for k, v in figures.make_figures().items()})
@@ -527,24 +885,10 @@ def post_results(render=True):
     step("manuscript", lambda: _doc_script(["edits/run_all.py"] + ([] if render else ["--no-render"])))
     step("supplement", lambda: _doc_script(["edits/build_supplement.py"] + (["--render"] if render else [])))
     step("response", lambda: _doc_script(["build_response.py"] + ([] if render else ["--no-pdf"])))
-    step("qa", lambda: {s: {k: v for k, v in _doc_script([s], check=False).items() if k in ("rc", "seconds")}
-                        for s in QA_SCRIPTS})
+    step("qa", run_qa)
     step("pending_index", lambda: _doc_script(["make_pending_index.py"])["rc"])
-    step("markers", markers)
-    step("order_check", freeze_precedes_main_run)
+    step("markers", lambda: markers()["counts"])
     return steps
-
-
-def freeze_precedes_main_run():
-    """The freeze date (FREEZE_RECORD.md) is on or before the first main-run call (headline.json)."""
-    rec = paths.FREEZE_RECORD
-    head = paths.ANALYSIS_REPEATED / "headline.json"
-    if not rec.exists() or not head.exists():
-        return {"checked": False, "reason": f"missing {rec if not rec.exists() else head}"}
-    m = re.search(r"^- Date: (\d{4}-\d{2}-\d{2})$", rec.read_text(encoding="utf-8"), re.M)
-    first = (json.loads(head.read_text()).get("rep_call_dates") or {}).get("first")
-    ok = bool(m and first and m.group(1) <= first[:10])
-    return {"checked": True, "freeze_date": m.group(1) if m else None, "first_main_call": first, "ok": ok}
 
 
 # ---------------------------------------------------------------- markers
@@ -620,16 +964,22 @@ def build_parser():
         if kind == "main":
             p.add_argument("--retry-persistent", action="store_true")
             p.add_argument("--accept-spec-change", action="store_true")
+            p.add_argument("--accept-unpublished-freeze", action="store_true",
+                           help="run although FREEZE_RECORD.md records no public timestamp (writes an incident)")
     p = sub.add_parser("pilot-summary")
     p.add_argument("dir", nargs="?", default=None)
     p = sub.add_parser("freeze")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--dry-run", action="store_true")
     g.add_argument("--yes", action="store_true")
+    p = sub.add_parser("record-public")
+    p.add_argument("url", help="the pushed tag's URL, an OSF link or a Zenodo DOI")
+    p.add_argument("--date", default=None, help="the day it became public (default: today, UTC)")
     p = sub.add_parser("record")
-    p.add_argument("--freeze-pushed", default=None)
     p.add_argument("--release-tag", default=None)
     p.add_argument("--zenodo-doi", default=None)
+    p = sub.add_parser("scan-legacy-keys")
+    p.add_argument("root", nargs="?", default=None, help=f"default {paths.LEGACY_ROOT}")
     p = sub.add_parser("post-results")
     p.add_argument("--no-render", action="store_true")
     sub.add_parser("markers")
@@ -649,14 +999,20 @@ def dispatch(a, client_factory=None, sleep=None):
     if a.cmd in ("pilot", "main"):
         flags = {"models": a.models}
         if a.cmd == "main":
-            flags.update(retry_persistent=a.retry_persistent, accept_spec_change=a.accept_spec_change)
+            flags.update(retry_persistent=a.retry_persistent, accept_spec_change=a.accept_spec_change,
+                         accept_unpublished_freeze=a.accept_unpublished_freeze)
         return run_harness(a.cmd, a.yes, client_factory, sleep, **flags)
     if a.cmd == "pilot-summary":
         return {"models": pilot_summary(a.dir)}
     if a.cmd == "freeze":
         return freeze(a.dry_run, a.yes)
+    if a.cmd == "record-public":
+        return record_public(a.url, a.date)
     if a.cmd == "record":
-        return record(a.freeze_pushed, a.release_tag, a.zenodo_doi)
+        return record(a.release_tag, a.zenodo_doi)
+    if a.cmd == "scan-legacy-keys":
+        res = scan_legacy_keys(a.root)
+        return {"files": len(res["files"]), "providers": res["providers"]}
     if a.cmd == "post-results":
         return post_results(render=not a.no_render)
     if a.cmd == "markers":
@@ -678,7 +1034,7 @@ def main(argv=None):
         return 3
     if isinstance(res, int):
         return res
-    print(json.dumps(res, indent=1, default=str)[:20000])
+    print(json.dumps(res, indent=1, default=str))
     return 0
 
 

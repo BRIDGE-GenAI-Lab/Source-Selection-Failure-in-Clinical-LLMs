@@ -40,6 +40,8 @@ from types import SimpleNamespace
 
 SEED = 20261005
 SIM_AUTHOR = "SIMULATED"
+SIM_TAG_URL = "https://github.com/example/r2-rehearsal-SIMULATED/releases/tag/r2-analysis-plan-frozen"
+SIM_RELEASE = "r2-rehearsal-SIMULATED"
 CANONICAL_REPO = Path.home() / "npj_r2" / "r2_repo"
 REPORT = "rehearsal_report.md"
 CHILD_RESULT = "rehearsal_result.json"
@@ -67,8 +69,12 @@ def _tree_hashes(root, only_suffix=None):
 
 
 def _git_state(repo):
+    """HEAD, tags and status of `repo`, read with no GIT_* variables (so the guard reads this checkout, not a
+    repository an inherited GIT_DIR names) and no optional locks."""
+    from r2.sandbox_git import clean_env
+
     def g(*a):
-        return subprocess.run(["git", *a], cwd=repo, capture_output=True, text=True).stdout
+        return subprocess.run(["git", *a], cwd=repo, capture_output=True, text=True, env=clean_env()).stdout
     return {"head": g("rev-parse", "HEAD").strip(), "tags": g("tag", "--list").split(),
             "status": g("status", "--porcelain").splitlines()}
 
@@ -356,18 +362,22 @@ def _child(root, render, seed):
     sleeper = Sleeper()
     api_events = {}
 
-    def step(name, fn, ok_codes=None):
-        """ok_codes: the result is a command's exit status, and these values count as success."""
+    def step(name, fn, ok_codes=None, expect_refused=False):
+        """ok_codes: the result is a command's exit status, and these values count as success. expect_refused:
+        the step must be refused (a guard the rehearsal exercises)."""
         t0 = time.time()
         rec = {"step": name}
         try:
             res = fn()
             rec["result"] = res
             rec["status"] = "ok" if ok_codes is None or res in ok_codes else f"exit {res}"
+            if expect_refused:
+                rec["status"] = "FAILED"
+                rec["result"] = f"expected a refusal, got {res!r}"
         except pipeline.NeedsHumans as exc:
             rec.update(status="waiting", result=str(exc))
         except pipeline.Refused as exc:
-            rec.update(status="REFUSED", result=str(exc))
+            rec.update(status="refused (expected)" if expect_refused else "REFUSED", result=str(exc))
         except Exception as exc:  # recorded, then the rehearsal stops
             rec.update(status="FAILED", result=f"{type(exc).__name__}: {exc}")
         rec["seconds"] = round(time.time() - t0, 1)
@@ -418,8 +428,10 @@ def _child(root, render, seed):
                                                 for r in pipeline.pilot_summary()})
         step("pipeline freeze --dry-run", lambda: pipeline.freeze(dry_run=True))
         step("pipeline freeze --yes (sandbox freeze repository)", lambda: pipeline.freeze(yes=True))
-        step("pipeline record --freeze-pushed (simulated push, the freeze day)",
-             lambda: pipeline.record(freeze_pushed=_freeze_date(paths.FREEZE_RECORD)))
+        step("pipeline main before the freeze is public (refused, as designed)",
+             lambda: pipeline.run_harness("main", True, api1.factory, sleeper), expect_refused=True)
+        step("pipeline record-public (simulated public tag URL, the freeze day)",
+             lambda: pipeline.record_public(SIM_TAG_URL, date=_freeze_date(paths.FREEZE_RECORD)))
         step("pipeline main (fake API, first pass)", lambda: pipeline.run_harness("main", True, api1.factory, sleeper),
              ok_codes=(0, 1))
         api2 = FakeAPI(cases, specs, seed, round_no=2)
@@ -427,8 +439,10 @@ def _child(root, render, seed):
              ok_codes=(0,))
         api_events.update({"first_pass": dict(api1.events), "resume": dict(api2.events),
                            "sleeps_requested_s": sleeper.delays, "persistent_cell": list(api1.persistent_cell)})
+        step("simulated release tag in the sandbox freeze repository",
+             lambda: pipeline._git(paths.FREEZE_REPO, *pipeline.GIT_ID, "tag", SIM_RELEASE, check=True).returncode)
         step("pipeline record --release-tag --zenodo-doi (simulated release)",
-             lambda: pipeline.record(release_tag="r2-rehearsal-SIMULATED", zenodo_doi="10.5281/zenodo.0000000"))
+             lambda: pipeline.record(release_tag=SIM_RELEASE, zenodo_doi="10.5281/zenodo.0000000"))
         step("pipeline post-results", lambda: _summarize_post(pipeline.post_results(render=render)))
         after = pipeline.markers()
         result["markers_before"] = before
@@ -440,7 +454,10 @@ def _child(root, render, seed):
     result["persistent_records"] = _persistent_records(paths.RUNS_V2 / "main")
     (paths.SANDBOX / CHILD_RESULT).write_text(json.dumps(result, indent=1, default=str))
     write_report(paths.SANDBOX, result)
-    return 0 if all(s["status"] in ("ok", "waiting") for s in steps) and "markers_after" in result else 1
+    return 0 if all(s["status"] in OK_STATUS for s in steps) and "markers_after" in result else 1
+
+
+OK_STATUS = ("ok", "waiting", "refused (expected)")
 
 
 class _Stop(Exception):
@@ -461,9 +478,7 @@ def _summarize_post(steps):
     out = {}
     for name, rec in steps.items():
         res = rec["result"]
-        if name == "markers":
-            res = res["counts"]
-        elif isinstance(res, dict) and "tail" in res:
+        if isinstance(res, dict) and "tail" in res:
             res = {"rc": res["rc"], "seconds": res["seconds"]}
         elif isinstance(res, list):
             res = [{"rc": r.get("rc"), "command": r.get("command")} if isinstance(r, dict) else r for r in res]
@@ -509,6 +524,15 @@ def write_report(root, result, guard=None):
               f"total {sum(delays):.0f} s; distinct values {sorted(set(round(d) for d in delays))}",
               f"- persistent-error cell: {ev.get('persistent_cell')}; persistent_error records in the main run: "
               f"{json.dumps(result.get('persistent_records'))}", ""]
+    post = next((s for s in result["steps"] if s["step"] == "pipeline post-results" and s["status"] == "ok"), None)
+    if post:
+        res = post["result"]
+        qa = (res.get("qa") or {}).get("result") or {}
+        oc = (res.get("order_check") or {}).get("result") or {}
+        L += ["## Post-results checks", ""]
+        L += [f"- QA {s}: {v.get('failures')} failure(s), exit status {v.get('rc')}" for s, v in qa.items()]
+        L += [f"- order check: freeze {oc.get('freeze_date')}, public since {oc.get('public_since')}, first "
+              f"main-run call {oc.get('first_main_call')}: {'PASS' if oc.get('ok') else 'FAIL'}", ""]
     b, a = result.get("markers_before"), result.get("markers_after")
     if a:
         L += ["## Markers", "",
@@ -534,6 +558,17 @@ def write_report(root, result, guard=None):
 
 
 # ================================================================ the parent
+def child_env(root):
+    """The child's environment: R2_SANDBOX=root, R2_REPO=this checkout, and no GIT_* variable
+    (r2.sandbox_git.clean_env), so no git command of the child can be redirected into a real repository."""
+    from r2 import paths
+    from r2.sandbox_git import clean_env
+    env = clean_env({**os.environ, "R2_SANDBOX": str(root), "R2_REPO": str(paths.REPO),
+                     "PYTHONDONTWRITEBYTECODE": "1"})
+    env.pop("R2_RUNS_V2", None)
+    return env
+
+
 def rehearse(root, n_models=None, render=True, seed=SEED, timeout=None):
     """Run the rehearsal in a new sandbox `root`; returns (exit status, guard). The real state must be unchanged."""
     from r2 import paths, pipeline
@@ -543,8 +578,7 @@ def rehearse(root, n_models=None, render=True, seed=SEED, timeout=None):
     root = assert_sandbox(root)
     before = real_state()
     pipeline.sandbox_init(root, n_models)
-    env = {**os.environ, "R2_SANDBOX": str(root), "R2_REPO": str(paths.REPO), "PYTHONDONTWRITEBYTECODE": "1"}
-    env.pop("R2_RUNS_V2", None)
+    env = child_env(root)
     cmd = [sys.executable, "-m", "r2.rehearse", "--child", str(root), "--seed", str(seed)]
     if not render:
         cmd.append("--no-render")

@@ -8,6 +8,7 @@ the written locations; r2/pipeline.py and r2/rehearse.py use them. Without R2_SA
 real one, as before.
 """
 import os
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -54,6 +55,10 @@ def _sandbox():
 
 
 SANDBOX = _sandbox()
+if SANDBOX is not None and getattr(getattr(sys.modules.get("__main__"), "__spec__", None), "name", None) == "r2.freeze":
+    # r2.freeze's default repository is REPO: run directly under a sandbox it would commit and tag the real one
+    raise SystemExit("refusing: python -m r2.freeze under R2_SANDBOX would commit and tag the real repository; "
+                     "use python -m r2.pipeline freeze, which freezes the sandbox's throwaway repository")
 if SANDBOX is None:
     DATA_V2 = REAL_DATA_V2
     VERIFY_DIR = REAL_VERIFY_DIR

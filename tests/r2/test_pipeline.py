@@ -27,6 +27,11 @@ def sandboxed(tmp_path, monkeypatch):
     for k, v in layout.items():
         monkeypatch.setattr(paths, k, v)
     monkeypatch.setattr(paths, "WRITE_PATHS", dict(layout))
+    # the harness binds its paths at import (in a real sandbox run the whole process is sandboxed)
+    for k in ("SANDBOX", "FREEZE_REPO", "DATA_V2", "VERIFY_DIR", "RUNS_V2", "MODELS_FILE"):
+        monkeypatch.setattr(harness, k, box if k == "SANDBOX" else layout[k])
+    load = harness.load_v2_cases
+    monkeypatch.setattr(harness, "load_v2_cases", lambda path=None: load(path or layout["DATA_V2"] / "pairs_v2.json"))
     return box
 
 
@@ -95,19 +100,22 @@ def test_sandbox_init_refuses_a_non_empty_directory(tmp_path):
 
 
 # ---------------------------------------------------------------- record
-def test_record_writes_the_public_facts_and_refuses_bad_or_conflicting_values(sandboxed):
-    data = pipeline.record(freeze_pushed="2026-10-20")
-    assert data == {"freeze_pushed": "2026-10-20", "synthetic": True}
+def test_record_writes_the_release_facts_and_refuses_bad_or_conflicting_values(sandboxed, make_pairs):
+    with pytest.raises(pipeline.Refused, match="no tag r2-final"):
+        pipeline.record(release_tag="r2-final")                     # the release tag must exist
+    _frozen(make_pairs)
+    pipeline._git(paths.FREEZE_REPO, *pipeline.GIT_ID, "tag", "r2-final", check=True)
     data = pipeline.record(release_tag="r2-final", zenodo_doi="10.5281/zenodo.1234567")
+    assert data == {"release_tag": "r2-final", "zenodo_new_doi": "10.5281/zenodo.1234567", "synthetic": True}
     assert json.loads(paths.PUBLIC_RECORD.read_text())["release_tag"] == "r2-final"
-    with pytest.raises(pipeline.Refused, match="YYYY-MM-DD"):
-        pipeline.record(freeze_pushed="20 Oct 2026")
     with pytest.raises(pipeline.Refused, match="DOI"):
         pipeline.record(zenodo_doi="zenodo 123")
     with pytest.raises(pipeline.Refused, match="different values"):
-        pipeline.record(release_tag="r2-other")
+        pipeline.record(zenodo_doi="10.5281/zenodo.7654321")
     with pytest.raises(pipeline.Refused, match="nothing to record"):
         pipeline.record()
+    with pytest.raises(SystemExit):                                  # the push date moved to record-public
+        pipeline.main(["record", "--freeze-pushed", "2026-10-20"])
 
 
 # ---------------------------------------------------------------- sandbox freeze
@@ -270,5 +278,283 @@ def test_pilot_summary_counts_replies_per_model(sandboxed, make_pairs):
     harness.run_model(spec, cases, paths.RUNS_V2 / "pilot", api.factory("openai"), {"stimulus_sha256": "s"},
                       sleep=rehearse.Sleeper())
     (row,) = pipeline.pilot_summary()
+    import csv
+    (written,) = list(csv.DictReader(open(paths.ANALYSIS_REPEATED / "pilot_summary.csv")))
+    assert float(written["parse_rate"]) == row["ok"] / 4 and written["first_call"] <= written["last_call"]
+    assert written["synthetic"] == "True"
     assert row["cells"] == 4 and row["ok"] + row["non_response"] == 4 and row["api_errors"] == 1
     assert row["served"] == spec["model_id"]
+
+
+# ---------------------------------------------------------------- scan-legacy-keys
+def _fake_keys():
+    """Fake keys built at run time, so this file never matches the secrets grep."""
+    return {"together": "tgp" + "_v1_" + "Qz7Wm2Xk9Lp4Rv8Ty3Nb6Hc1Jd5Fg0Sa",
+            "groq": "g" + "sk_" + "Vb3Nm8Qw2Er7Ty4Ui9Op1As6Df5Gh0Jk",
+            "gemini": "AI" + "za" + "SyQ1w2E3r4T5y6U7i8O9p0AaBbCcDd",
+            "deepseek_a": "s" + "k-" + "9f3b1c7e4a6d2085f1c3b9e7a5d4c2b1",
+            "deepseek_b": "s" + "k-" + "7d2e9a4c1b8f6035e2d4a8c6b1f9e3d7",
+            "openai": "s" + "k-proj-" + "Xy9Zw8Vu7Ts6Rq5Po4Nm3Lk2Ji1Hg0Fe"}
+
+
+def test_scan_legacy_keys_names_files_and_providers_and_never_a_key(tmp_path, capsys):
+    k = _fake_keys()
+    root = tmp_path / "legacy"
+    files = {"scripts/run_together_experiment.py": f'API_KEY = "{k["together"]}"\n',
+             "scripts/run_deepseek_experiment.py": f'client = OpenAI(api_key="{k["deepseek_a"]}", '
+                                                   'base_url="https://api.deepseek.com")\n',
+             "scripts/run_deepseek_reasoner.py": f'DEEPSEEK_KEY = "{k["deepseek_b"]}"\n',
+             "copy/scripts/run_deepseek_reasoner.py": f'DEEPSEEK_KEY = "{k["deepseek_b"]}"\n',
+             "eval/.env": f'OPENAI_API_KEY={k["openai"]}\nGEMINI_API_KEY={k["gemini"]}\n',
+             "notes/groq.txt": f'groq: {k["groq"]}\n',
+             "scripts/clean.py": "print('no key here')\n",
+             "scripts/._run_together_experiment.py": f'{k["together"]}\n',     # AppleDouble: skipped
+             ".venv/lib/site.py": f'{k["groq"]}\n',                              # virtual environment: skipped
+             "some_repo/leak.py": f'{k["together"]}\n'}                          # a git repository: skipped
+    for rel, text in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    (root / "some_repo" / ".git").mkdir()
+    (root / "blob.bin").write_bytes(b"\x00\x01" + k["together"].encode())          # binary: skipped
+    assert pipeline.main(["scan-legacy-keys", str(root)]) == 0
+    cap = capsys.readouterr()
+    out = cap.out + cap.err
+    res = pipeline.scan_legacy_keys(root, quiet=True)
+    rel = {str(Path(p).relative_to(root)): v for p, v in res["files"].items()}
+    assert rel == {"scripts/run_together_experiment.py": ["Together"],
+                   "scripts/run_deepseek_experiment.py": ["DeepSeek"],
+                   "scripts/run_deepseek_reasoner.py": ["DeepSeek"],
+                   "copy/scripts/run_deepseek_reasoner.py": ["DeepSeek"],
+                   "eval/.env": ["Google Gemini", "OpenAI"],
+                   "notes/groq.txt": ["Groq"]}
+    assert res["providers"]["DeepSeek"] == {"files": 3, "distinct_keys": 2}
+    assert [Path(p).name for p in res["skipped_repositories"]] == ["some_repo"]
+    for p in rel:
+        assert p in out
+    for key in k.values():                        # no part of any key value: no 6-character window, no prefix
+        body = key
+        assert not any(body[i:i + 6] in out for i in range(len(body) - 5)), key[:3]
+    for prefix in ("tgp" + "_v1", "g" + "sk_", "AI" + "za", "s" + "k-"):
+        assert prefix not in out
+
+
+# ---------------------------------------------------------------- the public timestamp of the freeze (I4)
+def _frozen(make_pairs):
+    """A sandbox freeze (tag in the throwaway freeze repository) on today's date; returns the specs."""
+    from tests.r2.test_sandbox_git import freeze_inputs
+    specs, _ = freeze_inputs(make_pairs)
+    pipeline.freeze(yes=True)
+    return specs
+
+
+TAG_URL = "https://github.com/example/r2-rehearsal/releases/tag/r2-analysis-plan-frozen"
+
+
+@pytest.mark.parametrize("url,kind", [
+    (TAG_URL, "pushed tag"),
+    ("https://github.com/example/r2/tree/r2-analysis-plan-frozen", "pushed tag"),
+    ("https://osf.io/abc12", "OSF registration"),
+    ("https://doi.org/10.17605/OSF.IO/ABC12", "OSF registration"),
+    ("10.5281/zenodo.1234567", "Zenodo DOI"),
+    ("https://doi.org/10.5281/zenodo.1234567", "Zenodo DOI"),
+    ("https://zenodo.org/records/1234567", "Zenodo DOI"),
+    ("https://github.com/example/r2/releases/tag/other-tag", None),
+    ("http://osf.io/abc12", None),
+    ("https://example.org/freeze", None),
+])
+def test_public_timestamp_kinds(url, kind):
+    assert pipeline.public_kind(url) == kind
+
+
+def test_record_public_writes_the_freeze_record_and_refuses_bad_input(sandboxed, make_pairs):
+    with pytest.raises(pipeline.Refused, match="missing input"):
+        pipeline.record_public(TAG_URL)                               # no freeze yet
+    _frozen(make_pairs)
+    today = pipeline._today()
+    with pytest.raises(pipeline.Refused, match="not a public timestamp"):
+        pipeline.record_public("https://example.org/freeze")
+    with pytest.raises(pipeline.Refused, match="not a calendar date"):
+        pipeline.record_public(TAG_URL, date="2026-02-30")
+    with pytest.raises(pipeline.Refused, match="before the freeze"):
+        pipeline.record_public(TAG_URL, date="2000-01-01")
+    with pytest.raises(pipeline.Refused, match="in the future"):
+        pipeline.record_public(TAG_URL, date="2999-01-01")
+    res = pipeline.record_public(TAG_URL)
+    assert res == {**res, "url": TAG_URL, "kind": "pushed tag", "since": today}
+    text = paths.FREEZE_RECORD.read_text()
+    assert f"- Public URL: {TAG_URL}\n" in text and "pending a push" not in text
+    assert f"- Tag commit: {res['tag_commit']}" in text
+    assert pipeline.public_timestamp() == {k: res[k] for k in ("url", "kind", "since", "tag_commit")}
+    assert pipeline.record_public(TAG_URL)["already"] is True        # idempotent
+    with pytest.raises(pipeline.Refused, match="already records"):
+        pipeline.record_public("https://osf.io/abc12")
+
+
+def _main_world(make_pairs):
+    specs = _frozen(make_pairs)
+    pairs = json.loads((paths.DATA_V2 / "pairs_v2.json").read_text())
+    cases = {c["case_id"]: c for c in pairs["cases"]}
+    return specs, rehearse.FakeAPI(cases, specs)
+
+
+def test_main_refuses_until_the_freeze_is_public(sandboxed, make_pairs):
+    specs, api = _main_world(make_pairs)
+    one = specs[0]["original_name"]
+    with pytest.raises(pipeline.Refused, match="no public timestamp"):
+        pipeline.run_harness("main", yes=True, client_factory=api.factory, sleep=rehearse.Sleeper(), models=one)
+    assert not (paths.RUNS_V2 / "main").exists()                      # nothing ran, nothing written
+    pipeline.record_public(TAG_URL)
+    rc = pipeline.run_harness("main", yes=True, client_factory=api.factory, sleep=rehearse.Sleeper(), models=one)
+    assert rc in (0, 1)
+    assert not (paths.RUNS_V2 / "main" / pipeline.PIPELINE_INCIDENTS).exists()
+
+
+def test_accept_unpublished_freeze_writes_an_incident(sandboxed, make_pairs, capsys):
+    specs, api = _main_world(make_pairs)
+    rc = pipeline.run_harness("main", yes=True, client_factory=api.factory, sleep=rehearse.Sleeper(),
+                              models=specs[0]["original_name"], accept_unpublished_freeze=True)
+    assert rc in (0, 1)
+    (line,) = (paths.RUNS_V2 / "main" / pipeline.PIPELINE_INCIDENTS).read_text().splitlines()
+    inc = json.loads(line)
+    assert inc["kind"] == "unpublished_freeze" and inc["freeze_record"] == str(paths.FREEZE_RECORD)
+    assert "ACCEPTED" in capsys.readouterr().out
+
+
+def test_main_refuses_without_the_freeze_tag(sandboxed, make_pairs):
+    from tests.r2.test_sandbox_git import freeze_inputs
+    specs, pairs = freeze_inputs(make_pairs)
+    api = rehearse.FakeAPI({c["case_id"]: c for c in pairs["cases"]}, specs)
+    with pytest.raises(pipeline.Refused, match="not frozen"):
+        pipeline.run_harness("main", yes=True, client_factory=api.factory, accept_unpublished_freeze=True)
+
+
+def _order_world(freeze_date, first_call, public_since=None):
+    rec = paths.FREEZE_RECORD
+    rec.parent.mkdir(parents=True, exist_ok=True)
+    text = f"# Freeze record\n\n- Date: {freeze_date}\n\nPublic timestamp: pending a push.\n"
+    if public_since:
+        text += (f"\n- Public URL: {TAG_URL}\n- Kind: pushed tag\n- Public since: {public_since}\n"
+                 "- Tag commit: abc\n")
+    rec.write_text(text)
+    paths.ANALYSIS_REPEATED.mkdir(parents=True, exist_ok=True)
+    (paths.ANALYSIS_REPEATED / "headline.json").write_text(json.dumps(
+        {"rep_call_dates": {"first": first_call, "last": first_call}}))
+
+
+def test_order_check_passes_and_prints_each_comparison(sandboxed, capsys):
+    _order_world("2026-10-06", "2026-10-07T09:00:00+00:00", public_since="2026-10-06")
+    res = pipeline.order_check()
+    assert res["ok"] is True
+    out = capsys.readouterr().out
+    assert "ORDER CHECK freeze: 2026-10-06 <= first main-run call 2026-10-07T09:00:00+00:00: PASS" in out
+    assert "ORDER CHECK public: 2026-10-06 <= first main-run call 2026-10-07T09:00:00+00:00: PASS" in out
+
+
+@pytest.mark.parametrize("freeze_date,public,match", [
+    ("2026-10-08", "2026-10-08", "freeze date 2026-10-08 is after the first main-run call"),
+    ("2026-10-06", "2026-10-08", "public timestamp 2026-10-08 is after the first main-run call"),
+    ("2026-10-06", None, "no public timestamp"),
+])
+def test_order_check_failures_stop_post_results(sandboxed, freeze_date, public, match):
+    _order_world(freeze_date, "2026-10-07T09:00:00+00:00", public_since=public)
+    with pytest.raises(pipeline.Refused, match=match):
+        pipeline.order_check()
+
+
+def test_order_check_accepts_a_logged_unpublished_freeze(sandboxed, capsys):
+    _order_world("2026-10-06", "2026-10-07T09:00:00+00:00")
+    pipeline._pipeline_incident({"kind": "unpublished_freeze", "freeze_record": str(paths.FREEZE_RECORD)})
+    assert pipeline.order_check()["ok"] is True
+    assert "ACCEPTED by --accept-unpublished-freeze" in capsys.readouterr().out
+
+
+def test_order_check_cannot_be_skipped_once_the_main_run_exists(sandboxed):
+    _order_world("2026-10-06", None, public_since="2026-10-06")
+    with pytest.raises(pipeline.Refused, match="cannot be made"):
+        pipeline.order_check()
+
+
+# ---------------------------------------------------------------- QA verdicts stop post-results (I3)
+def _stub_qa(work, failing=()):
+    reports = {"qa_numbers.py": ("qa_numbers_report.md", "**UNEXPLAINED: {n}**"),
+               "qa_xref.py": ("qa_xref_report.md", "Cross-reference failures: {n}"),
+               "qa_keyfacts.py": ("qa_keyfacts_report.md", "Key-fact failures: {n}"),
+               "qa_hygiene.py": ("qa_hygiene_report.md", "## Total hygiene hits: {n}")}
+    work.mkdir(parents=True, exist_ok=True)
+    for script, (report, line) in reports.items():
+        n = 2 if script in failing else 0
+        (work / script).write_text(
+            "import sys\nfrom pathlib import Path\n"
+            f"Path(__file__).with_name({report!r}).write_text({line.format(n=n)!r} + '\\n')\n"
+            f"sys.exit({1 if n else 0})\n")
+
+
+def test_qa_verdicts_are_printed_and_a_failure_stops(sandboxed, capsys):
+    _stub_qa(paths.R2_WORKING)
+    res = pipeline.run_qa()
+    assert {k: v["failures"] for k, v in res.items()} == {s: 0 for s in pipeline.QA_SCRIPTS}
+    out = capsys.readouterr().out
+    assert "QA qa_xref.py: Cross-reference failures: 0: PASS" in out
+    _stub_qa(paths.R2_WORKING, failing=("qa_xref.py",))
+    with pytest.raises(pipeline.Refused, match=r"QA failed: qa_xref\.py: Cross-reference failures: 2"):
+        pipeline.run_qa()
+
+
+def test_a_qa_script_that_crashes_is_a_failure(sandboxed):
+    _stub_qa(paths.R2_WORKING)
+    (paths.R2_WORKING / "qa_keyfacts.py").write_text("raise RuntimeError('boom')\n")
+    with pytest.raises(pipeline.Refused, match="qa_keyfacts.py"):
+        pipeline.run_qa()
+
+
+# ---------------------------------------------------------------- the completeness gate stops post-results (M9)
+def test_post_results_stops_at_a_failing_completeness_gate(sandboxed, make_pairs, monkeypatch):
+    from r2.run import check_complete
+    from tests.r2.test_sandbox_git import freeze_inputs
+    specs, _ = freeze_inputs(make_pairs)
+    monkeypatch.setattr(check_complete, "load_v2_cases", lambda: harness.load_v2_cases(paths.DATA_V2 / "pairs_v2.json"))
+    monkeypatch.setattr(check_complete, "load_specs", lambda: harness.load_specs(paths.MODELS_FILE))
+    monkeypatch.setattr(check_complete, "ANALYSIS_REPEATED", paths.ANALYSIS_REPEATED)
+    (paths.RUNS_V2 / "main").mkdir(parents=True)
+    harness.results_path(specs[0], paths.RUNS_V2 / "main").write_text("")     # 0 of 1000 cells
+    paths.ANALYSIS_REPEATED.mkdir(parents=True)
+    (paths.ANALYSIS_REPEATED / "model_availability.csv").write_text("x\n")
+    (paths.R2_WORKING / "edits").mkdir(parents=True)
+    (paths.R2_WORKING / "edits" / "numbers.py").write_text("")
+    with pytest.raises(pipeline.Refused, match="check_complete"):
+        pipeline.post_results(render=False)
+    assert not (paths.ANALYSIS_REPEATED / "headline.json").exists()          # nothing after the gate ran
+
+
+# ---------------------------------------------------------------- import-edits refusals (M8e)
+def test_a_rejected_author_edit_is_a_refusal(sandboxed, monkeypatch):
+    from r2.verify import build_packets as BP
+    (paths.VERIFY_DIR / "round1").mkdir(parents=True)
+    (paths.VERIFY_DIR / "round1" / BP.MANIFEST).write_text(json.dumps({"unresolved": ["CASE_001"]}))
+    paths.DATA_V2.mkdir(parents=True)
+    (paths.DATA_V2 / "pairs_v2.json").write_text(json.dumps({"cases": [], "unresolved": ["CASE_001"]}))
+    book = sandboxed / "AG.xlsx"
+    book.write_text("x")
+
+    def reject(*a, **k):
+        raise ValueError("CASE_001: 'find' must occur exactly once in excerpt_text")
+    monkeypatch.setattr(BP, "import_author_edits", reject)
+    with pytest.raises(pipeline.Refused, match="exactly once"):
+        pipeline.import_edits(book)
+    assert pipeline.main(["import-edits", str(book)]) == 2
+
+
+@pytest.mark.skipif(not (REAL_DOCS / "edits" / "fill.py").exists(), reason="npj_R2_WORKING not available")
+def test_the_physician_edit_confirmation_needs_the_queue_count_and_the_named_author():
+    fill = pipeline._load_fill(REAL_DOCS)
+
+    def v(**kw):
+        return {k: {"text": x} for k, x in kw.items()}
+    good = v(v2_n_physician_edits="23", v2_n_queue_round1="23", v2_unresolved="23", v2_identical_all500="0",
+             v2_manual_edit_authors="A.G.")
+    assert fill.confirmed("physician_edits", good)
+    assert not fill.confirmed("physician_edits", {**good, **v(v2_manual_edit_authors="SIMULATED")})
+    assert not fill.confirmed("physician_edits", {**good, **v(v2_manual_edit_authors="A.G.; M.O.")})
+    assert not fill.confirmed("physician_edits", {**good, **v(v2_n_physician_edits="22", v2_unresolved="22")})
+    assert not fill.confirmed("physician_edits", {**good, **v(v2_identical_all500="1")})
+    assert not fill.confirmed("physician_edits", {k: x for k, x in good.items() if k != "v2_n_queue_round1"})
