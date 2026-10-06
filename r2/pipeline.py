@@ -12,8 +12,10 @@
   probe --yes | pilot --yes [--models M] | main --yes [--models M] [--retry-persistent] [--accept-spec-change]
                                             [--accept-unpublished-freeze]
       thin wrappers over r2.run.probe_models and r2.run.harness; each prints the exact command it runs and
-      spends money only with --yes. main also needs the freeze tag and the public timestamp of the freeze
-      (record-public); --accept-unpublished-freeze is the only override and writes an incident line.
+      spends money only with --yes. For main the harness verifies the freeze (r2.run.harness.verify_freeze: the
+      tag, the SHA-256 of the five frozen files against FREEZE_RECORD.md at the tag or a dated change entry, the
+      public timestamp of the freeze from record-public); this wrapper runs the same check first.
+      --accept-unpublished-freeze is the only override of the public timestamp; the harness writes the incident.
   pilot-summary [DIR]
       read-only: per model, the pilot's valid replies, non-responses, API errors, truncations, served
       identifiers and median tokens (the facts PILOT_REVIEW.md records); DIR defaults to r2_runs/pilot.
@@ -21,7 +23,8 @@
       wraps python -m r2.freeze (local commit and tag; never pushes).
   record-public URL [--date YYYY-MM-DD]
       after the authors approved and made the freeze public: records the pushed tag's URL, an OSF registration
-      or a Zenodo DOI, the day, and the tag commit in docs/r2/FREEZE_RECORD.md (commit that file).
+      or a Zenodo DOI, the day (from the freeze commit's date to today), and the tag commit in
+      docs/r2/FREEZE_RECORD.md (commit that file).
   record [--release-tag TAG] [--zenodo-doi DOI]
       writes the release facts the documents cite (docs/r2/PUBLIC_RECORD.json) after the authors' release.
   scan-legacy-keys [ROOT]

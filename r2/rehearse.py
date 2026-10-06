@@ -14,7 +14,8 @@ anything changed. Steps of the child:
   2. simulated physician answers for round 1 and round 2 (seeded; mostly Y, with N and P answers so that there
      are exclusions, flags and disagreements), pipeline consensus, the simulated consensus file for every
      disagreement, pipeline consensus again;
-  3. a fake OpenAI-compatible client injected through the harness's client factory: probe, pilot (10 pairs),
+  3. a simulated pilot change (twice the max_tokens of one non-reasoning model, so the documents report a range);
+     a fake OpenAI-compatible client injected through the harness's client factory: probe, pilot (10 pairs),
      and after the freeze the main run (every model x 500 pairs x 2 orders) and its resume. The client has a
      position bias per model, invalid replies, <think> tags, 400 and 429 errors with Retry-After headers, and
      one cell whose 400 error persists (it ends as persistent_error);
@@ -418,6 +419,7 @@ def _child(root, render, seed):
             return len(rows)
         step("simulated consensus for every disagreement", write_consensus)
         step("pipeline consensus", lambda: pipeline.consensus(*books, consensus_file=inputs / "consensus.csv"))
+        step("simulated pilot change: a higher max_tokens for one non-reasoning model", raise_one_max_tokens)
         cases, _ = load_v2_cases()
         specs = load_specs()
         api1 = FakeAPI(cases, specs, seed, round_no=1)
@@ -459,6 +461,20 @@ def _child(root, render, seed):
 
 
 OK_STATUS = ("ok", "waiting", "refused (expected)")
+
+
+def raise_one_max_tokens():
+    """The pilot change the RUNBOOK allows (a higher max_tokens for a model whose non-responses are truncations),
+    simulated in the sandbox model file before the probe: the last non-reasoning model gets twice its limit, so the
+    documents report a per-class range and the exception (final review I4). Needs two non-reasoning models."""
+    from r2 import paths
+    doc = json.loads(paths.MODELS_FILE.read_text())
+    nr = [m for m in doc["models"] if not m["reasoning"]]
+    if len(nr) < 2:
+        return "fewer than two non-reasoning models: no change"
+    nr[-1]["max_tokens"] *= 2
+    paths.MODELS_FILE.write_text(json.dumps(doc, indent=1) + "\n")
+    return {nr[-1]["original_name"]: nr[-1]["max_tokens"]}
 
 
 class _Stop(Exception):

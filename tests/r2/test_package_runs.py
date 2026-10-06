@@ -190,3 +190,19 @@ def test_release_check_refuses_under_a_sandbox(sandboxed):
 def test_release_check_is_a_cli_command(release_world, capsys):
     assert pipeline.main(["release-check", "--no-suite"]) == 0
     assert "suite" not in release_world and "RELEASE CHECK test suite: SKIPPED" in capsys.readouterr().out
+
+
+def test_runbook_runs_the_release_qa_before_any_tag_push_or_zenodo_step():
+    text = (paths.REPO / "docs" / "r2" / "RUNBOOK.md").read_text()
+    sec = text[text.index("## 9."):text.index("## Files each step writes")]
+    qa = max(sec.index("r2.pipeline package-runs"), sec.index("r2.data_files_doc"), sec.index("git add analysis_repeated"),
+             sec.index("r2.pipeline release-check"))
+    for step in ("create the release tag", "push the branch and the tags", "mint the new Zenodo version"):
+        assert sec.index(step) > qa, step
+    assert "r2_runs.tar.gz" in sec[sec.index("mint the new Zenodo version"):]  # the logs go into the deposit
+
+
+def test_readme_points_to_the_runbook_and_no_longer_calls_the_plan_unwritten():
+    text = (paths.REPO / "README.md").read_text()
+    sec = text[text.index("## 5."):text.index("## 6.")]
+    assert "docs/r2/RUNBOOK.md" in sec and "not yet written" not in sec and "r2.pipeline release-check" in sec
