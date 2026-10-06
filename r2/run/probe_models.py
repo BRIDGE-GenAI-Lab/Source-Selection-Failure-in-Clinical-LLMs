@@ -7,7 +7,7 @@ import time
 from dotenv import load_dotenv
 
 from r2.io import load_original_cases
-from r2.paths import REPO, RUNS_V2
+from r2.paths import ANALYSIS_REPEATED, REPO, RUNS_V2, SANDBOX
 from r2.run.harness import _create, first_messages, load_specs, make_client, request_kwargs
 from r2.stimuli.render import render_messages
 
@@ -31,13 +31,20 @@ def probe(spec, client=None, sleep=time.sleep, case=None):
         return {"status": "error", "served": "", "fingerprint": "", "error": f"{type(exc).__name__}: {exc}"[:300]}
 
 
-def main():
-    load_dotenv(REPO / ".env")
+def main(client_factory=None, sleep=None):
+    """One probe per model; client_factory(provider) as in r2.run.harness.main (required under R2_SANDBOX)."""
+    if SANDBOX is not None and client_factory is None:
+        raise SystemExit(f"refusing: R2_SANDBOX={SANDBOX} is set and no client was injected; a sandbox probe never "
+                         "calls a real API")
+    if client_factory is None:
+        load_dotenv(REPO / ".env")
     RUNS_V2.mkdir(parents=True, exist_ok=True)
     case = probe_case()
     rows = [{"original_name": s["original_name"], "provider": s["provider"], "model_id": s["model_id"],
-             **probe(s, case=case)} for s in load_specs()]
-    for path in (RUNS_V2 / "model_availability.csv", REPO / "analysis_repeated" / "model_availability.csv"):
+             **probe(s, client=client_factory(s["provider"]) if client_factory else None, case=case,
+                     **({} if sleep is None else {"sleep": sleep}))}
+            for s in load_specs()]
+    for path in (RUNS_V2 / "model_availability.csv", ANALYSIS_REPEATED / "model_availability.csv"):
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", newline="") as fh:
             w = csv.DictWriter(fh, fieldnames=list(rows[0]))

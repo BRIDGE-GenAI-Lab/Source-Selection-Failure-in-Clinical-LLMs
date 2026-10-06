@@ -14,10 +14,10 @@ from scipy.stats import binomtest, spearmanr
 from r2.analysis.original_corrected import SAYS_IDENTICAL
 from r2.analysis.stats import (CATEGORY, calibration, cluster_bootstrap_mean, cluster_bootstrap_paa, fdr,
                                gee_logit, position_summary, wilson)
-from r2.paths import DATA_V2, REPO, RUNS_V2, VERIFY_DIR
+from r2.paths import ANALYSIS_REPEATED, DATA_V2, REPO, RUNS_V2, VERIFY_DIR
 from r2.run.harness import INCIDENTS, final_records, load_specs, read_records, results_path
 
-OUT = REPO / "analysis_repeated"
+OUT = ANALYSIS_REPEATED  # REPO / "analysis_repeated", or inside R2_SANDBOX
 # Items for which r2.verify.score_review.flag_reasons flags a pair (flags.json values).
 FLAG_ITEMS = ("q1_vignette_consistent", "q2_question_answerable", "q3_authentic_concordant", "q8_leakage")
 PAIR_COLS = ["model", "case_id", "invariant_correct", "position_driven", "wrong_both"]

@@ -348,10 +348,12 @@ def test_repeated_tables_read_the_paths_their_writers_use():
     from r2.paths import REPO
     from r2.run import check_complete, probe_models
     from r2.verify import score_review
-    assert st.ANALYSIS_REPEATED == repeated.OUT == REPO / "analysis_repeated"
+    from r2 import paths
+    assert st.ANALYSIS_REPEATED == repeated.OUT == paths.ANALYSIS_REPEATED == REPO / "analysis_repeated"
     assert st.VERIFY == score_review.VERIFY_DIR
-    assert '"analysis_repeated" / "completeness.csv"' in inspect.getsource(check_complete.main)
-    assert 'REPO / "analysis_repeated" / "model_availability.csv"' in inspect.getsource(probe_models.main)
+    assert check_complete.ANALYSIS_REPEATED == probe_models.ANALYSIS_REPEATED == paths.ANALYSIS_REPEATED
+    assert 'ANALYSIS_REPEATED / "completeness.csv"' in inspect.getsource(check_complete.main)
+    assert 'ANALYSIS_REPEATED / "model_availability.csv"' in inspect.getsource(probe_models.main)
     for name in ("kappa.csv", "excluded_pairs.json", "flags.json", "final_review.csv"):
         assert f'"{name}"' in inspect.getsource(score_review)
 

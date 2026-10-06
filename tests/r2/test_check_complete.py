@@ -193,7 +193,7 @@ def test_gate_fails_on_invalid_records(tmp_path, monkeypatch):
     (out / "m-1.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
     monkeypatch.setattr(check_complete, "load_v2_cases", lambda *a, **k: ({"C1": {}}, "s1"))
     monkeypatch.setattr(check_complete, "load_specs", lambda *a, **k: [SPEC])
-    monkeypatch.setattr(check_complete, "REPO", tmp_path)
+    monkeypatch.setattr(check_complete, "ANALYSIS_REPEATED", tmp_path / "analysis_repeated")
     monkeypatch.setattr(check_complete, "DATA_V2", tmp_path)
     monkeypatch.setattr(sys, "argv", ["check_complete", str(out)])
     with pytest.raises(SystemExit, match="invalid records"):
@@ -255,7 +255,7 @@ def test_main_with_no_specs_fails_clearly(tmp_path, monkeypatch):
     from r2.run import check_complete
     monkeypatch.setattr(check_complete, "load_v2_cases", lambda *a, **k: ({"C1": {}}, "s1"))
     monkeypatch.setattr(check_complete, "load_specs", lambda *a, **k: [])
-    monkeypatch.setattr(check_complete, "REPO", tmp_path)
+    monkeypatch.setattr(check_complete, "ANALYSIS_REPEATED", tmp_path / "analysis_repeated")
     monkeypatch.setattr(check_complete, "DATA_V2", tmp_path)
     monkeypatch.setattr(sys, "argv", ["check_complete", str(tmp_path)])
     with pytest.raises(SystemExit, match="no model specs"):
@@ -298,7 +298,7 @@ def _gate(tmp_path, monkeypatch, recs, case_ids=("C1",)):
     (out / "m-1.jsonl").write_text("".join(json.dumps(_full(r)) + "\n" for r in recs))
     monkeypatch.setattr(check_complete, "load_v2_cases", lambda *a, **k: ({c: {} for c in case_ids}, "s1"))
     monkeypatch.setattr(check_complete, "load_specs", lambda *a, **k: [SPEC])
-    monkeypatch.setattr(check_complete, "REPO", tmp_path)
+    monkeypatch.setattr(check_complete, "ANALYSIS_REPEATED", tmp_path / "analysis_repeated")
     monkeypatch.setattr(check_complete, "DATA_V2", tmp_path)
     monkeypatch.setattr(sys, "argv", ["check_complete", str(out)])
     return check_complete, out
