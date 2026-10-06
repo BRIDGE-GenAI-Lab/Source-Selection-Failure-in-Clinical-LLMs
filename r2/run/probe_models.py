@@ -4,11 +4,9 @@ render_messages output), sent through the harness's _create retry path."""
 import csv
 import time
 
-from dotenv import load_dotenv
-
 from r2.io import load_original_cases
-from r2.paths import ANALYSIS_REPEATED, REPO, RUNS_V2, SANDBOX
-from r2.run.harness import _create, first_messages, load_specs, make_client, request_kwargs
+from r2.paths import ANALYSIS_REPEATED, RUNS_V2, SANDBOX
+from r2.run.harness import _create, first_messages, load_keys, load_specs, make_client, request_kwargs
 from r2.stimuli.render import render_messages
 
 # The probe needs only the request shape, which render_messages gives for any case; the original cases
@@ -37,7 +35,7 @@ def main(client_factory=None, sleep=None):
         raise SystemExit(f"refusing: R2_SANDBOX={SANDBOX} is set and no client was injected; a sandbox probe never "
                          "calls a real API")
     if client_factory is None:
-        load_dotenv(REPO / ".env")
+        load_keys()
     RUNS_V2.mkdir(parents=True, exist_ok=True)
     case = probe_case()
     rows = [{"original_name": s["original_name"], "provider": s["provider"], "model_id": s["model_id"],

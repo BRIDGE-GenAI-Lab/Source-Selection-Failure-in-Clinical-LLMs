@@ -559,7 +559,7 @@ def no_side_effects(monkeypatch):
     monkeypatch.setattr(harness, "load_v2_cases", lambda *a, **k: ({}, "stim-sha"))
     monkeypatch.setattr(harness, "_clean_commit", lambda *a, **k: "0" * 40)
     monkeypatch.setattr(harness, "load_specs", lambda *a, **k: [])
-    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: None)
+    monkeypatch.setattr(harness, "load_keys", lambda *a, **k: {})
 
 
 def test_main_refuses_without_freeze_tag(no_side_effects, monkeypatch):
@@ -827,7 +827,7 @@ def two_models(monkeypatch, tmp_path):
     monkeypatch.setattr(harness, "load_v2_cases", lambda *x, **k: (SUBSET, "stim-sha"))
     monkeypatch.setattr(harness, "_clean_commit", lambda *a, **k: "0" * 40)
     monkeypatch.setattr(harness, "load_specs", lambda *x, **k: [a, b])
-    monkeypatch.setattr("dotenv.load_dotenv", lambda *x, **k: None)
+    monkeypatch.setattr(harness, "load_keys", lambda *x, **k: {})
     monkeypatch.setattr(harness, "make_client", lambda provider: clients[provider])
     monkeypatch.setattr(harness, "run_model", functools.partial(harness.run_model, sleep=lambda s: None))
     return a, b, clients, tmp_path / "pilot"
@@ -1113,8 +1113,7 @@ def test_stale_records_message_names_file_and_cell(tmp_path):
 
 
 @pytest.mark.parametrize("change,fields", [({"temperature": 0.7}, "['temperature']"),
-                                           ({"max_tokens": 128}, "['token_param']"),
-                                           ({"original_name": "m2"}, "['original_name']")])
+                                           ({"max_tokens": 128}, "['token_param']")])
 def test_stale_records_message_names_fields_and_flag(tmp_path, change, fields):
     import re
     path, _ = _first_record(tmp_path)
@@ -1433,3 +1432,53 @@ def test_openai_400s_differing_only_in_request_id_count_as_the_same_text_for_the
     with pytest.raises(ModelUnavailable, match="same error text 3x"):
         run_model(SPEC, SUBSET3, tmp_path, client, CTX, sleep=lambda s: None)
     assert len(_recs(results_path(SPEC, tmp_path))) == 5
+
+
+# ---- final review M2: --accept-spec-change keeps decoding changes only, never a response to another input ----
+@pytest.mark.parametrize("field,value", [("system", "old system prompt"), ("user", "old user message"),
+                                         ("model_id", "prov/m-0"), ("original_name", "m-old")])
+def test_accept_spec_change_never_keeps_a_changed_prompt_or_mapping(tmp_path, field, value):
+    path, recs = _first_record(tmp_path)
+    recs[0][field] = value
+    _rewrite(path, recs)
+    with pytest.raises(StaleRecords, match=rf"differs from the current prompt or model mapping in \['{field}'\]; "
+                                           "a response to another input is never kept"):
+        run_model(SPEC, SUBSET, tmp_path, FakeClient([GOOD] * 4), CTX, sleep=lambda s: None, accept_spec_change=True)
+    assert not (tmp_path / "prov_m-1.incidents.jsonl").exists() or "accepted_spec_change" not in \
+        (tmp_path / "prov_m-1.incidents.jsonl").read_text()
+
+
+def test_accept_spec_change_still_keeps_a_decoding_change(tmp_path):
+    _first_record(tmp_path)
+    client = FakeClient([GOOD] * 2)
+    run_model({**SPEC, "max_tokens": 128}, SUBSET, tmp_path, client, CTX, sleep=lambda s: None,
+              accept_spec_change=True)
+    assert len(client.calls) == 2
+
+
+# ---- final review M11: the repository's .env wins over a stale exported key; no key value is printed ----
+def test_env_file_keys_override_a_stale_exported_key(tmp_path, monkeypatch, capsys):
+    env = tmp_path / ".env"
+    env.write_text("OPENAI_API_KEY=q7v1x9-new-in-file\nTOGETHER_API_KEY=t5r2w8-together-file\n")
+    monkeypatch.setenv("OPENAI_API_KEY", "z3k8m2-stale-export")
+    monkeypatch.delenv("TOGETHER_API_KEY", raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "d4e6f1-deepseek-env")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    sources = harness.load_keys(env)
+    import os
+    assert os.environ["OPENAI_API_KEY"] == "q7v1x9-new-in-file"
+    assert os.environ["TOGETHER_API_KEY"] == "t5r2w8-together-file"
+    assert sources == {"OPENAI_API_KEY": str(env), "TOGETHER_API_KEY": str(env), "DEEPSEEK_API_KEY": "environment",
+                       "GEMINI_API_KEY": "missing"}
+    out = capsys.readouterr().out
+    assert "WARNING: OPENAI_API_KEY" in out
+    for value in ("q7v1x9-new-in-file", "z3k8m2-stale-export", "t5r2w8-together-file", "d4e6f1-deepseek-env"):
+        assert value not in out and value[:6] not in out
+
+
+def test_the_probe_loads_keys_the_same_way():
+    import inspect
+
+    from r2.run import probe_models
+    src = inspect.getsource(probe_models.main)
+    assert "load_keys()" in src and "load_dotenv" not in src

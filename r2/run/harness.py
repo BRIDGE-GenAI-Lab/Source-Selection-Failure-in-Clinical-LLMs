@@ -148,6 +148,27 @@ def load_v2_cases(path=None):
     return cases, hashlib.sha256(raw).hexdigest()
 
 
+def load_keys(env_file=None):
+    """Put the provider keys of REPO/.env into the environment. The file wins over an exported variable (a stale
+    exported key, such as a revoked legacy key, would otherwise be used without a word); a differing exported value
+    is reported. Prints where each provider key comes from, never any part of a key. Returns {variable: source}."""
+    from dotenv import dotenv_values
+    path = Path(REPO) / ".env" if env_file is None else Path(env_file)
+    values = {k: v for k, v in (dotenv_values(path) if path.exists() else {}).items() if v}
+    sources = {}
+    for name in [cfg["key_env"] for cfg in PROVIDERS.values()]:
+        if name in values:
+            if os.environ.get(name) and os.environ[name] != values[name]:
+                print(f"WARNING: {name} is also exported in the environment with a different value; the value in "
+                      f"{path} is used", flush=True)
+            os.environ[name] = values[name]
+            sources[name] = str(path)
+        else:
+            sources[name] = "environment" if os.environ.get(name) else "missing"
+        print(f"key {name}: {sources[name]}", flush=True)
+    return sources
+
+
 def make_client(provider):
     from openai import OpenAI
     cfg = PROVIDERS[provider]
@@ -448,6 +469,9 @@ def _sha(text):
     return hashlib.sha256(str(text).encode("utf-8")).hexdigest()
 
 
+NEVER_ACCEPTED = ("system", "user", "model_id", "original_name")  # --accept-spec-change keeps decoding changes only
+
+
 def _spec_mismatches(r, spec, msgs):
     """(field, recorded, current) for every way a stored record differs from the current prompt and
     spec. Prompts are compared in full and reported by SHA-256."""
@@ -506,6 +530,12 @@ def _done(path, cases, context, spec, out_dir, accept_spec_change=False, retry_p
         if not ok:
             raise StaleRecords(f"{path}: stale record for {key}")
         mismatches = _spec_mismatches(r, spec, msgs)
+        fixed = [m[0] for m in mismatches if m[0] in NEVER_ACCEPTED]
+        if fixed:  # a response to another prompt, or of another model: never kept, whatever the flag
+            raise StaleRecords(f"{path}: record for {key} differs from the current prompt or model mapping in "
+                               f"{fixed}; a response to another input is never kept (--accept-spec-change covers "
+                               "decoding changes only): restore the spec, or move the file aside under the "
+                               "substitution rule (docs/r2/RUNBOOK.md)")
         if mismatches and not accept_spec_change:
             raise StaleRecords(f"{path}: record for {key} differs from the current prompt or spec in "
                                f"{[m[0] for m in mismatches]}; rerun with --accept-spec-change to keep it")
@@ -826,9 +856,9 @@ def parse_args(argv=None):
                         help="pilot run: skip the freeze checks (tag, verified stimuli, frozen hashes, public "
                              "timestamp)")
     parser.add_argument("--accept-spec-change", action="store_true",
-                        help="keep stored records whose prompt, model mapping or decoding differs from the "
-                             "current spec; each accepted mismatch is logged to "
-                             "<out>/<safe_name>.incidents.jsonl")
+                        help="keep stored records whose decoding (temperature, token parameter or limit) differs "
+                             "from the current spec; each accepted mismatch is logged to "
+                             "<out>/<safe_name>.incidents.jsonl. A changed prompt or model mapping is never kept")
     parser.add_argument("--accept-unpublished-freeze", action="store_true",
                         help="main run although FREEZE_RECORD.md records no public timestamp of the freeze; writes an "
                              "unpublished_freeze incident to <out>/freeze.incidents.jsonl")
@@ -859,8 +889,7 @@ def main(argv=None, client_factory=None, sleep=None):
     if SANDBOX is not None:
         context["synthetic"] = True
     if client_factory is None:
-        from dotenv import load_dotenv
-        load_dotenv(REPO / ".env")
+        load_keys()
         client_factory = make_client
     specs, stopped, need_resume = _select(load_specs(), args.models), [], 0
     for spec in specs:
