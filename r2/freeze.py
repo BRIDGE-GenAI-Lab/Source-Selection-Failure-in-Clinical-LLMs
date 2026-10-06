@@ -17,6 +17,8 @@ from r2.run.harness import safe_name
 
 TAG = "r2-analysis-plan-frozen"
 BANNER = "DRAFT — not frozen"
+BANNER_LINE = (f"{BANNER}. The freeze tool (python -m r2.freeze) removes this line, fills the hash and date slots, "
+               "and tags the commit.")
 PLAN = "docs/r2/ANALYSIS_PLAN.md"
 RECORD = "docs/r2/FREEZE_RECORD.md"
 HASHED = ("data/v2/pairs_v2.json", "r2/stimuli/render.py", "verification/excluded_pairs.json",
@@ -27,6 +29,95 @@ FOOTER = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 class FreezeRefused(RuntimeError):
     pass
+
+
+# ---------------------------------------------------------------- reading FREEZE_RECORD.md
+# The public timestamp of the freeze: the pushed tag's URL, an OSF registration or a Zenodo DOI.
+PUBLIC_KINDS = (
+    ("pushed tag", re.compile(r"https://(?:github\.com|gitlab\.com)/[\w.-]+/[\w.-]+/(?:releases/tag|tree|-/tags)/"
+                              + re.escape(TAG) + r"/?")),
+    ("OSF registration", re.compile(r"https://osf\.io/[a-z0-9]{5,}/?|https://doi\.org/10\.17605/OSF\.IO/[A-Z0-9]{5,}")),
+    ("Zenodo DOI", re.compile(r"(?:https://doi\.org/)?10\.5281/zenodo\.\d+|https://zenodo\.org/records?/\d+")),
+)
+RECORD_HASH = re.compile(r"^- (\S+): ([0-9a-f]{64})$", re.M)
+CHANGES_HEAD = "Changes after the freeze"
+CHANGE_FORMAT = "- YYYY-MM-DD: <path> sha256 <new SHA-256>: <reason>"
+CHANGE_ENTRY = re.compile(r"^- (\d{4}-\d{2}-\d{2}): (\S+) sha256 ([0-9a-f]{64}): (\S.*?)\s*$", re.M)
+
+
+def public_kind(url):
+    """'pushed tag', 'OSF registration', 'Zenodo DOI', or None for anything else."""
+    for kind, rx in PUBLIC_KINDS:
+        if rx.fullmatch(url.strip()):
+            return kind
+    return None
+
+
+def record_date(text):
+    """The freeze date ("- Date: YYYY-MM-DD") of a FREEZE_RECORD.md text, or None."""
+    m = re.search(r"^- Date: (\d{4}-\d{2}-\d{2})$", text, re.M)
+    return m.group(1) if m else None
+
+
+def frozen_hashes(text):
+    """{path: SHA-256} of the HASHED files in a FREEZE_RECORD.md text, in HASHED order. Refuses (FreezeRefused) a
+    missing or a repeated path."""
+    found = {}
+    for rel, digest in RECORD_HASH.findall(text):
+        if rel in HASHED:
+            if rel in found:
+                raise FreezeRefused(f"{RECORD}: {rel} is listed more than once among the frozen hashes")
+            found[rel] = digest
+    missing = [rel for rel in HASHED if rel not in found]
+    if missing:
+        raise FreezeRefused(f"{RECORD}: no frozen SHA-256 for {missing}")
+    return {rel: found[rel] for rel in HASHED}
+
+
+def change_entries(text):
+    """The dated entries under "Changes after the freeze" ({date, path, sha256, reason}), in file order."""
+    i = text.find(CHANGES_HEAD)
+    if i < 0:
+        return []
+    return [{"date": d, "path": p, "sha256": h, "reason": r} for d, p, h, r in CHANGE_ENTRY.findall(text[i:])]
+
+
+def public_timestamp(text):
+    """The public timestamp a FREEZE_RECORD.md text records ({url, kind, since, tag_commit}), or None (not
+    recorded, or not a valid public URL)."""
+    got = {k: (m.group(1).strip() if m else None) for k, m in (
+        ("url", re.search(r"^- Public URL: (\S+)$", text, re.M)),
+        ("kind", re.search(r"^- Kind: (.+)$", text, re.M)),
+        ("since", re.search(r"^- Public since: (\d{4}-\d{2}-\d{2})$", text, re.M)),
+        ("tag_commit", re.search(r"^- Tag commit: (\S+)$", text, re.M)))}
+    if not got["url"] or not got["since"] or public_kind(got["url"]) is None:
+        return None
+    return got
+
+
+def draft_plan(text):
+    """The DRAFT analysis plan for `text`, which is either the draft itself or the plan as frozen (fill_plan undone:
+    the banner line back, the hash and date slots emptied). The sandbox freeze and the tests freeze a copy of the
+    draft, so they keep working after the real plan is frozen."""
+    if text.startswith(BANNER):
+        return text
+    for rel in HASHED:
+        text, n = re.subn(rf"^(- {re.escape(rel)}: )[0-9a-f]{{64}}$", r"\g<1><sha>", text, flags=re.M)
+        if n != 1:
+            raise FreezeRefused(f"{PLAN}: expected one frozen hash for {rel}, found {n}")
+    text, n = re.subn(r"^Date frozen: \d{4}-\d{2}-\d{2}\.", "Date frozen: <YYYY-MM-DD>.", text, count=1, flags=re.M)
+    if n != 1:
+        raise FreezeRefused(f"{PLAN}: no 'Date frozen: YYYY-MM-DD.' line")
+    return f"{BANNER_LINE}\n\n{text}"
+
+
+def environment():
+    """The analysis environment at the freeze: the Python version and every installed distribution with its
+    version (as pip freeze would list them; read from importlib.metadata, nothing is installed or fetched)."""
+    from importlib import metadata
+    pkgs = sorted({f"{d.metadata['Name']}=={d.version}" for d in metadata.distributions() if d.metadata["Name"]},
+                  key=str.lower)
+    return {"python": sys.version.split()[0], "implementation": sys.implementation.name, "packages": pkgs}
 
 
 def _git(repo, *args, check=True):
@@ -92,8 +183,12 @@ def fill_plan(text, hashes, date):
     return text
 
 
-def freeze_record(base, hashes, date):
+def freeze_record(base, hashes, date, env=None):
     rows = "\n".join(f"- {rel}: {digest}" for rel, digest in hashes.items())
+    env_text = ""
+    if env:
+        env_text = (f"\nAnalysis environment at the freeze ({env['implementation']} {env['python']}; installed "
+                    "distributions, as pip freeze lists them):\n\n" + "\n".join(f"    {p}" for p in env["packages"]) + "\n")
     return f"""# Freeze record
 
 - Tag: {TAG} (annotated, created locally)
@@ -106,11 +201,15 @@ def freeze_record(base, hashes, date):
 SHA-256 of the frozen inputs:
 
 {rows}
-
+{env_text}
 Public timestamp: pending a push. The tag has not been pushed. After the user approves a push, record the
 remote tag date and the tag SHA here, with a dated entry.
 
-Changes after the freeze (each needs a dated entry here before any further main-run call):
+{CHANGES_HEAD}. The main run (python -m r2.run.harness, also through python -m r2.pipeline main) refuses
+while any file above differs from its SHA-256, unless a dated entry below, committed before the run, gives the
+file's new SHA-256 and the reason. Each accepted change is logged as a frozen_input_changed incident in
+r2_runs/main/freeze.incidents.jsonl at every main-run start. One line per change:
+`{CHANGE_FORMAT}`
 
 - none
 """
@@ -153,7 +252,7 @@ def freeze(repo=None, runs_v2=None, dry_run=False, today=None):
         return None
     before = {rel: ((repo / rel).read_bytes() if (repo / rel).exists() else None) for rel in (PLAN, RECORD)}
     (repo / PLAN).write_text(plan_text, encoding="utf-8")
-    (repo / RECORD).write_text(freeze_record(base, hashes, date), encoding="utf-8")
+    (repo / RECORD).write_text(freeze_record(base, hashes, date, environment()), encoding="utf-8")
     _git(repo, "add", PLAN, RECORD)
     _git(repo, "commit", "-q", "-m", f"r2: freeze analysis plan for the repeated experiment\n\n{FOOTER}")
     try:

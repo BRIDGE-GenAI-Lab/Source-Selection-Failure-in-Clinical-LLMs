@@ -463,7 +463,8 @@ def test_order_check_failures_stop_post_results(sandboxed, freeze_date, public, 
 
 def test_order_check_accepts_a_logged_unpublished_freeze(sandboxed, capsys):
     _order_world("2026-10-06", "2026-10-07T09:00:00+00:00")
-    pipeline._pipeline_incident({"kind": "unpublished_freeze", "freeze_record": str(paths.FREEZE_RECORD)})
+    harness._log_run_incident(paths.RUNS_V2 / "main", {"kind": "unpublished_freeze",
+                                                      "freeze_record": str(paths.FREEZE_RECORD)})
     assert pipeline.order_check()["ok"] is True
     assert "ACCEPTED by --accept-unpublished-freeze" in capsys.readouterr().out
 

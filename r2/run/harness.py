@@ -122,8 +122,10 @@ def load_specs(path=None):
     return specs
 
 
-def load_v2_cases(path=DATA_V2 / "pairs_v2.json"):
-    """(cases by case_id, sha256 of the file bytes). Raises ValueError, never assert, on any defect."""
+def load_v2_cases(path=None):
+    """(cases by case_id, sha256 of the file bytes) of `path` (default DATA_V2/pairs_v2.json, read at call time).
+    Raises ValueError, never assert, on any defect."""
+    path = DATA_V2 / "pairs_v2.json" if path is None else path
     raw = Path(path).read_bytes()
     data = json.loads(raw)
     if not isinstance(data, dict) or not isinstance(data.get("cases"), list):
@@ -623,15 +625,19 @@ def _sandbox_commit():
     return f"sandbox:code-{h.hexdigest()[:16]}"
 
 
-def _clean_commit():
+def _clean_commit(main=False):
+    """HEAD of the repository, which must have no uncommitted change under CODE_PATHS (and, for a main run, under
+    MAIN_EXTRA_PATHS: verification/ and docs/r2/FREEZE_RECORD.md). Under R2_SANDBOX: _sandbox_commit()."""
     if SANDBOX is not None:
         return _sandbox_commit()
-    status = subprocess.run(["git", "status", "--porcelain", *CODE_PATHS], cwd=REPO,
+    where = CODE_PATHS + (MAIN_EXTRA_PATHS if main else ())
+    status = subprocess.run(["git", "status", "--porcelain", *where], cwd=REPO,
                             capture_output=True, text=True)
     if status.returncode != 0:
         raise SystemExit(f"git status failed (rc {status.returncode}); cannot record harness_commit")
     if status.stdout.strip():
-        raise SystemExit(f"commit r2/, data/v2/ and tests/ before running:\n{status.stdout.strip()}")
+        names = ", ".join(f"{p}/" if "." not in Path(p).name else p for p in where)
+        raise SystemExit(f"commit {names} before running:\n{status.stdout.strip()}")
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True)
     sha = head.stdout.strip()
     if head.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", sha):
@@ -657,34 +663,141 @@ def _select(specs, selector):
     return [s for s in specs if s["original_name"] in names]
 
 
-def _tag_exists(tag, repo=None):
-    """The tag exists in FREEZE_REPO: the repository itself, or the sandbox's freeze repository under R2_SANDBOX
-    (checked through r2.sandbox_git: no inherited GIT_* variables, and the repository must lie in the sandbox)."""
+def _freeze_git(*args, repo=None):
+    """git in FREEZE_REPO (the repository itself, or the sandbox's freeze repository under R2_SANDBOX, checked
+    through r2.sandbox_git: no inherited GIT_* variables, and the repository must lie in the sandbox). Read-only
+    uses only. A missing sandbox repository is a failed command (exit status 128)."""
     repo = FREEZE_REPO if repo is None else repo
     if SANDBOX is not None:
         from r2 import sandbox_git
         if not Path(repo).exists():
-            return False
+            return subprocess.CompletedProcess(args, 128, "", f"{repo} does not exist")
         try:
-            res = sandbox_git.run(repo, "rev-parse", "-q", "--verify", f"refs/tags/{tag}", sandbox=SANDBOX)
+            return sandbox_git.run(repo, *args, sandbox=SANDBOX)
         except sandbox_git.SandboxGitError as exc:
             raise SystemExit(f"refusing the main run: {exc}") from exc
-        return res.returncode == 0
-    res = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], cwd=repo,
-                         capture_output=True, text=True)
-    return res.returncode == 0
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True)
 
 
-def _require_frozen(stim_sha):
-    """The main run needs the frozen analysis plan and exactly the physician-verified stimulus file."""
+def _tag_exists(tag, repo=None):
+    """The tag exists in FREEZE_REPO: the repository itself, or the sandbox's freeze repository under R2_SANDBOX."""
+    return _freeze_git("rev-parse", "-q", "--verify", f"refs/tags/{tag}", repo=repo).returncode == 0
+
+
+def _today():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+FREEZE_RECORD_REL = "docs/r2/FREEZE_RECORD.md"
+FREEZE_INCIDENTS = "freeze.incidents.jsonl"  # run-level main-run incidents: unpublished_freeze, frozen_input_changed
+MAIN_EXTRA_PATHS = ("verification", FREEZE_RECORD_REL)  # also committed before a main run (exclusions, flags, record)
+
+
+def frozen_sources():
+    """Each frozen file (r2.freeze.HASHED) -> the file the main run uses: the repository's, or under R2_SANDBOX the
+    sandbox copies of the state (stimuli, exclusions, model specs) and the repository's code."""
+    return {"data/v2/pairs_v2.json": Path(DATA_V2) / "pairs_v2.json",
+            "r2/stimuli/render.py": Path(REPO) / "r2" / "stimuli" / "render.py",
+            "verification/excluded_pairs.json": Path(VERIFY_DIR) / "excluded_pairs.json",
+            "r2/run/models_v2.json": Path(MODELS_FILE),
+            "r2/run/harness.py": Path(REPO) / "r2" / "run" / "harness.py"}
+
+
+def _log_run_incident(out_dir, incident):
+    """Append one run-level incident to <out_dir>/freeze.incidents.jsonl (never a result file)."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    line = {**incident, "logged_at": datetime.now(timezone.utc).isoformat()}
+    if SANDBOX is not None:
+        line["synthetic"] = True
+    with open(out_dir / FREEZE_INCIDENTS, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(line, ensure_ascii=False) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def run_incidents(out_dir):
+    """The run-level incidents of <out_dir>/freeze.incidents.jsonl (an empty list when there are none)."""
+    path = Path(out_dir) / FREEZE_INCIDENTS
+    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()] if path.exists() else []
+
+
+def verify_freeze(stim_sha, accept_unpublished=False):
+    """Every main run (a direct python -m r2.run.harness call included) refuses with SystemExit("refusing the main
+    run: ...") unless:
+    1. the tag r2-analysis-plan-frozen exists in FREEZE_REPO;
+    2. verification/excluded_pairs.json records pairs_v2_sha256 = the stimulus file's SHA-256;
+    3. FREEZE_RECORD.md at the tag holds the five frozen hashes, and the current FREEZE_RECORD.md keeps those lines;
+    4. each frozen file's current SHA-256 equals its frozen hash, or a dated entry under "Changes after the freeze"
+       of the current FREEZE_RECORD.md, dated from the freeze day to today, gives that new hash (an accepted change);
+    5. FREEZE_RECORD.md records the public timestamp of the freeze, or accept_unpublished.
+    Writes nothing. Returns {"public": the public timestamp or None, "changed": [frozen_input_changed incidents],
+    "freeze_record": path}; log_freeze() prints and logs them once the run starts."""
+    from r2 import freeze as F
     if not _tag_exists(FREEZE_TAG):
         raise SystemExit(f"refusing the main run: git tag {FREEZE_TAG} does not exist "
                          "(use --pilot for a pilot run)")
-    path = VERIFY_DIR / "excluded_pairs.json"
+    path = Path(VERIFY_DIR) / "excluded_pairs.json"
     verified = json.loads(path.read_text()).get("pairs_v2_sha256") if path.exists() else None
     if verified != stim_sha:
         raise SystemExit(f"refusing the main run: data/v2/pairs_v2.json has sha256 {stim_sha}, but "
                          f"{path} records pairs_v2_sha256 = {verified} (the physician-verified stimuli)")
+    at_tag = _freeze_git("show", f"{FREEZE_TAG}:{FREEZE_RECORD_REL}")
+    if at_tag.returncode:
+        raise SystemExit(f"refusing the main run: no {FREEZE_RECORD_REL} at the tag {FREEZE_TAG} "
+                         f"({at_tag.stderr.strip()})")
+    record_path = Path(FREEZE_REPO) / FREEZE_RECORD_REL
+    current = record_path.read_text(encoding="utf-8") if record_path.exists() else ""
+    try:
+        frozen = F.frozen_hashes(at_tag.stdout)
+        if F.frozen_hashes(current) != frozen:
+            raise SystemExit(f"refusing the main run: {record_path}: its hash lines differ from FREEZE_RECORD.md at the "
+                             f"tag {FREEZE_TAG}; the frozen hashes are never edited (record a change as a dated entry "
+                             f"under '{F.CHANGES_HEAD}')")
+    except F.FreezeRefused as exc:
+        raise SystemExit(f"refusing the main run: {exc}") from exc
+    freeze_day, today = F.record_date(at_tag.stdout), _today()
+    entries = F.change_entries(current)
+    changed, problems = [], []
+    for rel, src in frozen_sources().items():
+        digest = hashlib.sha256(src.read_bytes()).hexdigest() if src.exists() else None
+        if digest == frozen[rel]:
+            continue
+        entry = next((e for e in reversed(entries) if e["path"] == rel and e["sha256"] == digest), None)
+        if entry is None:
+            problems.append(f"{rel} has sha256 {digest}, but FREEZE_RECORD.md at the tag records {frozen[rel]} and "
+                            f"no dated entry under '{F.CHANGES_HEAD}' gives the new hash")
+        elif freeze_day and entry["date"] < freeze_day:
+            problems.append(f"{rel}: the change entry is dated {entry['date']}, before the freeze ({freeze_day})")
+        elif entry["date"] > today:
+            problems.append(f"{rel}: the change entry is dated {entry['date']}, after today ({today})")
+        else:
+            changed.append({"kind": "frozen_input_changed", "path": rel, "frozen_sha256": frozen[rel],
+                            "current_sha256": digest, "entry_date": entry["date"], "reason": entry["reason"]})
+    if problems:
+        raise SystemExit("refusing the main run: " + "; ".join(problems))
+    public = F.public_timestamp(current)
+    if public is None and not accept_unpublished:
+        raise SystemExit(f"refusing the main run: {record_path} records no public timestamp of the freeze. Pushing the "
+                         "tag needs the authors' approval; once the freeze is public (the pushed tag, an OSF "
+                         "registration or a Zenodo DOI), run python -m r2.pipeline record-public <url>, commit "
+                         f"{FREEZE_RECORD_REL} and rerun. The only override is --accept-unpublished-freeze, which "
+                         "writes an incident line")
+    return {"public": public, "changed": changed, "freeze_record": str(record_path)}
+
+
+def log_freeze(checked, out_dir):
+    """Print and log (to <out_dir>/freeze.incidents.jsonl) what verify_freeze accepted: one frozen_input_changed
+    incident per changed frozen file, and an unpublished_freeze incident when the freeze is not public."""
+    for inc in checked["changed"]:
+        print(f"FROZEN INPUT CHANGED {inc['path']}: {inc['frozen_sha256'][:12]} -> {inc['current_sha256'][:12]} "
+              f"(entry of {inc['entry_date']}: {inc['reason']})", flush=True)
+        _log_run_incident(out_dir, inc)
+    if checked["public"] is None:
+        _log_run_incident(out_dir, {"kind": "unpublished_freeze", "freeze_record": checked["freeze_record"],
+                                    "note": "main run started before the freeze was public"})
+        print("ACCEPTED: main run without a public timestamp of the freeze (--accept-unpublished-freeze); incident "
+              f"written to {Path(out_dir) / FREEZE_INCIDENTS}", flush=True)
 
 
 def _same_dir(a, b):
@@ -710,11 +823,15 @@ def parse_args(argv=None):
                         help="run only the first N pairs (sorted case_id); 0 runs none; omit for all")
     parser.add_argument("--out", default=None, help="default: RUNS_V2/main, or RUNS_V2/pilot with --pilot")
     parser.add_argument("--pilot", action="store_true",
-                        help="pilot run: skip the freeze-tag and verified-stimulus checks")
+                        help="pilot run: skip the freeze checks (tag, verified stimuli, frozen hashes, public "
+                             "timestamp)")
     parser.add_argument("--accept-spec-change", action="store_true",
                         help="keep stored records whose prompt, model mapping or decoding differs from the "
                              "current spec; each accepted mismatch is logged to "
                              "<out>/<safe_name>.incidents.jsonl")
+    parser.add_argument("--accept-unpublished-freeze", action="store_true",
+                        help="main run although FREEZE_RECORD.md records no public timestamp of the freeze; writes an "
+                             "unpublished_freeze incident to <out>/freeze.incidents.jsonl")
     parser.add_argument("--retry-persistent", action="store_true",
                         help="re-attempt cells whose last record is persistent_error (each logged as a "
                              "reopened_persistent incident); use after a provider-wide condition is fixed")
@@ -735,9 +852,10 @@ def main(argv=None, client_factory=None, sleep=None):
     if args.pilot and _same_dir(args.out, RUNS_V2 / "main"):
         raise SystemExit("refusing a --pilot run into the main out dir")
     cases, stim_sha = load_v2_cases()
-    if not args.pilot:
-        _require_frozen(stim_sha)
-    context = {"harness_commit": _clean_commit(), "stimulus_sha256": stim_sha}
+    checked = None if args.pilot else verify_freeze(stim_sha, accept_unpublished=args.accept_unpublished_freeze)
+    context = {"harness_commit": _clean_commit(main=not args.pilot), "stimulus_sha256": stim_sha}
+    if checked is not None:  # every check passed: now the incidents (accepted changes, an unpublished freeze)
+        log_freeze(checked, args.out)
     if SANDBOX is not None:
         context["synthetic"] = True
     if client_factory is None:

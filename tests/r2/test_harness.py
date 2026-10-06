@@ -557,7 +557,7 @@ def test_parse_args_out_defaults():
 @pytest.fixture
 def no_side_effects(monkeypatch):
     monkeypatch.setattr(harness, "load_v2_cases", lambda *a, **k: ({}, "stim-sha"))
-    monkeypatch.setattr(harness, "_clean_commit", lambda: "0" * 40)
+    monkeypatch.setattr(harness, "_clean_commit", lambda *a, **k: "0" * 40)
     monkeypatch.setattr(harness, "load_specs", lambda *a, **k: [])
     monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: None)
 
@@ -578,11 +578,15 @@ def test_main_refuses_unverified_stimulus(no_side_effects, monkeypatch, tmp_path
         harness.main([])
 
 
-def test_main_runs_when_frozen_and_verified(no_side_effects, monkeypatch, tmp_path):
+def test_main_with_the_tag_and_verified_stimuli_goes_on_to_the_frozen_hashes(no_side_effects, monkeypatch, tmp_path):
+    """Past the tag and the verified-stimulus checks, the freeze record at the tag is read next (the frozen hashes
+    and the public timestamp: tests/r2/test_freeze_enforcement.py)."""
     monkeypatch.setattr(harness, "_tag_exists", lambda tag: True)
     monkeypatch.setattr(harness, "VERIFY_DIR", tmp_path)
+    monkeypatch.setattr(harness, "FREEZE_REPO", tmp_path)
     (tmp_path / "excluded_pairs.json").write_text(json.dumps({"excluded": [], "pairs_v2_sha256": "stim-sha"}))
-    harness.main([])
+    with pytest.raises(SystemExit, match="no docs/r2/FREEZE_RECORD.md at the tag"):
+        harness.main([])
 
 
 def test_pilot_skips_freeze_checks(no_side_effects, monkeypatch):
@@ -821,7 +825,7 @@ def two_models(monkeypatch, tmp_path):
     b = {**SPEC, "original_name": "b", "model_id": "prov/b-1", "provider": "together"}
     clients = {}
     monkeypatch.setattr(harness, "load_v2_cases", lambda *x, **k: (SUBSET, "stim-sha"))
-    monkeypatch.setattr(harness, "_clean_commit", lambda: "0" * 40)
+    monkeypatch.setattr(harness, "_clean_commit", lambda *a, **k: "0" * 40)
     monkeypatch.setattr(harness, "load_specs", lambda *x, **k: [a, b])
     monkeypatch.setattr("dotenv.load_dotenv", lambda *x, **k: None)
     monkeypatch.setattr(harness, "make_client", lambda provider: clients[provider])

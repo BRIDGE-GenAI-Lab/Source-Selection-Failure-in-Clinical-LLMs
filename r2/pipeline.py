@@ -400,7 +400,7 @@ def probe(yes=False, client_factory=None, sleep=None):
     return 0
 
 
-def harness_argv(kind, models="all", retry_persistent=False, accept_spec_change=False):
+def harness_argv(kind, models="all", retry_persistent=False, accept_spec_change=False, accept_unpublished_freeze=False):
     argv = ["--models", models]
     if kind == "pilot":
         argv = ["--pilot", "--limit", str(PILOT_PAIRS)] + argv
@@ -408,15 +408,19 @@ def harness_argv(kind, models="all", retry_persistent=False, accept_spec_change=
         argv.append("--retry-persistent")
     if accept_spec_change:
         argv.append("--accept-spec-change")
+    if accept_unpublished_freeze and kind == "main":
+        argv.append("--accept-unpublished-freeze")
     return argv
 
 
 def run_harness(kind, yes=False, client_factory=None, sleep=None, accept_unpublished_freeze=False, **flags):
     """kind 'pilot' or 'main'. Returns the harness exit status (1: a model stopped or cells need a resume).
-    The main run also needs the freeze tag and a public timestamp of the freeze in FREEZE_RECORD.md (record-public);
-    the only override, accept_unpublished_freeze, writes an incident line."""
+    For the main run the harness itself verifies the freeze (r2.run.harness.verify_freeze: the tag, the SHA-256 of
+    every frozen file against FREEZE_RECORD.md at the tag, the public timestamp); this wrapper runs the same check
+    first, so a refusal is a REFUSED line (exit status 2). accept_unpublished_freeze passes
+    --accept-unpublished-freeze to the harness, which writes the incident line."""
     check_write_paths()
-    argv = harness_argv(kind, **flags)
+    argv = harness_argv(kind, accept_unpublished_freeze=accept_unpublished_freeze, **flags)
     _show(["python", "-m", "r2.run.harness", *argv])
     _spend_guard(yes, f"the {kind} run")
     if kind == "main":
@@ -428,19 +432,18 @@ def run_harness(kind, yes=False, client_factory=None, sleep=None, accept_unpubli
     if client_factory is None and paths.SANDBOX is not None:
         raise Refused("R2_SANDBOX is set: a sandbox never calls a real API (use r2.rehearse)")
     if kind == "main":
-        pub = public_timestamp()
+        from r2.run import harness
+        try:
+            _, stim_sha = harness.load_v2_cases(paths.DATA_V2 / "pairs_v2.json")
+            checked = harness.verify_freeze(stim_sha, accept_unpublished=accept_unpublished_freeze)
+        except (SystemExit, ValueError) as exc:
+            raise Refused(str(exc).removeprefix("refusing the main run: ")) from exc
+        pub = checked["public"]
         if pub is not None:
             print(f"public timestamp of the freeze: {pub['kind']} {pub['url']} (public since {pub['since']})")
-        elif not accept_unpublished_freeze:
-            raise Refused(f"{paths.FREEZE_RECORD} records no public timestamp of the freeze. Pushing the tag needs "
-                          "the authors' approval; once the freeze is public (the pushed tag, an OSF registration or a "
-                          "Zenodo DOI), run python -m r2.pipeline record-public <url> and rerun. The only override is "
-                          "--accept-unpublished-freeze, which writes an incident line")
         else:
-            where = _pipeline_incident({"kind": "unpublished_freeze", "freeze_record": str(paths.FREEZE_RECORD),
-                                        "argv": argv, "note": "main run started before the freeze was public"})
-            print(f"ACCEPTED: main run without a public timestamp of the freeze (--accept-unpublished-freeze); "
-                  f"incident written to {where}")
+            print("the freeze is not public: the harness runs with --accept-unpublished-freeze and writes an "
+                  f"unpublished_freeze incident to {paths.RUNS_V2 / 'main' / harness.FREEZE_INCIDENTS}")
     if client_factory is None:
         return subprocess.run([PY, "-m", "r2.run.harness", *argv], cwd=paths.REPO).returncode
     from r2.run import harness
@@ -599,47 +602,39 @@ def freeze(dry_run=False, yes=False):
 
 
 # ---------------------------------------------------------------- the public timestamp of the freeze
-FREEZE_TAG_NAME = "r2-analysis-plan-frozen"
-PUBLIC_KINDS = (
-    ("pushed tag", re.compile(r"https://(?:github\.com|gitlab\.com)/[\w.-]+/[\w.-]+/(?:releases/tag|tree|-/tags)/"
-                              + re.escape(FREEZE_TAG_NAME) + r"/?")),
-    ("OSF registration", re.compile(r"https://osf\.io/[a-z0-9]{5,}/?|https://doi\.org/10\.17605/OSF\.IO/[A-Z0-9]{5,}")),
-    ("Zenodo DOI", re.compile(r"(?:https://doi\.org/)?10\.5281/zenodo\.\d+|https://zenodo\.org/records?/\d+")),
-)
-PIPELINE_INCIDENTS = "pipeline.incidents.jsonl"  # under r2_runs/main; check_complete ignores *.incidents.jsonl
+# The run-level incidents of the main run (unpublished_freeze, frozen_input_changed) are written by the harness to
+# r2_runs/main/freeze.incidents.jsonl; check_complete ignores every *.incidents.jsonl file.
+PIPELINE_INCIDENTS = "freeze.incidents.jsonl"
 
 
 def public_kind(url):
-    """'pushed tag', 'OSF registration', 'Zenodo DOI', or None for anything else."""
-    for kind, rx in PUBLIC_KINDS:
-        if rx.fullmatch(url.strip()):
-            return kind
-    return None
+    """'pushed tag', 'OSF registration', 'Zenodo DOI', or None for anything else (r2.freeze.public_kind)."""
+    from r2.freeze import public_kind as kind
+    return kind(url)
 
 
 def _freeze_date(text=None):
+    from r2.freeze import record_date
     if text is None:
         if not paths.FREEZE_RECORD.exists():
             return None
         text = paths.FREEZE_RECORD.read_text(encoding="utf-8")
-    m = re.search(r"^- Date: (\d{4}-\d{2}-\d{2})$", text, re.M)
-    return m.group(1) if m else None
+    return record_date(text)
 
 
 def public_timestamp():
     """The public timestamp FREEZE_RECORD.md records ({url, kind, since, tag_commit}), or None (not recorded, or
     not a valid public URL)."""
+    from r2.freeze import public_timestamp as parse
     if not paths.FREEZE_RECORD.exists():
         return None
-    text = paths.FREEZE_RECORD.read_text(encoding="utf-8")
-    got = {k: (m.group(1).strip() if m else None) for k, m in (
-        ("url", re.search(r"^- Public URL: (\S+)$", text, re.M)),
-        ("kind", re.search(r"^- Kind: (.+)$", text, re.M)),
-        ("since", re.search(r"^- Public since: (\d{4}-\d{2}-\d{2})$", text, re.M)),
-        ("tag_commit", re.search(r"^- Tag commit: (\S+)$", text, re.M)))}
-    if not got["url"] or not got["since"] or public_kind(got["url"]) is None:
-        return None
-    return got
+    return parse(paths.FREEZE_RECORD.read_text(encoding="utf-8"))
+
+
+def _commit_day(commit):
+    """The UTC day of a commit's committer date in FREEZE_REPO."""
+    stamp = _git(paths.FREEZE_REPO, "log", "-1", "--format=%ct", commit, check=True).stdout.strip()
+    return datetime.fromtimestamp(int(stamp), timezone.utc).strftime("%Y-%m-%d")
 
 
 def _calendar_date(value, what):
@@ -666,11 +661,13 @@ def record_public(url, date=None):
                       f"(https://github.com/<owner>/<repo>/releases/tag/{TAG} or .../tree/{TAG}), an OSF link "
                       "(https://osf.io/<id>) or a Zenodo DOI (10.5281/zenodo.<n>)")
     since = _calendar_date(date or _today(), "--date")
-    frozen = _freeze_date()
+    frozen, committed = _freeze_date(), _commit_day(commit)
     if frozen and since < frozen:
         raise Refused(f"--date {since} is before the freeze ({frozen})")
+    if since < committed:
+        raise Refused(f"--date {since} is before the freeze commit's date ({committed}, commit {commit[:12]})")
     if since > _today():
-        raise Refused(f"--date {since} is in the future")
+        raise Refused(f"--date {since} is after today ({_today()}): a date in the future")
     current = public_timestamp()
     if current:
         if current["url"] != url:
@@ -689,23 +686,10 @@ def record_public(url, date=None):
     return {"url": url, "kind": kind, "since": since, "tag_commit": commit}
 
 
-def _pipeline_incident(rec):
-    """One line in r2_runs/main/pipeline.incidents.jsonl (evidence, archived with the run logs)."""
-    path = paths.RUNS_V2 / "main" / PIPELINE_INCIDENTS
-    path.parent.mkdir(parents=True, exist_ok=True)
-    line = {"at": datetime.now(timezone.utc).isoformat(), **rec}
-    if paths.SANDBOX is not None:
-        line["synthetic"] = True
-    with open(path, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(line) + "\n")
-    return path
-
-
 def _pipeline_incidents():
-    path = paths.RUNS_V2 / "main" / PIPELINE_INCIDENTS
-    if not path.exists():
-        return []
-    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+    """The run-level incidents of the main run (r2.run.harness.run_incidents of r2_runs/main)."""
+    from r2.run import harness
+    return harness.run_incidents(paths.RUNS_V2 / "main")
 
 
 # ---------------------------------------------------------------- record (public facts after the release)
@@ -822,7 +806,8 @@ def order_check():
         problem = f"no public timestamp in {rec} (python -m r2.pipeline record-public <url>)"
     accepted = [i for i in _pipeline_incidents() if i.get("kind") == "unpublished_freeze"]
     if not ok_pub and accepted:
-        print(f"ORDER CHECK public: ACCEPTED by --accept-unpublished-freeze (incident of {accepted[0]['at']} in "
+        print(f"ORDER CHECK public: ACCEPTED by --accept-unpublished-freeze (incident of "
+              f"{accepted[0].get('logged_at') or accepted[0].get('at')} in "
               f"{paths.RUNS_V2 / 'main' / PIPELINE_INCIDENTS})", flush=True)
     elif not ok_pub:
         problems.append(problem)
