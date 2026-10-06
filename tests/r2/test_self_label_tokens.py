@@ -62,7 +62,14 @@ def check_round1_render(tmp_dir, m, pairs, raw):
         bp._write_forms_to(tmp_dir, raw, subset, {"unresolved": list(m["unresolved"])})
     finally:
         difflib.HtmlDiff._default_prefix = saved
-    for name in ("review_AG.csv", "review_MO.csv", "packets.html", "README_REVIEWERS.md"):
+    # the CSVs are compared on the packet columns only: once the reviewers have answered, the committed forms
+    # carry their answers in the other columns
+    packet_cols = list(bp.packet_rows(subset[:1])[0])
+    for name in ("review_AG.csv", "review_MO.csv"):
+        got, want = (list(csv.DictReader(open(d / name, newline="", encoding="utf-8")))
+                     for d in (tmp_dir, ROUND1))
+        assert [{k: r[k] for k in packet_cols} for r in got] == [{k: r[k] for k in packet_cols} for r in want], name
+    for name in ("packets.html", "README_REVIEWERS.md"):
         assert (tmp_dir / name).read_bytes() == (ROUND1 / name).read_bytes(), name
     # the manifest differs only in the whole-file hash, which moves when pairs_v2.json gains the new pairs
     fresh = json.loads((tmp_dir / "packets_manifest.json").read_text(encoding="utf-8"))
