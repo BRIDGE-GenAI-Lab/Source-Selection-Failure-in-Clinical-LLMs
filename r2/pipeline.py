@@ -318,8 +318,9 @@ def import_edits(xlsx, author="A.G.", date=None):
         raise Refused(f"no physician edit for {len(missing)} queued pairs: {missing[:10]}")
     try:
         cases, unresolved = build_v2(manual, strict=True)  # re-audits every pair: identical renders raise
-    except ValueError as exc:
-        raise Refused(f"the rebuild of pairs_v2.json failed (nothing was written): {exc}") from exc
+    except (ValueError, AssertionError) as exc:
+        raise Refused(f"the rebuild of pairs_v2.json failed: {type(exc).__name__}: {exc}. data/v2/manual_edits.json "
+                      "holds the imported edits (a rerun re-imports them); pairs_v2.json is unchanged") from exc
     write_outputs(cases, unresolved)
     pairs = _pairs()
     sha = _sha(paths.DATA_V2 / "pairs_v2.json")
@@ -343,6 +344,28 @@ def _mark_synthetic(path):
         path.write_text(json.dumps({**d, "synthetic": True}, indent=2), encoding="utf-8")
 
 
+REVIEWER_NAMES = {"AG": "A.G.", "MO": "M.O."}  # as r2.verify.build_packets writes them into Instructions!A1
+
+
+def _check_workbook(book, reviewer, label):
+    """Refuse a workbook whose Instructions!A1 ("Reviewer: A.G.    Round: round1", written by build_packets) names
+    another reviewer or round than the argument position it was given in (swapped files would mix raters)."""
+    from openpyxl import load_workbook
+    from r2.verify import build_packets as BP
+    try:
+        wb = load_workbook(book, read_only=True)
+        a1 = str(wb[BP.INSTRUCTIONS]["A1"].value or "") if BP.INSTRUCTIONS in wb.sheetnames else None
+        wb.close()
+    except Exception as exc:  # not a workbook at all
+        raise Refused(f"{book}: cannot read the workbook ({type(exc).__name__}: {exc})") from exc
+    m = re.fullmatch(r"Reviewer: (\S+)\s+Round: (\S+)", (a1 or "").strip())
+    who = REVIEWER_NAMES[reviewer]
+    if not m or (m.group(1), m.group(2)) != (who, label):
+        raise Refused(f"{Path(book).name} was given as the {label} workbook of {who}, but its "
+                      f"{BP.INSTRUCTIONS}!A1 reads {a1!r}; check the order of the four workbooks "
+                      "(AG_r1 MO_r1 AG_r2 MO_r2)")
+
+
 def consensus(ag1, mo1, ag2, mo2, consensus_file=None):
     from r2.verify import build_packets as BP
     from r2.verify import score_review as SR
@@ -352,15 +375,23 @@ def consensus(ag1, mo1, ag2, mo2, consensus_file=None):
     _need(*books.values())
     if not _complete(_pairs()):
         raise Refused("pairs_v2.json is not complete (500 pairs, none unresolved): run import-edits first")
-    for (label, reviewer), book in books.items():
+    for (label, reviewer), book in books.items():  # every workbook is the reviewer's and round's it is given as
         _need(paths.VERIFY_DIR / label / BP.MANIFEST)
+        _check_workbook(book, reviewer, label)
+    for (label, reviewer), book in books.items():
         try:
             BP.import_review_xlsx(book, paths.VERIFY_DIR / label / f"review_{reviewer}.csv")
         except ValueError as exc:
             raise Refused(f"{book}: review form rejected: {exc}") from exc
-    BP.merge_rounds(["round1", "round2"])
+    try:
+        BP.merge_rounds(["round1", "round2"])
+    except (ValueError, RuntimeError) as exc:
+        raise Refused(f"merging round 1 and round 2 failed: {exc}") from exc
     a, b = paths.VERIFY_DIR / "review_AG.csv", paths.VERIFY_DIR / "review_MO.csv"
-    _, disagreements = SR.score(a, b)
+    try:
+        _, disagreements = SR.score(a, b)
+    except ValueError as exc:
+        raise Refused(f"scoring the merged forms failed: {exc}") from exc
     cons = paths.VERIFY_DIR / "consensus.csv"
     if consensus_file:
         src = Path(consensus_file)
@@ -377,7 +408,10 @@ def consensus(ag1, mo1, ag2, mo2, consensus_file=None):
                               f"consensus answer for each and write {cons} (columns case_id,item,consensus), "
                               "then rerun this command")
         cons.write_text("case_id,item,consensus\n", encoding="utf-8")
-    excluded, flags = SR.apply_consensus(a, b, cons)
+    try:
+        excluded, flags = SR.apply_consensus(a, b, cons)
+    except ValueError as exc:
+        raise Refused(f"{cons}: consensus rejected: {exc}") from exc
     if paths.SANDBOX is not None:
         for name in ("excluded_pairs.json", "flags.json"):
             _mark_synthetic(paths.VERIFY_DIR / name)
@@ -1010,8 +1044,7 @@ def data_files_table():
         if not data_files_doc.is_current():
             raise Refused(f"{src} is stale (it differs from a fresh build): run python -m r2.data_files_doc, commit "
                           "it, and rerun")
-        pending = [line.split("`")[1] for line in src.read_text(encoding="utf-8").splitlines()
-                   if line.startswith("| `") and "Not yet present" in line and line.rstrip().endswith("| n/a |")]
+        pending = _pending_data_files()
         if pending:
             raise Refused(f"{src} still lists files that are not present: {pending}; S15 would describe files that "
                           "do not exist (finish the steps that write them, commit, regenerate)")
@@ -1049,6 +1082,10 @@ def post_results(render=True):
             res = fn()
         except SystemExit as exc:  # check_complete's gate and the CLIs exit with a message
             raise Refused(f"{name}: {exc}") from exc
+        except (Refused, NeedsHumans):
+            raise  # already a refusal with its reason
+        except (ValueError, RuntimeError, AssertionError) as exc:  # e.g. a stimulus mismatch or a GEE failure
+            raise Refused(f"{name}: {type(exc).__name__}: {exc}") from exc
         steps[name] = {"result": res, "seconds": round(time.time() - t0, 1)}
         return res
 
@@ -1069,6 +1106,79 @@ def post_results(render=True):
     step("pending_index", lambda: _doc_script(["make_pending_index.py"])["rc"])
     step("markers", lambda: markers()["counts"])
     return steps
+
+
+# ---------------------------------------------------------------- release-check (the release QA before any tag)
+RELEASE_CHECKS = ("clean tree", "DATA_FILES.md current", "DATA_FILES.md complete", "run-log manifest", "numbers.json",
+                  "QA scripts", "test suite")
+
+
+def _pending_data_files():
+    """The paths docs/DATA_FILES.md still lists as "Not yet present"."""
+    src = paths.REPO / "docs" / "DATA_FILES.md"
+    return [line.split("`")[1] for line in src.read_text(encoding="utf-8").splitlines()
+            if line.startswith("| `") and "Not yet present" in line and line.rstrip().endswith("| n/a |")]
+
+
+def _numbers_test():
+    """edits/test_numbers.py of the document folder: every numbers.json value re-read from its source."""
+    out = _doc_script(["-m", "pytest", "edits/test_numbers.py", "-q", "--import-mode=importlib", "-p",
+                       "no:cacheprovider"], check=False)
+    return [] if out["rc"] == 0 else [f"{out['command']} exited {out['rc']}: {out.get('tail', '')[-800:]}"]
+
+
+def _suite():
+    """The repository's test suite (tests/r2), without R2_SANDBOX."""
+    env = {k: v for k, v in os.environ.items() if k != "R2_SANDBOX"}
+    cmd = [PY, "-m", "pytest", "tests/r2", "-q", "-p", "no:cacheprovider"]
+    _show(["python", *cmd[1:]])
+    res = subprocess.run(cmd, cwd=paths.REPO, env=env, capture_output=True, text=True)
+    return [] if res.returncode == 0 else [f"pytest exited {res.returncode}: {res.stdout[-1200:]}"]
+
+
+def release_check(run_suite=True):
+    """The release QA, run BEFORE any tag, push or Zenodo step (docs/r2/RUNBOOK.md, section 9). Every check runs and
+    prints one line, "RELEASE CHECK <name>: PASS" or "FAIL: <why>":
+    - clean tree: the outputs of post-results, package-runs and data_files_doc are committed;
+    - DATA_FILES.md current: docs/DATA_FILES.md equals a fresh build (files, SHA-256, roles read from the files);
+    - DATA_FILES.md complete: no "Not yet present" row is left (Supplementary Table S15 is built from it);
+    - run-log manifest: analysis_repeated/r2_runs_manifest.json matches every file under r2_runs/ and the tarball;
+    - numbers.json: edits/test_numbers.py re-reads every value from its source;
+    - QA scripts: the four QA verdicts are 0 (run_qa);
+    - test suite: python -m pytest tests/r2 (skipped with run_suite=False).
+    Any failure stops with Refused naming the failed checks. Refuses under R2_SANDBOX: it checks the real repository."""
+    from r2 import data_files_doc
+    if paths.SANDBOX is not None:
+        raise Refused("release-check checks the real repository and its release files; run it without R2_SANDBOX")
+    checks = {
+        "clean tree": lambda: [f"uncommitted: {x}" for x in _git(paths.REPO, "status", "--porcelain").stdout.splitlines()],
+        "DATA_FILES.md current": lambda: [] if data_files_doc.is_current() else [
+            "docs/DATA_FILES.md differs from a fresh build: run python -m r2.data_files_doc and commit it"],
+        "DATA_FILES.md complete": lambda: [f"still 'Not yet present': {p}" for p in _pending_data_files()],
+        "run-log manifest": check_runs_manifest,
+        "numbers.json": _numbers_test,
+        "QA scripts": lambda: (run_qa(), [])[1],
+        "test suite": _suite if run_suite else None,
+    }
+    results, failed = {}, []
+    for name in RELEASE_CHECKS:
+        fn = checks[name]
+        if fn is None:
+            print(f"RELEASE CHECK {name}: SKIPPED", flush=True)
+            continue
+        try:
+            problems = fn()
+        except (Refused, OSError, ValueError, KeyError) as exc:
+            problems = [f"{type(exc).__name__}: {exc}"]
+        results[name] = not problems
+        print(f"RELEASE CHECK {name}: " + ("PASS" if not problems else "FAIL: " + "; ".join(problems)[:1500]),
+              flush=True)
+        if problems:
+            failed.append(name)
+    if failed:
+        raise Refused("release check failed: " + ", ".join(failed) + " (nothing may be tagged, pushed or deposited "
+                      "until every RELEASE CHECK line says PASS)")
+    return results
 
 
 # ---------------------------------------------------------------- markers
@@ -1163,6 +1273,8 @@ def build_parser():
     p = sub.add_parser("post-results")
     p.add_argument("--no-render", action="store_true")
     sub.add_parser("package-runs")
+    p = sub.add_parser("release-check")
+    p.add_argument("--no-suite", action="store_true", help="skip the test suite (it runs last otherwise)")
     sub.add_parser("markers")
     p = sub.add_parser("sandbox-init")
     p.add_argument("dir")
@@ -1198,6 +1310,8 @@ def dispatch(a, client_factory=None, sleep=None):
         return post_results(render=not a.no_render)
     if a.cmd == "package-runs":
         return package_runs()
+    if a.cmd == "release-check":
+        return release_check(run_suite=not a.no_suite)
     if a.cmd == "markers":
         return markers()
     if a.cmd == "sandbox-init":

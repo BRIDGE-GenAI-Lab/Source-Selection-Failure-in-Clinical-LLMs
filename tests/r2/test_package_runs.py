@@ -126,3 +126,67 @@ def test_package_runs_is_a_cli_command(runs, capsys):
     assert text.startswith("packaged 8 run-log files")
     out = json.loads(text[text.index("{"):])
     assert out["files"] == len(FILES) and out["manifest"].endswith(pipeline.RUNS_MANIFEST)
+
+
+# ---------------------------------------------------------------- release-check: the release QA before any tag
+@pytest.fixture
+def release_world(monkeypatch):
+    """Every release check passing, each replaceable by a test."""
+    from r2 import data_files_doc
+    calls = []
+    monkeypatch.setattr(paths, "SANDBOX", None)
+    monkeypatch.setattr(pipeline, "_git", lambda repo, *a, **k: type("R", (), {"stdout": "", "returncode": 0})())
+    monkeypatch.setattr(data_files_doc, "is_current", lambda: True)
+    monkeypatch.setattr(pipeline, "_pending_data_files", lambda: [])
+    monkeypatch.setattr(pipeline, "check_runs_manifest", lambda: [])
+    monkeypatch.setattr(pipeline, "_numbers_test", lambda: calls.append("numbers") or [])
+    monkeypatch.setattr(pipeline, "run_qa", lambda: calls.append("qa") or {})
+    monkeypatch.setattr(pipeline, "_suite", lambda: calls.append("suite") or [])
+    return calls
+
+
+def test_release_check_passes_and_prints_one_line_per_check(release_world, capsys):
+    res = pipeline.release_check()
+    assert all(res.values()) and list(res) == list(pipeline.RELEASE_CHECKS)
+    out = capsys.readouterr().out
+    for name in pipeline.RELEASE_CHECKS:
+        assert f"RELEASE CHECK {name}: PASS" in out
+    assert release_world == ["numbers", "qa", "suite"]
+
+
+@pytest.mark.parametrize("broken,match", [
+    ("tree", "clean tree"), ("data_files", "DATA_FILES.md current"), ("pending", "DATA_FILES.md complete"),
+    ("manifest", "run-log manifest"), ("numbers", "numbers.json"), ("qa", "QA scripts"), ("suite", "test suite")])
+def test_release_check_fails_on_any_check_and_runs_all_of_them(release_world, monkeypatch, capsys, broken, match):
+    from r2 import data_files_doc
+    if broken == "tree":
+        monkeypatch.setattr(pipeline, "_git", lambda repo, *a, **k: type("R", (), {"stdout": " M x\n"})())
+    elif broken == "data_files":
+        monkeypatch.setattr(data_files_doc, "is_current", lambda: False)
+    elif broken == "pending":
+        monkeypatch.setattr(pipeline, "_pending_data_files", lambda: ["verification/flags.json"])
+    elif broken == "manifest":
+        monkeypatch.setattr(pipeline, "check_runs_manifest", lambda: ["main/x.jsonl: changed"])
+    elif broken == "numbers":
+        monkeypatch.setattr(pipeline, "_numbers_test", lambda: ["edits/test_numbers.py exited 1"])
+    elif broken == "qa":
+        def qa():
+            raise pipeline.Refused("QA failed: qa_xref.py: Cross-reference failures: 2")
+        monkeypatch.setattr(pipeline, "run_qa", qa)
+    else:
+        monkeypatch.setattr(pipeline, "_suite", lambda: ["pytest exited 1"])
+    with pytest.raises(pipeline.Refused, match=f"release check failed: {match}"):
+        pipeline.release_check()
+    out = capsys.readouterr().out
+    assert f"RELEASE CHECK {match}: FAIL" in out
+    assert out.count("RELEASE CHECK ") == len(pipeline.RELEASE_CHECKS)  # every check runs and is reported
+
+
+def test_release_check_refuses_under_a_sandbox(sandboxed):
+    with pytest.raises(pipeline.Refused, match="without R2_SANDBOX"):
+        pipeline.release_check()
+
+
+def test_release_check_is_a_cli_command(release_world, capsys):
+    assert pipeline.main(["release-check", "--no-suite"]) == 0
+    assert "suite" not in release_world and "RELEASE CHECK test suite: SKIPPED" in capsys.readouterr().out
