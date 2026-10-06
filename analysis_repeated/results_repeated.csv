@@ -1,0 +1,5 @@
+original_name,model_id,model_served,case_id,order,label_A,label_B,status,selected_tool,correct,confidence,trust_rationale,differences_found,harness_commit,stimulus_sha256,finished_at,error,persistent_error
+e2e-model,prov/e2e-1,prov/e2e-1,CASE_001,TS,T,S,ok,A,1,0.9,x,"[""y""]",0000000000000000000000000000000000000000,8bd6c9df4b7918e9bb9ca75c275ad7005449f629caebcaee95a35a593a8bc810,2026-10-06T03:34:40.004765+00:00,,0
+e2e-model,prov/e2e-1,prov/e2e-1,CASE_001,ST,S,T,ok,B,1,0.9,x,"[""y""]",0000000000000000000000000000000000000000,8bd6c9df4b7918e9bb9ca75c275ad7005449f629caebcaee95a35a593a8bc810,2026-10-06T03:34:40.004974+00:00,,0
+e2e-model,prov/e2e-1,prov/e2e-1,CASE_002,TS,T,S,ok,A,1,0.9,x,"[""y""]",0000000000000000000000000000000000000000,8bd6c9df4b7918e9bb9ca75c275ad7005449f629caebcaee95a35a593a8bc810,2026-10-06T03:34:40.005185+00:00,,0
+e2e-model,prov/e2e-1,prov/e2e-1,CASE_002,ST,S,T,ok,B,1,0.9,x,"[""y""]",0000000000000000000000000000000000000000,8bd6c9df4b7918e9bb9ca75c275ad7005449f629caebcaee95a35a593a8bc810,2026-10-06T03:34:40.005372+00:00,,0

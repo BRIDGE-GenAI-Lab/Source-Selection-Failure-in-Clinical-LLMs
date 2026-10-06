@@ -4,7 +4,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from r2.paths import ANALYSIS_REPEATED, DATA_V2, RUNS_V2
+from r2.paths import ANALYSIS_REPEATED, DATA_V2, RUNS_V2  # noqa: F401  (DATA_V2: tests patch it)
 from r2.run.harness import (ORDERS, CorruptResults, final_records, is_error_only, is_unresolved,
                             iter_result_files, load_specs, load_v2_cases, read_records, results_path)
 
@@ -92,7 +92,10 @@ def check(out_dir, specs, case_ids):
 
 
 def export_flat(out_dir, specs=None):
-    dest = DATA_V2 / "results_repeated.csv"
+    """analysis_repeated/results_repeated.csv: one row per final record of every current spec. Not under data/v2/,
+    a directory the harness requires to be committed (a later harness run, e.g. --retry-persistent, would refuse)."""
+    dest = ANALYSIS_REPEATED / "results_repeated.csv"
+    dest.parent.mkdir(parents=True, exist_ok=True)
     cols = ["original_name", "model_id", "model_served", "case_id", "order", "label_A", "label_B",
             "status", "selected_tool", "correct", "confidence", "trust_rationale", "differences_found",
             "harness_commit", "stimulus_sha256", "finished_at", "error", "persistent_error"]

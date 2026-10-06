@@ -15,7 +15,8 @@ from r2.analysis.original_corrected import SAYS_IDENTICAL
 from r2.analysis.stats import (CATEGORY, calibration, cluster_bootstrap_mean, cluster_bootstrap_paa, fdr,
                                gee_logit, position_summary, wilson)
 from r2.paths import ANALYSIS_REPEATED, DATA_V2, REPO, RUNS_V2, VERIFY_DIR
-from r2.run.harness import INCIDENTS, final_records, load_specs, read_records, results_path
+from r2.run.harness import (INCIDENTS, final_records, incidents_path, is_incident_file, load_specs, read_records,
+                            results_path)
 
 OUT = ANALYSIS_REPEATED  # REPO / "analysis_repeated", or inside R2_SANDBOX
 # Items for which r2.verify.score_review.flag_reasons flags a pair (flags.json values).
@@ -385,7 +386,9 @@ def noticed_summary(analysis):
 
 
 CALL_DATES_BASIS = ("finished_at of every logged record in each current model's result file, including "
-                    "superseded error attempts, and logged_at of every incidents.jsonl entry")
+                    "superseded error attempts, and logged_at of every entry of its <safe_name>.incidents.jsonl and "
+                    "of the former shared incidents.jsonl; the overall first and last also cover main/_superseded/ "
+                    "(the result and incident files of substituted models, moved aside)")
 
 
 def _iso_range(stamps):
@@ -398,23 +401,37 @@ def _iso_range(stamps):
 def call_dates(out_dir, specs):
     """First and last call of the main run, overall and per model, from EVERY logged record (not only the
     final record per cell: an early API error that was retried later still dates the first request) and
-    from the incidents log (a model-mismatch response is a paid call too)."""
+    from the incident logs (a model-mismatch response is a paid call too, and leaves no cell record): each
+    current model's <safe_name>.incidents.jsonl and the former shared incidents.jsonl. The overall range also
+    covers main/_superseded/ (records and incidents of a substituted model, moved aside): those were paid
+    main-run calls too, so the order check sees them."""
     out_dir = Path(out_dir)
     stamps = {}
+    current = {s["original_name"] for s in specs}
     for spec in specs:
         path = results_path(spec, out_dir)
         if path.exists():
             for r in read_records(path):
                 stamps.setdefault(r.get("original_name", spec["original_name"]), []).append(r.get("finished_at"))
-    incidents = out_dir / INCIDENTS
-    current = {s["original_name"] for s in specs}
-    if incidents.exists():
-        for r in read_records(incidents):
+        inc = incidents_path(spec, out_dir)
+        if inc.exists():
+            for r in read_records(inc):
+                stamps.setdefault(spec["original_name"], []).append(r.get("logged_at"))
+    legacy = out_dir / INCIDENTS
+    if legacy.exists():
+        for r in read_records(legacy):
             if r.get("original_name") in current:
                 stamps.setdefault(r["original_name"], []).append(r.get("logged_at"))
+    superseded = []
+    sup_dir = out_dir / "_superseded"
+    if sup_dir.is_dir():
+        for p in sorted(sup_dir.glob("*.jsonl")):
+            if not p.name.startswith("._"):
+                superseded += [r.get("logged_at") if is_incident_file(p.name) else r.get("finished_at")
+                               for r in read_records(p)]
     per_model = {m: _iso_range(v) for m, v in sorted(stamps.items())}
     per_model = {m: d for m, d in per_model.items() if d["first"]}
-    overall = _iso_range([d[k] for d in per_model.values() for k in ("first", "last")])
+    overall = _iso_range([d[k] for d in per_model.values() for k in ("first", "last")] + superseded)
     return {**overall, "per_model": per_model, "basis": CALL_DATES_BASIS}
 
 
