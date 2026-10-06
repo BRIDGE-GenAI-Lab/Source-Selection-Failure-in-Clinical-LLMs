@@ -97,7 +97,14 @@ This command:
 the case and the reason, for example "'find' must occur exactly once" or "subtle_inversion edits belong in
 excerpt_text". Nothing is written. Send that row back to A.G. and rerun the command.
 
-Commit `data/v2/` and `verification/round2/`.
+Commit `data/v2/` and `verification/round2/`, then regenerate the data-file list and commit it, so the test suite
+stays green (`tests/r2/test_data_files.py` fails while `docs/DATA_FILES.md` is stale):
+
+```bash
+git add data/v2 verification/round2 && git commit -m "r2: physician edits and round-2 forms"
+$PY -m r2.data_files_doc
+git add docs/DATA_FILES.md && git commit -m "r2: regenerate DATA_FILES.md"
+```
 
 ## 3. Round 2 back: consensus, kappa and exclusions
 
@@ -115,7 +122,13 @@ the answers to `verification/consensus.csv` with the columns `case_id,item,conse
 it then writes `excluded_pairs.json`, `flags.json` and `final_review.csv`.
 
 **Success:** `"pairs_reviewed": 500`, with the excluded and flagged counts. The exclusion rule is fixed in
-`r2/verify/score_review.py`. Commit `verification/`.
+`r2/verify/score_review.py`. Commit `verification/`, then regenerate the data-file list and commit it:
+
+```bash
+git add verification && git commit -m "r2: consensus, kappa and exclusions"
+$PY -m r2.data_files_doc
+git add docs/DATA_FILES.md && git commit -m "r2: regenerate DATA_FILES.md"
+```
 
 ## 4. Budget and probe [authors approve the budget]
 
@@ -164,7 +177,14 @@ After any change, rerun the pilot. The pilot is never analyzed. The supplement m
 per model and any change it prompted" is written by the authors from `PILOT_REVIEW.md` and the pilot keys.
 
 **Commit `analysis_repeated/` (`model_availability.csv`, `pilot_summary.csv`, `PILOT_REVIEW.md`) before the
-freeze:** the freeze refuses a working tree that is not clean.
+freeze, and regenerate and commit the data-file list with it:** the freeze refuses a working tree that is not
+clean, and the suite fails while `docs/DATA_FILES.md` is stale.
+
+```bash
+git add analysis_repeated && git commit -m "r2: probe and pilot records"
+$PY -m r2.data_files_doc
+git add docs/DATA_FILES.md && git commit -m "r2: regenerate DATA_FILES.md"
+```
 
 ## 6. Freeze, then make the tag public, BEFORE the main run [authors approve]
 
@@ -182,6 +202,13 @@ The freeze refuses if:
 - the plan has lost its DRAFT banner.
 
 The freeze writes `docs/r2/FREEZE_RECORD.md`; its date fills `freeze_date`. Nothing is pushed.
+`FREEZE_RECORD.md` is a tracked file in the data-file list, so regenerate and commit the list after the freeze
+(the tag stays on the freeze commit):
+
+```bash
+$PY -m r2.data_files_doc
+git add docs/DATA_FILES.md && git commit -m "r2: regenerate DATA_FILES.md"
+```
 
 **Pushing the tag requires the authors' approval.** The operator never pushes on his own. Once the authors
 approve, push the tag (or register the frozen plan on OSF, or deposit it on Zenodo), then record the public
@@ -192,6 +219,8 @@ git push origin r2-analysis-plan-frozen        # only after the authors approve 
 $PY -m r2.pipeline record-public https://github.com/<owner>/<repo>/releases/tag/r2-analysis-plan-frozen \
     [--date YYYY-MM-DD]                        # or https://osf.io/<id>, or 10.5281/zenodo.<n>; default today
 git add docs/r2/FREEZE_RECORD.md && git commit -m "r2: public timestamp of the freeze"
+$PY -m r2.data_files_doc
+git add docs/DATA_FILES.md && git commit -m "r2: regenerate DATA_FILES.md"
 ```
 
 `record-public` accepts only the pushed tag's URL (`.../releases/tag/r2-analysis-plan-frozen` or
@@ -340,8 +369,15 @@ and the DOI is minted cannot be fixed in that release.
    those files; the manifest records the tarball's SHA-256 and size. It excludes `*.lock`, `._*` and
    `.DS_Store`, and refuses while a harness holds a model lock or when a log holds a plaintext key. Before
    archiving, read the incident files for provider error text that echoes part of a key, and scrub it.
-3. Regenerate the data-file list: `$PY -m r2.data_files_doc`.
-4. Commit the outputs: `git add analysis_repeated docs && git commit -m "r2: repeated-experiment results"`.
+3. Commit the outputs first, so that the data-file list records their commits:
+   `git add analysis_repeated docs && git commit -m "r2: repeated-experiment results"`.
+4. Regenerate the data-file list, then commit the regenerated file:
+
+   ```bash
+   $PY -m r2.data_files_doc
+   git add docs/DATA_FILES.md && git commit -m "r2: regenerate DATA_FILES.md"
+   ```
+
 5. The release QA:
 
    ```bash
@@ -370,6 +406,8 @@ $PY -m r2.pipeline record --release-tag <tag> --zenodo-doi 10.5281/zenodo.<n>   
 $PY -m r2.pipeline post-results                # fills release_tag, zenodo_new_doi and Supplementary Table S15
 git add docs/r2/PUBLIC_RECORD.json && git commit -m "r2: release record"
 ```
+(`post-results` rewrites tracked files under `analysis_repeated/` only if something changed; if `git status`
+shows a change, commit it, then run `$PY -m r2.data_files_doc` and commit `docs/DATA_FILES.md`.)
 
 S15 is built only from a `DATA_FILES.md` that equals a fresh build and has no "Not yet present" row; otherwise
 post-results refuses. **Success:** `NUMERIC (should be 0): 0`, and `git status` shows no change under
