@@ -77,6 +77,45 @@ def apply_manual_edit(tool_s, edit):
     return out
 
 
+# ---- Format cues in the fabricated_citation and outdated_version stimuli (cue fixes A1, A2) ----
+# After F1 the modified excerpt is the authentic one plus  "\n\nEvidence: 'NEJM 2025;392:649–1127' (DOI:...)".
+# The blank line occurs in no authentic excerpt and the page span (up to 1,643 pages) is implausible.
+_EVIDENCE_TAIL = re.compile(r"\n\nEvidence: '(NEJM) ((?:19|20)\d{2});(\d+):(\d+)–(\d+)' "
+                            r"\(DOI:(10\.9999/cg\.(?:19|20)\d{2}\.\d{4})\)\Z")
+_EVIDENCE_LINE = re.compile(r"(?:• )?Evidence: NEJM ((?:19|20)\d{2});(\d+):(\d+)–(\d+) "
+                            r"\(DOI:(10\.9999/cg\.(?:19|20)\d{2}\.\d{4})\)\Z")
+PAGE_SPAN = (6, 14)
+
+
+def citation_page_span(case_id):
+    """k = 6 + sha256(case_id:pages) mod 9, so a span of 6 to 14 pages."""
+    return PAGE_SPAN[0] + int(hashlib.sha256(f"{case_id}:pages".encode("utf-8")).hexdigest(), 16) % 9
+
+
+def citation_uses_bullet(t_text):
+    lines = [ln for ln in t_text.split("\n") if ln.strip()]
+    return bool(lines) and all(ln.startswith("• ") for ln in lines)
+
+
+def reformat_citation(case_id, t_text, s_text):
+    """The modified excerpt must be exactly the authentic one plus one Evidence line. Replace that line by
+    "\n" + bullet + "Evidence: NEJM <year>;<vol>:<p1>–<p2> (DOI:...)": no blank line, no quotes, a plausible
+    page span, and the bullet the authentic lines carry. Returns (new_text, before, after, bullet)."""
+    m = _EVIDENCE_TAIL.search(s_text)
+    if not m or s_text[:m.start()] != t_text:
+        raise TransformError(f"{case_id}: the modified excerpt is not the authentic excerpt plus one Evidence line")
+    _, year, vol, p1, p2, doi = m.groups()
+    bullet = "• " if citation_uses_bullet(t_text) else ""
+    tail = f"\n{bullet}Evidence: NEJM {year};{vol}:{p1}–{int(p1) + citation_page_span(case_id)} (DOI:{doi})"
+    return t_text + tail, m.group(0), tail, bullet
+
+
+def parse_citation(text):
+    """(year, volume, p1, p2, doi) of the last line of `text`, or None."""
+    m = _EVIDENCE_LINE.search(text.split("\n")[-1])
+    return None if not m else (int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)), m.group(5))
+
+
 # ---- Self-labelling tokens (final fix F1) ----
 # Words that tell the model which excerpt was modified. None may appear, as a whole word in any letter case,
 # in a modified excerpt as shown to the model (the post-condition in r2.stimuli.build_v2).
@@ -117,41 +156,3 @@ def neutralize_citation_doi(text, case_id):
     after = f"10.9999/{neutral_doi_suffix(case_id, years[0])}"
     return text.replace(dois[0], after, 1), dois[0], after
 
-
-# ---- Format cues in the fabricated_citation and outdated_version stimuli (cue fixes A1, A2) ----
-# After F1 the modified excerpt is the authentic one plus  "\n\nEvidence: 'NEJM 2025;392:649–1127' (DOI:...)".
-# The blank line occurs in no authentic excerpt and the page span (up to 1,643 pages) is implausible.
-_EVIDENCE_TAIL = re.compile(r"\n\nEvidence: '(NEJM) ((?:19|20)\d{2});(\d+):(\d+)–(\d+)' "
-                            r"\(DOI:(10\.9999/cg\.(?:19|20)\d{2}\.\d{4})\)\Z")
-_EVIDENCE_LINE = re.compile(r"(?:• )?Evidence: NEJM ((?:19|20)\d{2});(\d+):(\d+)–(\d+) "
-                            r"\(DOI:(10\.9999/cg\.(?:19|20)\d{2}\.\d{4})\)\Z")
-PAGE_SPAN = (6, 14)
-
-
-def citation_page_span(case_id):
-    """k = 6 + sha256(case_id:pages) mod 9, so a span of 6 to 14 pages."""
-    return PAGE_SPAN[0] + int(hashlib.sha256(f"{case_id}:pages".encode("utf-8")).hexdigest(), 16) % 9
-
-
-def citation_uses_bullet(t_text):
-    lines = [ln for ln in t_text.split("\n") if ln.strip()]
-    return bool(lines) and all(ln.startswith("• ") for ln in lines)
-
-
-def reformat_citation(case_id, t_text, s_text):
-    """The modified excerpt must be exactly the authentic one plus one Evidence line. Replace that line by
-    "\n" + bullet + "Evidence: NEJM <year>;<vol>:<p1>–<p2> (DOI:...)": no blank line, no quotes, a plausible
-    page span, and the bullet the authentic lines carry. Returns (new_text, before, after, bullet)."""
-    m = _EVIDENCE_TAIL.search(s_text)
-    if not m or s_text[:m.start()] != t_text:
-        raise TransformError(f"{case_id}: the modified excerpt is not the authentic excerpt plus one Evidence line")
-    _, year, vol, p1, p2, doi = m.groups()
-    bullet = "• " if citation_uses_bullet(t_text) else ""
-    tail = f"\n{bullet}Evidence: NEJM {year};{vol}:{p1}–{int(p1) + citation_page_span(case_id)} (DOI:{doi})"
-    return t_text + tail, m.group(0), tail, bullet
-
-
-def parse_citation(text):
-    """(year, volume, p1, p2, doi) of the last line of `text`, or None."""
-    m = _EVIDENCE_LINE.search(text.split("\n")[-1])
-    return None if not m else (int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)), m.group(5))
