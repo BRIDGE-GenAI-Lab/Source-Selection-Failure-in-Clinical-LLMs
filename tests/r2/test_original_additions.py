@@ -1,5 +1,6 @@
 """Exclusion-only reanalysis (2026-10-18): the sensitivity without fabricated_citation, the round-1 physician
 summary, Figures 2-4 and the Table 1 examples from the original evaluations of the discriminable pairs."""
+import copy
 import csv
 import hashlib
 import json
@@ -16,8 +17,9 @@ from r2.verify.score_review import QUESTIONS
 
 NOFC = "discriminable_excluding_fabricated_citation"
 MEASURES = ("accuracy", "primacy", "acc_sham_first", "acc_sham_second", "position_averaged_accuracy")
-# analysis_original/headline.json before these additions (commit 6554260), as written (json.dumps(head, indent=2))
-_HEADLINE_BEFORE_X1_SHA256 = "f48b641db698d17886afcb8d250129175c8d3631bc1a20a0ea139ff9ce9e0fe3"
+# analysis_original/headline.json before these additions (commit 6554260), as written (json.dumps(head, indent=2)),
+# without the fabricated_citation note (reworded in fix round 1: no repeated experiment was run). Every number pinned.
+_HEADLINE_BEFORE_X1_SHA256 = "ec38d83434cbea5a2cfffdc6d3c91a1a61bf9880861dd4daa26adc0457e4ae02"
 
 
 @pytest.fixture(scope="module")
@@ -55,8 +57,15 @@ def test_sensitivity_also_without_coerced_records(head):
 
 def test_every_earlier_headline_key_keeps_its_value(head):
     assert list(head)[-1] == NOFC
-    old = {k: v for k, v in head.items() if k != NOFC}
+    old = copy.deepcopy({k: v for k, v in head.items() if k != NOFC})
+    del old[oc.CUE_KEY]["note"]
     assert hashlib.sha256(json.dumps(old, indent=2).encode()).hexdigest() == _HEADLINE_BEFORE_X1_SHA256
+
+
+def test_cue_note_names_no_repeated_experiment(head):
+    note = head[oc.CUE_KEY]["note"]
+    assert "repeated" not in note.lower()
+    assert "10.9999/fake." in note and "blank line" in note and "physician review" in note
 
 
 def test_per_model_and_by_profile_carry_case_cluster_bootstrap_cis():
@@ -115,6 +124,11 @@ def test_summary_files_describe_both_subsets(committed_summary):
     fc = js["fabricated_citation"]
     assert fc["n_rows_all_forms"] == 40 and fc["n_rows_analyzed_pairs"] == 40
     assert fc["rows_with_neutral_doi"] == 40 and fc["rows_with_fake_token"] == 0
+    assert "null" in js["kappa"] and "undefined" in js["kappa"]
+    q5 = [it for sub in js["subsets"].values() for it in sub["items"] if it["item"] == "q5_edit_visible"]
+    assert all(it["kappa"] is None and it["kappa_note"].startswith("undefined") for it in q5)
+    assert all(it["kappa_note"] == "" for sub in js["subsets"].values() for it in sub["items"]
+               if it["kappa"] is not None)
     rows = list(csv.DictReader(open(VERIFY_DIR / "round1_summary.csv", newline="", encoding="utf-8")))
     assert len(rows) == 2 * len(QUESTIONS)
     assert {r["subset"] for r in rows} == {"all_forms", "analyzed_pairs"}
@@ -131,6 +145,8 @@ def test_the_analyzed_pairs_are_the_333_visible_pairs_and_all_were_reviewed():
     ids = rs.analyzed_case_ids()
     audit = pd.read_csv(AUDIT_DIR / "pair_audit.csv")
     assert ids == sorted(audit.case_id[audit.raw_status == "visible"]) and len(ids) == 333
+    # the headline and figures select visible_status != "identical"; both definitions give the same 333 pairs
+    assert set(audit.case_id[audit.raw_status == "visible"]) == set(audit.case_id[audit.visible_status != "identical"])
     a, _ = rs.load_forms()
     assert set(ids) <= set(a.index) and len(a) == 477
 
@@ -186,18 +202,29 @@ def test_committed_figures_are_current(made):
 def test_table1_rule_is_deterministic(frame):
     rows = oc.table1_examples(frame)
     assert rows == oc.table1_examples(frame)
+    assert rows == oc.table1_examples(frame.sample(frac=1, random_state=0))  # independent of the input order
     types = sorted(frame[frame.raw_status == "visible"].sham_type.unique())
     assert len(types) == 8 and [(r["sham_type"], r["outcome"]) for r in rows] == \
         [(t, o) for t in types for o in ("Failure", "Success")]
     pool = frame[(frame.raw_status == "visible") & ~frame.coerced]
+    used = set()
     for r in rows:
         hit = pool[(pool.sham_type == r["sham_type"]) & (pool.correct == (r["outcome"] == "Success"))]
-        first = min(zip(hit.case_id, hit.model))
-        assert (r["case_id"], r["model"]) == first, r["sham_type"]
+        keys = sorted(zip(hit.case_id, hit.model))
+        fresh = [k for k in keys if k[1] not in used]
+        assert (r["case_id"], r["model"]) == (fresh or keys)[0], (r["sham_type"], r["outcome"])
+        used.add(r["model"])
         rec = frame[(frame.case_id == r["case_id"]) & (frame.model == r["model"])].iloc[0]
         assert not rec.coerced and rec.raw_status == "visible"
         assert len(r["rationale"]) <= oc.TABLE1_CHARS + 1 and r["rationale"].rstrip("…") in rec.rationale
         assert r["cue_confounded"] == (r["sham_type"] == "fabricated_citation")
+    assert len({r["model"] for r in rows}) == 16  # the table spans models
+
+
+def test_table1_rule_is_stated_in_the_module_docstring():
+    doc = " ".join(oc.__doc__.split())
+    assert "whose model did not already appear in the table" in doc and "first 300 characters" in doc
+    assert "ascending order of case identifier and then model identifier" in doc and oc.TABLE1_CHARS == 300
 
 
 def test_committed_table1_examples_are_current(frame):

@@ -1,5 +1,15 @@
 """Exploratory reanalysis of the ORIGINAL responses: all pairs vs pairs that were discriminable
-as presented. Original responses are never reused for any changed input."""
+as presented. Original responses are never reused for any changed input.
+
+Table 1 examples (analysis_original/table1_examples.csv, `table1_examples`), rule as the documents may quote it:
+For each modification type with non-identical pairs, in alphabetical order of type, one failure (the model
+selected the modified excerpt) and then one success (it selected the authentic excerpt) were taken from the
+original evaluations of the non-identical pairs, leaving out the records whose choice the original runner set to
+A: the first record in ascending order of case identifier and then model identifier whose model did not already
+appear in the table or, when every qualifying model already appeared, the first record in that order. The
+rationale is the first 300 characters of the model's stated rationale, verbatim; an ellipsis marks a cut.
+Fabricated-citation rows are cue-confounded.
+"""
 import json
 import re
 
@@ -118,9 +128,11 @@ CUE_KEY = f"{CUE_TYPE}_cue_confounded"
 CUE_NOTE = (
     "Exploratory and cue-confounded. Every original fabricated_citation modified excerpt ended with "
     "\"Evidence: 'NEJM 2025;392:<pages>' (DOI:10.9999/fake.NNNN)\", so the word 'fake' was visible in the "
-    "modified excerpt to all 21 models (audit/self_label_tokens.json). These rates were obtained with that cue "
-    "present. They do not measure detection of a nonexistent citation, and they are not comparable with the "
-    "repeated experiment, whose corrected excerpts carry a neutral suffix (10.9999/cg.<year>.NNNN).")
+    "modified excerpt to all 21 models (audit/self_label_tokens.json), and a blank line, which no authentic "
+    "excerpt had, preceded the citation (audit/format_cues.json). These rates were obtained with both cues "
+    "present. They do not measure detection of a nonexistent citation. They are reported separately, and the "
+    "pooled sensitivity analysis without fabricated_citation excludes them. In the round-1 physician review "
+    "packets the citation carried a neutral suffix (10.9999/cg.<year>.NNNN; verification/round1_summary.json).")
 
 
 def _cue_confounded(df):
@@ -129,6 +141,9 @@ def _cue_confounded(df):
     sub = df[df.sham_type == "fabricated_citation"]
     sub = sub.assign(failure=1 - sub.correct)
     tokens = json.loads((AUDIT_DIR / "self_label_tokens.json").read_text(encoding="utf-8"))
+    blank = json.loads((AUDIT_DIR / "format_cues.json").read_text(encoding="utf-8"))["blank_line_cue"]
+    if blank["modified_payload_rows"] != len(sub) or blank["authentic_payload_rows"] != 0:
+        raise ValueError("audit/format_cues.json no longer supports CUE_NOTE's blank-line sentence")
     s = position_summary(sub)
     out = {"label": "exploratory; cue-confounded", "sham_type": "fabricated_citation", "note": CUE_NOTE,
            "token": "fake", "rows_with_token": tokens["modified_tool_payload"]["fake"]["rows"],
@@ -173,23 +188,25 @@ def _visible_edit(case):
 
 
 def table1_examples(df):
-    """Table 1 rows by a fixed rule: for each sham type with discriminable pairs, the first failure and the first
-    success in (case_id, model) order among the records whose choice the original runner did not coerce. The
-    rationale is its first TABLE1_CHARS characters (an ellipsis marks a cut); fabricated_citation rows are marked
-    cue-confounded. Order: TS, authentic excerpt shown first (as A); ST, modified excerpt shown first."""
+    """Table 1 rows by the rule in the module docstring: per sham type (sorted) a failure, then a success, each the
+    first non-coerced record of the non-identical pairs in (case_id, model) order whose model is not yet in the
+    table, else the first in that order. The order of `df` does not matter. Order column: TS, authentic excerpt
+    shown first (as A); ST, modified excerpt shown first."""
     # local imports: r2.analysis.repeated (imported by table1) imports this module
     from r2.analysis.figures import display_name
     from r2.analysis.table1 import modification, patient, quote
     from r2.io import load_original_cases
     cases, _ = load_original_cases()
     pool = df[(df.raw_status == "visible") & ~df.coerced].sort_values(["case_id", "model"])
-    rows = []
+    rows, used = [], set()
     for t in sorted(pool.sham_type.unique()):
         for outcome, correct in (("Failure", 0), ("Success", 1)):
             hit = pool[(pool.sham_type == t) & (pool.correct == correct)]
             if hit.empty:
                 continue
-            r = hit.iloc[0]
+            fresh = hit[~hit.model.isin(used)]
+            r = (fresh if len(fresh) else hit).iloc[0]
+            used.add(r.model)
             case = cases[r.case_id]
             rows.append(dict(zip(TABLE1_COLUMNS, (
                 t, CATEGORY[t], outcome, r.case_id, r.model, display_name(r.model), "ST" if r.sham_first else "TS",

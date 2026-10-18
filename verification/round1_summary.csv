@@ -1,17 +1,17 @@
-subset,n_pairs,item,AG_Y,AG_N,AG_P,MO_Y,MO_N,MO_P,agreement,kappa,concern_answer,both_concern
-all_forms,477,q1_vignette_consistent,458,19,,437,40,,0.9224318658280922,0.3370769635277771,N,11
-all_forms,477,q2_question_answerable,328,149,,261,216,,0.6079664570230608,0.18715656524235233,N,89
-all_forms,477,q3_authentic_concordant,28,204,245,168,37,272,0.37735849056603776,0.04687930999683799,N,37
-all_forms,477,q4_authentic_relevant,127,350,,114,363,,0.939203354297694,0.8391530331042664,N,342
-all_forms,477,q5_edit_visible,477,0,,477,0,,1.0,,N,0
-all_forms,477,q6_edit_matches_type,458,19,,461,16,,0.9853249475890985,0.7924411015105359,N,14
-all_forms,477,q7_edit_reduces_trust,193,284,,299,178,,0.7610062893081762,0.5440764651630754,N,174
-all_forms,477,q8_leakage,14,463,,1,476,,0.9727463312368972,0.12992844113933072,Y,1
-analyzed_pairs,333,q1_vignette_consistent,317,16,,302,31,,0.9129129129129129,0.3412238215430797,N,9
-analyzed_pairs,333,q2_question_answerable,235,98,,180,153,,0.6006006006006006,0.1736356003358523,N,59
-analyzed_pairs,333,q3_authentic_concordant,20,139,174,121,23,189,0.36936936936936937,0.03392921283121051,N,23
-analyzed_pairs,333,q4_authentic_relevant,99,234,,90,243,,0.9429429429429429,0.8597646120087771,N,229
-analyzed_pairs,333,q5_edit_visible,333,0,,333,0,,1.0,,N,0
-analyzed_pairs,333,q6_edit_matches_type,322,11,,322,11,,1.0,1.0,N,11
-analyzed_pairs,333,q7_edit_reduces_trust,152,181,,193,140,,0.8648648648648649,0.7334246526604167,N,138
-analyzed_pairs,333,q8_leakage,13,320,,1,332,,0.963963963963964,0.13805004314063987,Y,1
+subset,n_pairs,item,AG_Y,AG_N,AG_P,MO_Y,MO_N,MO_P,agreement,kappa,kappa_note,concern_answer,both_concern
+all_forms,477,q1_vignette_consistent,458,19,,437,40,,0.9224318658280922,0.3370769635277771,,N,11
+all_forms,477,q2_question_answerable,328,149,,261,216,,0.6079664570230608,0.18715656524235233,,N,89
+all_forms,477,q3_authentic_concordant,28,204,245,168,37,272,0.37735849056603776,0.04687930999683799,,N,37
+all_forms,477,q4_authentic_relevant,127,350,,114,363,,0.939203354297694,0.8391530331042664,,N,342
+all_forms,477,q5_edit_visible,477,0,,477,0,,1.0,,"undefined: both physicians gave one and the same answer category to every pair, so expected agreement is 1 and kappa is 0/0",N,0
+all_forms,477,q6_edit_matches_type,458,19,,461,16,,0.9853249475890985,0.7924411015105359,,N,14
+all_forms,477,q7_edit_reduces_trust,193,284,,299,178,,0.7610062893081762,0.5440764651630754,,N,174
+all_forms,477,q8_leakage,14,463,,1,476,,0.9727463312368972,0.12992844113933072,,Y,1
+analyzed_pairs,333,q1_vignette_consistent,317,16,,302,31,,0.9129129129129129,0.3412238215430797,,N,9
+analyzed_pairs,333,q2_question_answerable,235,98,,180,153,,0.6006006006006006,0.1736356003358523,,N,59
+analyzed_pairs,333,q3_authentic_concordant,20,139,174,121,23,189,0.36936936936936937,0.03392921283121051,,N,23
+analyzed_pairs,333,q4_authentic_relevant,99,234,,90,243,,0.9429429429429429,0.8597646120087771,,N,229
+analyzed_pairs,333,q5_edit_visible,333,0,,333,0,,1.0,,"undefined: both physicians gave one and the same answer category to every pair, so expected agreement is 1 and kappa is 0/0",N,0
+analyzed_pairs,333,q6_edit_matches_type,322,11,,322,11,,1.0,1.0,,N,11
+analyzed_pairs,333,q7_edit_reduces_trust,152,181,,193,140,,0.8648648648648649,0.7334246526604167,,N,138
+analyzed_pairs,333,q8_leakage,13,320,,1,332,,0.963963963963964,0.13805004314063987,,Y,1

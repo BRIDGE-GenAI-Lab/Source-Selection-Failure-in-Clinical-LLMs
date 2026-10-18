@@ -9,6 +9,11 @@ Harvard Medical School, and Mount Sinai Medical Center, NY.
 
 > **Synthetic clinical data only. Not medical advice.**
 
+> **R2 status.** The code for a repeated experiment (`r2/run/`, `docs/r2/RUNBOOK.md`, and the `probe`, `pilot`,
+> `freeze` and `main` steps of `r2/pipeline.py`) was prepared but not run. The R2 revision reports the reanalysis of
+> the original 10,500 evaluations restricted to the 333 pairs whose two excerpts differ in content the models could
+> see (`analysis_original/`). Sections below that describe the repeated experiment describe prepared code only.
+
 ---
 
 ## 1. What the experiment is
@@ -86,7 +91,7 @@ python -m r2.analysis.original_corrected # reanalysis -> analysis_original/
 
 ## 5. Reproduce the repeated experiment
 
-Results will be added after the run. The operator's sequence, from the physicians' returned forms to the
+Prepared, not run (see the R2 status note at the top). The operator's sequence, from the physicians' returned forms to the
 release, is [docs/r2/RUNBOOK.md](docs/r2/RUNBOOK.md); every step is one command of `python -m r2.pipeline`
 (`r2/pipeline.py`), and `python -m r2.rehearse <empty dir>` rehearses all of them in a sandbox with simulated
 physicians and a simulated API. API keys are read from `.env` (copy `.env.example`, which lists `OPENAI_API_KEY`,

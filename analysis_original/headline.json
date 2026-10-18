@@ -128,7 +128,7 @@
   "fabricated_citation_cue_confounded": {
     "label": "exploratory; cue-confounded",
     "sham_type": "fabricated_citation",
-    "note": "Exploratory and cue-confounded. Every original fabricated_citation modified excerpt ended with \"Evidence: 'NEJM 2025;392:<pages>' (DOI:10.9999/fake.NNNN)\", so the word 'fake' was visible in the modified excerpt to all 21 models (audit/self_label_tokens.json). These rates were obtained with that cue present. They do not measure detection of a nonexistent citation, and they are not comparable with the repeated experiment, whose corrected excerpts carry a neutral suffix (10.9999/cg.<year>.NNNN).",
+    "note": "Exploratory and cue-confounded. Every original fabricated_citation modified excerpt ended with \"Evidence: 'NEJM 2025;392:<pages>' (DOI:10.9999/fake.NNNN)\", so the word 'fake' was visible in the modified excerpt to all 21 models (audit/self_label_tokens.json), and a blank line, which no authentic excerpt had, preceded the citation (audit/format_cues.json). These rates were obtained with both cues present. They do not measure detection of a nonexistent citation. They are reported separately, and the pooled sensitivity analysis without fabricated_citation excludes them. In the round-1 physician review packets the citation carried a neutral suffix (10.9999/cg.<year>.NNNN; verification/round1_summary.json).",
     "token": "fake",
     "rows_with_token": 840,
     "n": 840,

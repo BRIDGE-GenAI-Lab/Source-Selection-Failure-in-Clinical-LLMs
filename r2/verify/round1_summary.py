@@ -5,8 +5,9 @@ Imports the returned workbooks (read only; never modified) into verification/rou
 review_MO.csv with r2.verify.build_packets.import_review_xlsx, which checks them against the round-1 forms as
 sent; the round-1 .xlsx files and packets_manifest.json are left untouched. Per item it reports each
 physician's answer counts, the proportion of identical answers, the unweighted Cohen kappa (three categories
-for Q3) and the number of pairs both physicians rated N (Q8: both rated Y). It describes the review and
-excludes nothing. Writes verification/round1_summary.json and verification/round1_summary.csv.
+for Q3) and the number of pairs both physicians rated N (Q8: both rated Y). A null kappa (blank in the CSV) means
+kappa is undefined: both physicians gave a single identical answer category to every pair. It describes the
+review and excludes nothing. Writes verification/round1_summary.json and verification/round1_summary.csv.
 CLI: python -m r2.verify.round1_summary [returned_dir]
 """
 import csv
@@ -30,6 +31,8 @@ CONCERN = {q: ("Y" if q == "q8_leakage" else "N") for q, _ in QUESTIONS}
 # what the models saw of each excerpt (r2.audit.pair_audit: excerpt_text and the four visible metadata fields)
 SEEN = ("organization", "document_title", "version", "publication_year", "excerpt_text")
 FC = "fabricated_citation"
+KAPPA_UNDEFINED = ("undefined: both physicians gave one and the same answer category to every pair, so expected "
+                   "agreement is 1 and kappa is 0/0")
 
 
 def _sha256(path):
@@ -81,8 +84,8 @@ def item_summary(a, b, item):
     # returns 1.0 there, the summary records None
     single = len(set(a) | set(b)) == 1
     out.update({"agreement": sum(x == y for x, y in zip(a, b)) / len(a) if a else float("nan"),
-                "kappa": None if single else cohen_kappa(a, b), "concern_answer": concern,
-                "both_concern": sum(x == y == concern for x, y in zip(a, b))})
+                "kappa": None if single else cohen_kappa(a, b), "kappa_note": KAPPA_UNDEFINED if single else "",
+                "concern_answer": concern, "both_concern": sum(x == y == concern for x, y in zip(a, b))})
     return out
 
 
@@ -139,7 +142,9 @@ def summarize(a, b):
     return {"round": ROUND, "reviewers": [bp.REVIEWER_NAMES[r] for r in WORKBOOKS],
             "forms": [f"verification/{ROUND}/review_{r}.csv" for r in WORKBOOKS],
             "questions": dict(QUESTIONS), "concern_answer": CONCERN,
-            "kappa": "unweighted Cohen kappa (r2.verify.score_review.cohen_kappa); Q3 over three categories Y/N/P",
+            "kappa": ("unweighted Cohen kappa (r2.verify.score_review.cohen_kappa); Q3 over three categories Y/N/P. "
+                      "A null kappa (a blank cell in round1_summary.csv) means kappa is undefined because both "
+                      "physicians gave a single identical answer category to every pair; kappa_note then says so"),
             "excludes_nothing": True, "use": "descriptive; no pair is excluded on these answers",
             "subsets": subsets, "fabricated_citation": _fabricated_citation(a, ids),
             "packets_vs_original_run": _packets_vs_original(a, ids)}
@@ -147,7 +152,7 @@ def summarize(a, b):
 
 def _csv_rows(summary):
     keys = ["subset", "n_pairs", "item", "AG_Y", "AG_N", "AG_P", "MO_Y", "MO_N", "MO_P", "agreement", "kappa",
-            "concern_answer", "both_concern"]
+            "kappa_note", "concern_answer", "both_concern"]
     rows = [{"subset": name, **it} for name, s in summary["subsets"].items() for it in s["items"]]
     return keys, [{k: r.get(k, "") for k in keys} for r in rows]
 
