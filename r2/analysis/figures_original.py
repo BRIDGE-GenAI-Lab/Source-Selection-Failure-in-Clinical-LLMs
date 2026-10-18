@@ -88,7 +88,7 @@ def legend2(head, per_model, by_profile):
     s = _sample(head, per_model)
     configs = "; ".join(f"{label.split()[-1]}, {name} ({_models(int(float(by_profile[p]['n_models'])))})"
                         for p, (label, name) in CONFIG.items())
-    return ("**Figure 2 | Position effects in the original evaluations of the discriminable pairs.** a, Share of "
+    return ("**Figure 2 | Position effects in the original evaluations of the non-identical pairs.** a, Share of "
             f"selections of the excerpt in the first position (A), pooled across the {s['n_models']} models and for "
             "each runner configuration (bars; whiskers, 95% CI); points, individual models. b, Accuracy with the "
             "modified excerpt shown first (A) and second (B), pooled and for each configuration (bars; whiskers, "
@@ -123,7 +123,7 @@ def _absent(head):
 
 def legend3(head, per_model):
     s = _sample(head, per_model)
-    return ("**Figure 3 | Failure rate by modification type in the original evaluations of the discriminable "
+    return ("**Figure 3 | Failure rate by modification type in the original evaluations of the non-identical "
             "pairs.** A failure is a selection of the modified excerpt. Bars: failure rate pooled across the "
             f"{s['n_models']} models, colored by modification category; whiskers: 95% CI; n: evaluations of each "
             "type. The dashed line marks 50%, the rate expected from a choice made by chance. " + _cue_text(head)
@@ -133,7 +133,7 @@ def legend3(head, per_model):
 
 def legend4(head, per_model):
     s = _sample(head, per_model)
-    return ("**Figure 4 | Position-averaged accuracy by model in the original evaluations of the discriminable "
+    return ("**Figure 4 | Position-averaged accuracy by model in the original evaluations of the non-identical "
             "pairs.** Bars: position-averaged accuracy, the mean of the accuracy with the modified excerpt shown "
             "first and with it shown second; whiskers: 95% CI. Circles: accuracy with the modified excerpt first; "
             "diamonds: accuracy with the modified excerpt second. Bar color: reasoning model, closed commercial "

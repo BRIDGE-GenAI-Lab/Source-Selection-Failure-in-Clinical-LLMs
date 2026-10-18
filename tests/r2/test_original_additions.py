@@ -152,6 +152,7 @@ def test_legends_state_n_and_the_exclusion(made, head):
         assert f"n = {head['discriminable']['n']:,}" in text and "333 pairs" in text and "21 models" in text
         assert f"{head['identical']['n']:,} evaluations" in text and "167 pairs" in text
         assert "bootstrap" in text and "2,000" in text
+        assert "discriminab" not in text.lower()  # house wording (M15): "non-identical"
     fig3 = (out / "legend_Figure3.md").read_text(encoding="utf-8")
     assert "Contraindication violation and missing warning" in fig3 and "cue-confounded" in fig3
 
