@@ -304,7 +304,7 @@ authentic one. These are 42 inputs (CASE_387: authentic 2010, modified 2012; CAS
 | `blank_line_cue` | `modified_payload_rows`, `modified_serialized_message_rows`, `authentic_payload_rows`, `n_cases`, `n_models`, `by_profile`, `by_model`, `case_ids` |
 | `page_span` | `min`, `median`, `max` over the 40 cases; rows within and outside 6 to 14 pages; `span_by_case`, `rows_by_span`, `rows_by_profile_and_span_range` |
 | `notes_phrases.phrases.<phrase>` | `sham_type`, `model_visible_rows` (inputs containing it), `as_run_cases` (cases whose `tools.S.metadata.notes` holds it) |
-| `outdated_year_not_older` | `n_inputs`, `n_cases`, `n_models`, `case_ids`, `years_by_case` (authentic and modified year) |
+| `outdated_year_not_older` | `n_inputs`, `n_cases`, `n_models`, `case_ids`, `years_by_case` (authentic and modified year); `year_missing`: inputs in which either year is missing, reported apart and not counted as not older (0) |
 | `finding` | One-paragraph summary |
 
 **The corrected set.** `r2.stimuli.build_v2` rewrites the appended text to

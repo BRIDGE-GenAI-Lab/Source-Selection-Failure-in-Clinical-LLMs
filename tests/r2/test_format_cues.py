@@ -49,6 +49,8 @@ def test_two_outdated_version_years_were_not_older(committed):
     assert o["n_inputs"] == 2 * 21
     assert o["years_by_case"] == {"CASE_387": {"authentic": 2010, "modified": 2012},
                                   "CASE_488": {"authentic": 2014, "modified": 2014}}
+    # a missing year is reported apart, not counted as "not older"; every original input has both years
+    assert o["year_missing"] == {"n_inputs": 0, "case_ids": []}
 
 
 def test_model_visible_text_covers_payloads_and_prompt():
@@ -57,6 +59,19 @@ def test_model_visible_text_covers_payloads_and_prompt():
     text = F._model_visible_text(row)
     assert all(part in text for part in ("sys", "usr", '"name": "t"', "Supported by recent mega-trial data"))
     assert F._year({"published_date": "2019 Update"}) == 2019 and F._year({}) is None
+
+
+def test_a_missing_year_is_not_counted_as_not_older(monkeypatch):
+    def row(case_id, t_date, s_date):
+        return {"case_id": case_id, "sham_type": "outdated_version", "model": "m", "profile": "p",
+                "mapping": {"A": "T", "B": "S"}, "system": "", "user": "", "tools": [],
+                "payloads": {"A": {"published_date": t_date}, "B": {"published_date": s_date}}}
+    rows = [row("CASE_1", "2019", ""), row("CASE_2", "2019", "2019"), row("CASE_3", "2019", "2010")]
+    monkeypatch.setattr(F, "_rows", lambda: iter(rows))
+    monkeypatch.setattr(F, "_notes_phrase_cases", lambda: {p: 0 for p in F.NOTES_PHRASES})
+    o = F.compute()["outdated_year_not_older"]
+    assert o["case_ids"] == ["CASE_2"] and o["n_inputs"] == 1
+    assert o["year_missing"] == {"n_inputs": 1, "case_ids": ["CASE_1"]}
 
 
 def test_audit_json_is_current(committed):

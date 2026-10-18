@@ -85,6 +85,7 @@ def compute():
     models, by_profile_models = set(), {}
     phrase_rows = Counter()
     late = {"rows": 0, "years": {}, "by_model": Counter()}
+    year_missing = {"rows": 0, "cases": set()}
     for r in _rows():
         n_rows += 1
         visible = _model_visible_text(r)
@@ -93,7 +94,10 @@ def compute():
         if r["sham_type"] == OUTDATED:
             arm = {r["mapping"][lab]: r["payloads"][lab] for lab in ("A", "B")}
             t_year, s_year = _year(arm["T"]), _year(arm["S"])
-            if s_year is None or t_year is None or s_year >= t_year:
+            if s_year is None or t_year is None:
+                year_missing["rows"] += 1
+                year_missing["cases"].add(r["case_id"])
+            elif s_year >= t_year:
                 late["rows"] += 1
                 late["years"][r["case_id"]] = {"authentic": t_year, "modified": s_year}
                 late["by_model"][r["model"]] += 1
@@ -178,12 +182,14 @@ def compute():
         },
         "outdated_year_not_older": {
             "definition": "outdated_version inputs whose modified (S) published_date year is >= the authentic (T) "
-                          "year, as the runner gave both to the model",
+                          "year, as the runner gave both to the model; inputs in which either year is missing are "
+                          "not counted here but under year_missing",
             "n_inputs": late["rows"],
             "n_cases": len(late["years"]),
             "n_models": len(late["by_model"]),
             "case_ids": sorted(late["years"]),
             "years_by_case": dict(sorted(late["years"].items())),
+            "year_missing": {"n_inputs": year_missing["rows"], "case_ids": sorted(year_missing["cases"])},
         },
     }
     b, ps = out["blank_line_cue"], out["page_span"]

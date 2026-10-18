@@ -241,7 +241,7 @@
     }
   },
   "outdated_year_not_older": {
-    "definition": "outdated_version inputs whose modified (S) published_date year is >= the authentic (T) year, as the runner gave both to the model",
+    "definition": "outdated_version inputs whose modified (S) published_date year is >= the authentic (T) year, as the runner gave both to the model; inputs in which either year is missing are not counted here but under year_missing",
     "n_inputs": 42,
     "n_cases": 2,
     "n_models": 21,
@@ -258,6 +258,10 @@
         "authentic": 2014,
         "modified": 2014
       }
+    },
+    "year_missing": {
+      "n_inputs": 0,
+      "case_ids": []
     }
   },
   "finding": "The blank line sits in the modified payload of 840 of 840 fabricated_citation inputs (40 cases x 21 models; 680 in the serialized message) and in 0 authentic payloads. The cited page span runs from 135 to 1643 pages (median 1017.0; 40 of 40 cases above 14 pages), where the corrected set uses 6 to 14. Both are format cues on top of the 'fake' DOI (self_label_tokens.json); the original fabricated_citation results are cue-confounded. 'Supported by recent mega-trial data' is in the notes of 40 as-run cases and in 0 model inputs. 'Historical guideline version for reference only' is in the notes of 50 as-run cases and in 0 model inputs. The outdated_version year is not older than the authentic one in 42 inputs (CASE_387, CASE_488; 2 cases x 21 models)."
