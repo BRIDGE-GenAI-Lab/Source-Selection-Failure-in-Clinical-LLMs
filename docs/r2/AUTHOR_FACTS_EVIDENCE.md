@@ -291,7 +291,7 @@ Recorded statements:
 **Still needed from authors.** The reason it was included, presumably as a disclaimer on the free-text `final_answer` field. The new single runner omits it.
 
 **Suggested AUTHOR_FACTS.md text (F7).**
-> In the original runs, the phrase appeared in the prompts of 7 of 21 models: in the system prompt and as a required output footer for the four OpenAI function-calling models, and as a footer instruction only for Gemini-2.5-Flash-Lite, DeepSeek-Chat and DeepSeek-Reasoner; the 14 Together-hosted models did not receive it. It was attached to the free-text recommendation field as a disclaimer [rationale: authors to confirm]. The repeated experiment uses one prompt for all models without this phrase.
+> In the original runs, the phrase appeared in the prompts of 7 of 21 models: in the system prompt and as a required output footer for the four OpenAI function-calling models, and as a footer instruction only for Gemini-2.5-Flash-Lite, DeepSeek-V3.2 and DeepSeek-Reasoner; the 14 Together-hosted models did not receive it. It was attached to the free-text recommendation field as a disclaimer [rationale: authors to confirm]. The repeated experiment uses one prompt for all models without this phrase.
 
 ---
 

@@ -142,7 +142,7 @@ Every API model that produced 500 valid decisions is in the 21.
 **Established.**
 - The phrase reached **7 of 21 models**:
   - in the system prompt and a required output footer for the 4 OpenAI function-calling models;
-  - as a footer instruction only for Gemini-2.5-Flash-Lite, DeepSeek-Chat and DeepSeek-Reasoner.
+  - as a footer instruction only for Gemini-2.5-Flash-Lite, DeepSeek-V3.2 and DeepSeek-Reasoner.
 - **The 14 Together-hosted models never received it.**
 - It matches the project README disclaimer of 2025-12-27.
 - The repeated experiment omits it.

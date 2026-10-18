@@ -20,7 +20,7 @@ never called, and the documents are marked SIMULATED. Check that it is unset wit
 
 Steps that need the authors' approval are marked **[authors approve]**. The operator does not approve them.
 
-## 0. The rehearsal (already run; rerun after any code change)
+## 0. The rehearsal (retained, not used for R2)
 
 R2 decision 2026-10-18: the rehearsal is retained but not used for R2; the repeated experiment is not run, and the documents carry no repeated-experiment markers.
 
@@ -32,7 +32,8 @@ The rehearsal runs every step below in a new sandbox. Simulated physicians fill 
 the probe, the pilot and the main run. The fake API has a position bias, invalid replies, `<think>` tags, 400
 and 429 errors, and one cell whose error never clears. Before and after the run, the rehearsal hashes the real
 `data/v2`, `verification`, `analysis_repeated`, `r2_runs` and `npj_R2_WORKING` folders, and the git state of the
-repository. It fails if anything real changed. Its report is `rehearsal_report.md` in the sandbox. Success means:
+repository. It fails if anything real changed. Its report is `rehearsal_report.md` in the sandbox. Success meant
+(historical: the criteria of the rehearsals run before the 2026-10-18 decision):
 - every step `ok`, except the first consensus step, which shows `waiting`, and the main run before the public
   timestamp, which shows `refused (expected)`;
 - `Post-results checks`: every QA script with 0 failures, and the order check PASS;

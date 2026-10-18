@@ -138,7 +138,7 @@ def legend4(head, per_model):
             "pairs.** Bars: position-averaged accuracy, the mean of the accuracy with the modified excerpt shown "
             "first and with it shown second; whiskers: 95% CI. Circles: accuracy with the modified excerpt first; "
             "diamonds: accuracy with the modified excerpt second. Each model saw each pair once, in one order; within a "
-            "model, the two come from different pairs. Bar color: reasoning model, closed commercial "
+            "model, the two accuracies (circle and diamond) come from different pairs. Bar color: reasoning model, closed commercial "
             "model or open-weight model. Models are ordered by position-averaged accuracy; the dashed line marks "
             f"50% (chance). Each model: {s['n_pairs']} evaluations, one per pair. " + _tail(s))
 

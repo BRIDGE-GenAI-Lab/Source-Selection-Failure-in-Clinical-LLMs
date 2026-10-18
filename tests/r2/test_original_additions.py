@@ -378,7 +378,8 @@ def test_round1_status_readme(committed_summary):
     text = (VERIFY_DIR / "round1" / "README_STATUS.md").read_text(encoding="utf-8")
     assert text == rs.status_text(committed_summary)
     assert "repeated experiment that was not run" in text and "exactly what the evaluated models receive" in text
-    assert "477 round-1 forms" in text and "333 analyzed pairs" in text and "descriptively" in text
+    assert "show each of the 477 pairs" in text and "333 analyzed pairs" in text and "descriptively" in text
+    assert "477 round-1 forms" not in text  # two forms (A.G., M.O.), 477 pairs each
 
 
 # ---------------------------------------------------------------- Task 1b: model naming and legends
@@ -397,4 +398,4 @@ def test_figure_legend_caveats(made):
     fig2 = (out / "legend_Figure2.md").read_text(encoding="utf-8")
     fig4 = (out / "legend_Figure4.md").read_text(encoding="utf-8")
     assert "Figure 4 gives them" not in fig2
-    assert "within a model, the two come from different pairs" in fig4
+    assert "within a model, the two accuracies (circle and diamond) come from different pairs" in fig4

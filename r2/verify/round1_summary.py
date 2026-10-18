@@ -171,8 +171,8 @@ def status_text(summary):
     fc, pv = summary["fabricated_citation"], summary["packets_vs_original_run"]
     return (
         "# Round-1 forms: status\n\n"
-        f"The {n_all} round-1 forms (`review_AG`, `review_MO`, `packets.html`) show each pair as it was prepared for a "
-        "repeated experiment that was not run: every content field of both excerpts (including `safety_guardrails`, "
+        f"The round-1 forms (`review_AG`, `review_MO`, `packets.html`) show each of the {n_all} pairs as it was prepared "
+        "for a repeated experiment that was not run: every content field of both excerpts (including `safety_guardrails`, "
         "`applicability` and `exclusions_or_cautions`, which no original runner serialized) and the full vignette. "
         "That is more than any of the five original runner configurations presented to the models. The sentence in "
         f"`README_REVIEWERS.md`, \"{sent}\", referred to that unrun experiment, not to the original evaluations.\n\n"
