@@ -200,12 +200,19 @@ def author_edits_for(queue, manual_path):
 
 
 def relabel_stored_edits(manual_path, author=None):
-    """Sandbox only: the copied physician edits are rehearsal data now, so they carry the simulated author, as
-    the documents' sandbox mode expects (edits/fill.py EXPECTED_EDIT_AUTHOR). Returns how many were relabelled."""
+    """Set the author of the copied physician edits to the simulated one, in the SANDBOX copy of
+    manual_edits.json only: the documents' sandbox mode (edits/fill.py in the documents folder, outside this
+    repository) expects that author. Refuses unless the resolved path lies inside paths.SANDBOX, and never
+    touches the real data/v2/manual_edits.json. Returns how many edits were relabelled."""
     from r2 import paths
     if paths.SANDBOX is None:
         raise RuntimeError("relabel_stored_edits only runs inside a sandbox")
-    manual_path = Path(manual_path)
+    manual_path = Path(manual_path).resolve()
+    if manual_path == (paths.REAL_DATA_V2 / "manual_edits.json").resolve():
+        raise RuntimeError(f"refusing to relabel the real {manual_path}")
+    sandbox = Path(paths.SANDBOX).resolve()
+    if sandbox != manual_path and sandbox not in manual_path.parents:
+        raise RuntimeError(f"refusing to relabel {manual_path}: it lies outside the sandbox {sandbox}")
     if not manual_path.exists():
         return 0
     stored = json.loads(manual_path.read_text(encoding="utf-8"))
@@ -430,7 +437,7 @@ def _child(root, render, seed):
                                        phys, author_edits=edits),
             "MO": fill_review_workbook(paths.VERIFY_DIR / "round1" / "review_MO.xlsx", inputs / "MO_r1.xlsx", "MO",
                                        phys),
-            "author_edits": len(edits), "stored_edits_relabelled_simulated": relabelled})
+            "author_edits": len(edits), "stored_edits_author_set_simulated": relabelled})
         step("pipeline import-edits", lambda: pipeline.import_edits(inputs / "AG_r1.xlsx", SIM_AUTHOR, "2026-10-20"))
         step("pipeline import-edits (rerun: idempotent)",
              lambda: pipeline.import_edits(inputs / "AG_r1.xlsx", SIM_AUTHOR, "2026-10-20"))

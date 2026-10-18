@@ -212,8 +212,26 @@ def test_stored_edits_are_relabelled_only_inside_a_sandbox(tmp_path, monkeypatch
     with pytest.raises(RuntimeError, match="sandbox"):
         rehearse.relabel_stored_edits(path)
     assert json.loads(path.read_text())["CASE_050"]["author"] == "A.G."
-    monkeypatch.setattr(paths, "SANDBOX", tmp_path)
-    assert rehearse.relabel_stored_edits(path) == 1
+    box = tmp_path / "box"
+    box.mkdir()
+    monkeypatch.setattr(paths, "SANDBOX", box)
+    before = path.read_bytes()
+    with pytest.raises(RuntimeError, match="outside the sandbox"):   # a stand-in "real" file outside the sandbox
+        rehearse.relabel_stored_edits(path)
+    assert path.read_bytes() == before
+    real = tmp_path / "real_data_v2"
+    real.mkdir()
+    monkeypatch.setattr(paths, "REAL_DATA_V2", real)
+    (real / "manual_edits.json").write_bytes(before)
+    monkeypatch.setattr(paths, "SANDBOX", tmp_path)                  # even a sandbox that contains it
+    with pytest.raises(RuntimeError, match="real"):
+        rehearse.relabel_stored_edits(real / "manual_edits.json")
+    assert (real / "manual_edits.json").read_bytes() == before
+    inside = box / "manual_edits.json"
+    inside.write_bytes(before)
+    monkeypatch.setattr(paths, "SANDBOX", box)
+    assert rehearse.relabel_stored_edits(inside) == 1
+    path = inside
     got = json.loads(path.read_text())["CASE_050"]
     assert got["author"] == rehearse.SIM_AUTHOR and got["find"] == "a" and got["date"] == "2026-10-06"
-    assert rehearse.relabel_stored_edits(tmp_path / "absent.json") == 0
+    assert rehearse.relabel_stored_edits(box / "absent.json") == 0
