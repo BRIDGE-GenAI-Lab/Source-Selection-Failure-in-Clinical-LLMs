@@ -269,3 +269,33 @@ itself, and the physicians review them (Q6).
 | `locations` | What each location scans |
 | `<location>.<token>` | `rows` (inputs containing the token there), `n_cases`, `n_models`, `by_profile`, `by_sham_type`, `by_model`; `case_ids` for the payload locations, `contexts` (the text around each match) for `prompt_text` |
 | `finding` | One-paragraph summary |
+
+## format_cues.json: the blank line and the page span in the original fabricated-citation edits
+
+Besides the "fake" DOI, the original `fabricated_citation` transform left two format cues in the modified
+excerpt: the Evidence line follows a blank line (`\n\n`), which occurs in no authentic excerpt, and the cited
+page span `<p2> - <p1>` is implausible. `python -m r2.audit.format_cues` counts both over the 10,500
+reconstructed inputs, for the 840 `fabricated_citation` inputs (40 cases x 21 models). A JSON-escaped `\n\n` in
+the serialized user message counts as the cue.
+
+| Measure | Inputs |
+|---|---|
+| Blank line in the modified payload as the runner gave it to the model | 840 of 840 |
+| Blank line in the authentic payload of the same inputs | 0 |
+| Blank line in the serialized user message | 680 (the 160 openai_fc payloads are function outputs, not part of the message) |
+| Cited page span, minimum / median / maximum | 135 / 1,017 / 1,643 pages |
+| Cases with a span above 14 pages | 40 of 40 |
+
+By profile: openai_fc 160, together_inline6 560, gemini_inline7 40, deepseek_chat_inline7 40,
+deepseek_reasoner_inline7 40. The file holds the counts per model and the span of every case.
+
+**The corrected set.** `r2.stimuli.build_v2` rewrites the appended text to
+`"\n" + bullet + "Evidence: NEJM <year>;<vol>:<p1>-<p2> (DOI:10.9999/cg.<year>.<NNNN>)"`: no blank line, no
+quotes, and p2 = p1 + k with k = 6 + sha256("<case_id>:pages") mod 9, so a span of 6 to 14 pages. The bullet
+"• " is added when every line of the authentic excerpt starts with it (all 40 pairs). The build records each
+change under `edit_record.cue_fixes` and refuses a modified excerpt with a blank line the authentic one lacks,
+a span outside 6 to 14 pages, or an outdated_version year that is not older than the authentic one. The same
+pass moved two outdated_version years (CASE_387 2012 to 2006, CASE_488 2014 to 2010) and changed the
+rule-based inversion "Consider local antibiotic resistance patterns" to "Disregard ..." in CASE_036, CASE_337
+and CASE_475. These changes alter 45 round-1 packets (the 40, the 2 and the 3); the other 432 keep their
+`packet_sha256`, and round 2 re-reviews the 45.
