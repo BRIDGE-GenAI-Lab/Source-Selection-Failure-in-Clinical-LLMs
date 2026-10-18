@@ -334,9 +334,11 @@ def import_edits(xlsx, author="A.G.", date=None):
     if _round2_ready(sha):
         result["round2"] = "forms already written for this pairs_v2.json"
     else:
-        BP.write_round_forms("round2", queue)
+        scope, _, changed = BP.round2_scope()
+        BP.write_round_forms("round2", scope)
         BP._export_round("round2", with_author_edits=False, force=False)
-        result["round2"] = f"forms for {len(queue)} pairs in {paths.VERIFY_DIR / 'round2'}"
+        result["round2"] = (f"forms for {len(scope)} pairs in {paths.VERIFY_DIR / 'round2'}: {len(queue)} unresolved "
+                            f"in round 1 + {len(changed)} round-1 pairs whose packet changed since")
     return result
 
 
@@ -383,7 +385,7 @@ def consensus(ag1, mo1, ag2, mo2, consensus_file=None):
         _check_workbook(book, reviewer, label)
     for (label, reviewer), book in books.items():
         try:
-            BP.import_review_xlsx(book, paths.VERIFY_DIR / label / f"review_{reviewer}.csv")
+            BP.import_review_xlsx(book, paths.VERIFY_DIR / label / f"review_{reviewer}.csv", label)
         except ValueError as exc:
             raise Refused(f"{book}: review form rejected: {exc}") from exc
     try:

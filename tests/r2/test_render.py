@@ -141,12 +141,16 @@ def test_vitals_render_in_fixed_key_order():
     assert "Vital signs: Temp (C) 37.0, HR 80, SpO2 (%) 97" in a.splitlines()
 
 
-def test_render_changes_leave_every_round1_packet_unchanged():
-    """Physicians review round-1 forms bound by packet_sha256; the manifest written with those forms
-    must still equal the hashes recomputed with the current renderer."""
+def test_render_changes_leave_every_round1_packet_unchanged_except_the_cue_fix_pairs():
+    """Physicians review round-1 forms bound by packet_sha256; the manifest written with those forms must
+    still equal the hashes recomputed with the current renderer, except for the 45 pairs whose stimulus the
+    cue fixes changed on purpose (tests/r2/test_cue_fixes.py): round 2 re-reviews those."""
     from r2.verify.build_packets import packet_rows
+    from tests.r2.test_cue_fixes import CUE_CHANGED_IDS
     manifest = json.loads((Path(__file__).resolve().parents[2] / "verification" / "round1"
                            / "packets_manifest.json").read_text())["packets"]
     current = {r["case_id"]: r["packet_sha256"] for r in packet_rows()}
-    assert {cid: current[cid] for cid in manifest} == manifest
+    assert {cid: current[cid] for cid in manifest if cid not in CUE_CHANGED_IDS} == \
+        {cid: h for cid, h in manifest.items() if cid not in CUE_CHANGED_IDS}
+    assert sorted(cid for cid in manifest if current[cid] != manifest[cid]) == CUE_CHANGED_IDS
     assert len(manifest) == 477

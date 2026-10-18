@@ -39,21 +39,35 @@ def _fc_ids():
 
 
 def check_manifest_against_pairs(m, pairs):
-    """Every round-1 packet hash equals the packet recomputed from the CURRENT pairs for that case. This holds
-    forever: the physicians' edits touch only the 23 unresolved cases, which are not in round 1."""
+    """Every round-1 packet hash equals the packet recomputed from the CURRENT pairs for that case, except the 45
+    pairs whose stimulus the cue fixes changed (CUE_CHANGED_IDS; round 2 re-reviews them). The physicians' edits
+    touch only the 23 unresolved cases, which are not in round 1."""
+    from tests.r2.test_cue_fixes import CUE_CHANGED_IDS
     from r2.verify.build_packets import packet_rows
     now = {r["case_id"]: r["packet_sha256"] for r in packet_rows(pairs["cases"])}
     assert len(m["packets"]) == 477 and len(m["unresolved"]) == 23
     assert set(m["packets"]) <= set(now)
-    assert {cid for cid, h in m["packets"].items() if now[cid] != h} == set()
+    assert sorted(cid for cid, h in m["packets"].items() if now[cid] != h) == CUE_CHANGED_IDS
     assert set(m["unresolved"]) <= set(now) | set(pairs["unresolved"])
 
 
+def _sections(html):
+    """The packets.html blocks by case_id, with HtmlDiff's running table counter normalised: the counter depends
+    on the position in the file."""
+    import re
+    parts = re.split(r"(?=<h2 id=')", html)
+    return {re.match(r"<h2 id='(CASE_\d+)'", p).group(1): re.sub(r"difflib_chg_to\d+__", "difflib_chg_toN__", p)
+            for p in parts if p.startswith("<h2 id='")}
+
+
 def check_round1_render(tmp_dir, m, pairs, raw):
-    """Regenerate the round-1 forms in tmp from the round-1 case subset and compare them byte for byte."""
+    """Regenerate the round-1 forms in tmp from the round-1 case subset and compare them with the committed
+    as-sent forms for the 432 pairs the cue fixes left alone (the other 45 were deliberately changed after the
+    forms were sent; the sent forms stay byte-identical, test_cue_fixes.py)."""
     import difflib
 
     from r2.verify import build_packets as bp
+    from tests.r2.test_cue_fixes import CUE_CHANGED_IDS
     saved = difflib.HtmlDiff._default_prefix
     difflib.HtmlDiff._default_prefix = 0  # the committed file was written by a fresh process
     subset = [c for c in pairs["cases"] if c["case_id"] in m["packets"]]
@@ -62,19 +76,30 @@ def check_round1_render(tmp_dir, m, pairs, raw):
         bp._write_forms_to(tmp_dir, raw, subset, {"unresolved": list(m["unresolved"])})
     finally:
         difflib.HtmlDiff._default_prefix = saved
+    keep = [cid for cid in m["packets"] if cid not in CUE_CHANGED_IDS]
+    assert len(keep) == 432
     # the CSVs are compared on the packet columns only: once the reviewers have answered, the committed forms
     # carry their answers in the other columns
     packet_cols = list(bp.packet_rows(subset[:1])[0])
     for name in ("review_AG.csv", "review_MO.csv"):
-        got, want = (list(csv.DictReader(open(d / name, newline="", encoding="utf-8")))
+        got, want = ({r["case_id"]: {k: r[k] for k in packet_cols}
+                      for r in csv.DictReader(open(d / name, newline="", encoding="utf-8"))}
                      for d in (tmp_dir, ROUND1))
-        assert [{k: r[k] for k in packet_cols} for r in got] == [{k: r[k] for k in packet_cols} for r in want], name
-    for name in ("packets.html", "README_REVIEWERS.md"):
-        assert (tmp_dir / name).read_bytes() == (ROUND1 / name).read_bytes(), name
-    # the manifest differs only in the whole-file hash, which moves when pairs_v2.json gains the new pairs
+        assert {cid: got[cid] for cid in keep} == {cid: want[cid] for cid in keep}, name
+        assert set(got) == set(want)
+    got, want = (_sections((d / "packets.html").read_text(encoding="utf-8")) for d in (tmp_dir, ROUND1))
+    assert {cid: got[cid] for cid in keep} == {cid: want[cid] for cid in keep}
+    assert set(got) == set(want)
+    # the sent README keeps the wording it was sent with (the new wording applies to future forms only)
+    assert "The text in the *_as_shown_to_model columns is exactly what the evaluated models receive." in \
+        (ROUND1 / "README_REVIEWERS.md").read_text(encoding="utf-8")
+    # the manifest differs only in the whole-file hash and in the 45 changed packet hashes
     fresh = json.loads((tmp_dir / "packets_manifest.json").read_text(encoding="utf-8"))
-    fresh.pop("pairs_v2_sha256"), m.pop("pairs_v2_sha256", None)
-    assert fresh == m
+    sent = {k: v for k, v in m.items() if k != "pairs_v2_sha256"}
+    fresh.pop("pairs_v2_sha256")
+    assert {cid: h for cid, h in fresh["packets"].items() if cid in keep} == \
+        {cid: h for cid, h in sent["packets"].items() if cid in keep}
+    assert fresh["unresolved"] == sent["unresolved"] and set(fresh["packets"]) == set(sent["packets"])
 
 
 def test_round1_manifest_matches_the_current_pairs():
@@ -111,7 +136,7 @@ def test_round1_csv_shows_no_self_label_token(reviewer):
 
 
 @pytest.mark.parametrize("reviewer", ["AG", "MO"])
-def test_round1_xlsx_matches_the_current_render(reviewer):
+def test_round1_xlsx_matches_the_forms_as_sent(reviewer):
     from openpyxl import load_workbook
 
     from r2.verify.build_packets import REVIEW, _cell_text, _check_review_content
@@ -120,7 +145,7 @@ def test_round1_xlsx_matches_the_current_render(reviewer):
     rows = [[_cell_text(c) for c in row] for row in wb[REVIEW].iter_rows(values_only=True)]
     while rows and not any(rows[-1]):
         rows.pop()
-    _check_review_content(rows, path)  # raises if any content cell differs from a fresh render
+    _check_review_content(rows, path, "round1", reviewer)  # raises if a content cell differs from the sent form
     assert len(rows) == 478
 
 
@@ -177,12 +202,13 @@ def test_the_three_checks_hold_once_the_physicians_edits_exist_and_still_catch_a
         check_committed_pairs(pairs, {})                             # a build without the edits would differ
     # 2. the manifest packets equal the packets recomputed from the current pairs
     check_manifest_against_pairs(copy.deepcopy(m), pairs)
-    # 3. the round-1 forms stay byte-reproducible from the round-1 subset
+    # 3. the round-1 forms stay reproducible from the round-1 subset (the 432 unchanged pairs)
     out = sandboxed / "render"
     check_round1_render(out, copy.deepcopy(m), pairs, raw)
 
     # an accidental change to any round-1 pair is still caught by all three
-    victim = next(c for c in cases if c["case_id"] in m["packets"] and c["eval"]["sham_trap_type"] != FC)
+    from tests.r2.test_cue_fixes import CUE_CHANGED_IDS
+    victim = next(c for c in cases if c["case_id"] in m["packets"] and c["case_id"] not in CUE_CHANGED_IDS)
     altered = copy.deepcopy(pairs)
     tool = next(c for c in altered["cases"] if c["case_id"] == victim["case_id"])["tools"]["S"]
     tool["excerpt_text"] += " Altered."

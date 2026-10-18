@@ -1,3 +1,5 @@
+import copy
+
 import pytest
 
 from r2.io import load_original_cases
@@ -35,7 +37,11 @@ def test_previously_edited_pairs_are_untouched(built):
         if c["eval"]["sham_trap_type"] == "fabricated_citation":
             continue  # only the DOI suffix changes: test_fabricated_citation_dois_carry_the_neutral_suffix
         if audit.loc[c["case_id"], "raw_status"] != "no_edit":
-            assert c["tools"]["S"] == original[c["case_id"]]["tools"]["S"]
+            expected = copy.deepcopy(original[c["case_id"]]["tools"]["S"])
+            for fix in c["edit_record"].get("cue_fixes", []):  # cue fix A2: the year only (test_cue_fixes.py)
+                assert fix["rule"] == "outdated_year" and fix["before"] == expected["metadata"]["publication_year"]
+                expected["metadata"]["publication_year"] = fix["after"]
+            assert c["tools"]["S"] == expected
             assert c["tools"]["T"] == original[c["case_id"]]["tools"]["T"]
             assert c["edit_record"]["edit_source"] == "original_transform"
 
@@ -139,6 +145,10 @@ FC = "fabricated_citation"
 # json.dumps(case, sort_keys=True, ensure_ascii=False); digest = sha256 of the sorted "case_id:hash" lines.
 HEAD_COMMIT = "1a9831f"
 HEAD_437_UNCHANGED = "1cb37a397de3c0c21dfc07c99366e928dcf969352f482983b5d7766ba8c8fefb"
+# The same hash over the 432 of those 437 that the cue fixes (A1-A3) leave alone; the other five are CUE_FIVE.
+# Pinned from 30c5805, the commit before the cue fixes (identical to the build now).
+HEAD_432_UNCHANGED = "b1e3e0a911c9121992975bc81d7b76dacdcbc59975bdf338c3e7c944116f1c04"
+CUE_FIVE = ("CASE_036", "CASE_337", "CASE_387", "CASE_475", "CASE_488")
 HEAD_40_FABRICATED = "ef8bf4d1e8aba204a5ba92555c0aae5cae967aa0d22ad8bcd9466c2434a07194"
 
 
@@ -153,8 +163,10 @@ def _digest(pairs):
 def _assert_only_fc_changed(cases):
     # the 23 physician-authored pairs (once manual_edits.json exists) are new, not round-1 pairs
     by_id = {c["case_id"]: c for c in cases if c["edit_record"]["edit_source"] != "physician_manual"}
-    unchanged = [(cid, _case_sha(c)) for cid, c in by_id.items() if c["eval"]["sham_trap_type"] != FC]
-    assert len(unchanged) == 437 and _digest(unchanged) == HEAD_437_UNCHANGED
+    unchanged = [(cid, _case_sha(c)) for cid, c in by_id.items()
+                 if c["eval"]["sham_trap_type"] != FC and cid not in CUE_FIVE]
+    assert len(unchanged) == 432 and _digest(unchanged) == HEAD_432_UNCHANGED
+    assert sorted(cid for cid in by_id if cid in CUE_FIVE) == sorted(CUE_FIVE)
     fc = {cid: c for cid, c in by_id.items() if c["eval"]["sham_trap_type"] == FC}
     reverted = {cid: before_self_label_fix(c) for cid, c in fc.items()}
     assert len(fc) == 40 and all(_case_sha(fc[cid]) != _case_sha(reverted[cid]) for cid in fc)
@@ -162,6 +174,7 @@ def _assert_only_fc_changed(cases):
 
 
 def test_fabricated_citation_dois_carry_the_neutral_suffix(built):
+    """F1 changes only the DOI suffix; the cue fix A1 then rewrites the Evidence line (test_cue_fixes.py)."""
     original, _ = load_original_cases()
     fc = [c for c in built[0] if c["eval"]["sham_trap_type"] == FC]
     assert len(fc) == 40
@@ -170,11 +183,14 @@ def test_fabricated_citation_dois_carry_the_neutral_suffix(built):
         before = re.search(r"10\.9999/fake\.\d{4}", s0["excerpt_text"]).group(0)
         after = "10.9999/" + neutral_doi_suffix(cid, "2025")
         assert re.fullmatch(r"10\.9999/cg\.2025\.\d{4}", after)
-        assert c["tools"]["S"] == {**s0, "excerpt_text": s0["excerpt_text"].replace(before, after)}, cid
+        assert c["tools"]["S"]["excerpt_text"].endswith(f"(DOI:{after})")
+        assert {**c["tools"]["S"], "excerpt_text": None} == {**s0, "excerpt_text": None}, cid
         assert c["tools"]["T"] == original[cid]["tools"]["T"]
         assert c["edit_record"]["edit_source"] == "original_transform"
         assert c["edit_record"]["self_label_fix"] == {"rule": "neutral_doi_suffix", "field": "excerpt_text",
                                                       "before": before, "after": after}
+        # before_self_label_fix undoes the cue fix and then F1: the original generator's output, DOI included
+        assert before_self_label_fix(c)["tools"]["S"] == s0, cid
     assert not any("self_label_fix" in c["edit_record"] for c in built[0] if c["eval"]["sham_trap_type"] != FC)
 
 
@@ -207,7 +223,7 @@ def test_post_condition_refuses_a_self_labelling_edit():
         build_v2({"CASE_399": edit}, strict=False)
 
 
-def test_only_the_40_fabricated_citation_pairs_change_against_head(built):
+def test_only_the_cue_fix_pairs_change_against_head(built):
     _assert_only_fc_changed(built[0])
 
 
@@ -224,7 +240,7 @@ def check_committed_pairs(committed, manual):
     return cases
 
 
-def test_committed_pairs_match_head_except_the_40_fabricated_citation_pairs():
+def test_committed_pairs_match_head_except_the_cue_fix_pairs():
     committed = json.loads((DATA_V2 / "pairs_v2.json").read_text(encoding="utf-8"))
     cases = check_committed_pairs(committed, committed_manual_edits())
     _assert_only_fc_changed(cases)
@@ -238,6 +254,7 @@ def test_changed_pairs_against_the_head_commit_by_git(built):
     now = {c["case_id"]: c for c in built[0]}
     assert set(head) == set(now)
     changed = sorted(cid for cid in now if _case_sha(now[cid]) != _case_sha(head[cid]))
-    assert changed == sorted(cid for cid, c in now.items() if c["eval"]["sham_trap_type"] == FC)
-    assert len(changed) == 40
-    assert all(before_self_label_fix(now[cid]) == head[cid] for cid in changed)
+    fc = sorted(cid for cid, c in now.items() if c["eval"]["sham_trap_type"] == FC)
+    assert changed == sorted(fc + list(CUE_FIVE))
+    assert len(changed) == 45
+    assert all(before_self_label_fix(now[cid]) == head[cid] for cid in fc)

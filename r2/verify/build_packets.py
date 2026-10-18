@@ -5,6 +5,7 @@ import hashlib
 import html
 import json
 import random
+import re
 from pathlib import Path
 
 from r2.io import load_original_cases
@@ -18,6 +19,7 @@ PACKET_FIELDS = ("vignette_as_shown_to_model", "clinical_question", "authentic_a
                  "modified_as_shown_to_model")
 PACKET_SEP = "\n\x1e\n"
 REVIEWERS = (("AG", 1), ("MO", 2))
+REVIEWER_NAMES = {"AG": "A.G.", "MO": "M.O."}  # as export_xlsx writes them into Instructions!A1
 MANIFEST = "packets_manifest.json"
 
 
@@ -80,7 +82,7 @@ def _answered_forms(answer_cols, directory=None):
 def readme_text():
     guide = ["# Reviewer instructions", "",
              "Review every row independently; do not discuss until both forms are complete.",
-             "The text in the *_as_shown_to_model columns is exactly what the evaluated models receive.",
+             "The *_as_shown_to_model columns are exactly what the evaluated models receive, except for the first line: here it reads \"label\": \"authentic\" or \"modified\" so that you know which is which; the models see \"label\": \"A\" or \"B\", and every pair is shown in both orders.",
              "Answer each item with Y or N (Q3 also allows P = partially). Use `notes` for any N.", ""]
     guide += [f"- **{q}**: {text}" for q, text in QUESTIONS]
     guide += ["",
@@ -271,43 +273,65 @@ def _cell_text(v):
     return str(v)
 
 
-def _check_review_content(rows, xlsx_path):
-    """Everything except the answer columns must equal a fresh render of the current pairs: a reviewer
-    edit to a case_id, a packet column or its hash is refused."""
+def _round_dir(round_label):
+    return VERIFY_DIR / round_label
+
+
+def _check_review_content(rows, xlsx_path, round_label, reviewer):
+    """Everything except the answer columns must equal the form as sent in `round_label`: the case_id must be in
+    that round's manifest, the packet_sha256 cell must equal the manifest value and the hash recomputed from
+    the row's PACKET_FIELDS, and the other content columns must equal that round's form CSV. A reviewer edit to
+    a case_id, a packet column or its hash is refused. (The current render is not consulted: a pair may have
+    changed since the form was sent.)"""
     if not rows:
         raise ValueError(f"{xlsx_path}: the '{REVIEW}' sheet is empty")
     header = rows[0]
     answer = set(_answer_cols())
-    fresh = {r["case_id"]: r for r in packet_rows()}
+    d = _round_dir(round_label)
+    manifest = json.loads((d / MANIFEST).read_text(encoding="utf-8"))["packets"]
+    with open(d / f"review_{reviewer}.csv", newline="", encoding="utf-8") as fh:
+        form_rd = csv.DictReader(fh)
+        form_cols = list(form_rd.fieldnames or [])
+        form = {r["case_id"]: r for r in form_rd}
     content_cols = [c for c in header if c not in answer]
-    expected_cols = list(next(iter(fresh.values()))) if fresh else []
+    expected_cols = [c for c in form_cols if c not in answer]
     if content_cols != expected_cols:
         raise ValueError(f"{xlsx_path}: content columns {content_cols} differ from the packet columns {expected_cols}")
     problems = []
     for line, row in enumerate(rows[1:], start=2):
         cells = dict(zip(header, row))
         cid = cells.get("case_id", "")
-        if cid not in fresh:
-            problems.append(f"row {line}: case_id {cid!r} is not a current case_id")
+        if cid not in manifest or cid not in form:
+            problems.append(f"row {line}: case_id {cid!r} is not a case_id of {round_label}")
             continue
-        changed = [c for c in content_cols
-                   if cells.get(c, "") != ("" if fresh[cid][c] is None else str(fresh[cid][c]))]
+        if cells.get("packet_sha256", "") != manifest[cid]:
+            problems.append(f"row {line} ({cid}): packet_sha256 differs from the {round_label} manifest")
+        elif packet_sha256(cells) != manifest[cid]:
+            problems.append(f"row {line} ({cid}): packet content does not match its {round_label} packet_sha256")
+        changed = [c for c in content_cols if cells.get(c, "") != form[cid][c]]
         if changed:
-            problems.append(f"row {line} ({cid}): content columns differ from the current packet: {changed}")
+            problems.append(f"row {line} ({cid}): content columns differ from the {round_label} form: {changed}")
     if problems:
         raise ValueError(f"{xlsx_path}: a reviewer edited packet content, nothing imported:\n  "
                          + "\n  ".join(problems[:20]))
 
 
-def import_review_xlsx(xlsx_path, csv_path):
+def import_review_xlsx(xlsx_path, csv_path, round_label):
+    """Write the returned workbook's Review sheet to csv_path after checking it against the forms of
+    `round_label` as they were sent (that round's manifest and form CSV)."""
     from openpyxl import load_workbook
     wb = load_workbook(xlsx_path, read_only=False, data_only=True)
     if REVIEW not in wb.sheetnames:
         raise ValueError(f"{xlsx_path}: no '{REVIEW}' sheet")
+    a1 = str(wb[INSTRUCTIONS]["A1"].value or "") if INSTRUCTIONS in wb.sheetnames else ""
+    m = re.fullmatch(r"Reviewer: (\S+)\s+Round: (\S+)", a1.strip())
+    names = {v: k for k, v in REVIEWER_NAMES.items()}
+    if not m or m.group(1) not in names or m.group(2) != round_label:
+        raise ValueError(f"{xlsx_path}: {INSTRUCTIONS}!A1 reads {a1!r}, expected a reviewer and Round: {round_label}")
     rows = [[_cell_text(c.value) for c in row] for row in wb[REVIEW].iter_rows()]
     while rows and not any(rows[-1]):
         rows.pop()
-    _check_review_content(rows, xlsx_path)
+    _check_review_content(rows, xlsx_path, round_label, names[m.group(1)])
     with open(csv_path, "w", newline="", encoding="utf-8") as fh:
         csv.writer(fh).writerows(rows)
 
@@ -366,13 +390,16 @@ def import_author_edits(xlsx_path, author, date):
 
 def merge_rounds(round_labels, out_dir=None):
     """Concatenate the rounds' forms per reviewer into out_dir/review_<R>.csv and write the top-level
-    manifest for the current pairs_v2.json."""
+    manifest for the current pairs_v2.json. A row from an earlier round whose packet_sha256 differs from the
+    current render is superseded, and dropped, when a later round holds that case_id with the current hash
+    (the manifest lists these under "superseded"); a case_id with the current hash in two rounds, and a stale
+    row nothing supersedes, are errors."""
     out_dir = VERIFY_DIR if out_dir is None else Path(out_dir)
     raw = pairs_path().read_bytes()
     current = {r["case_id"]: r["packet_sha256"] for r in packet_rows(json.loads(raw)["cases"])}
-    merged = {}
+    merged, superseded = {}, {}
     for reviewer, _ in REVIEWERS:
-        header, rows, seen = None, [], {}
+        header, entries = None, []  # (label, row) in round order
         for label in round_labels:
             path = VERIFY_DIR / label / f"review_{reviewer}.csv"
             with open(path, newline="", encoding="utf-8") as fh:
@@ -381,20 +408,33 @@ def merge_rounds(round_labels, out_dir=None):
                     header = rd.fieldnames
                 elif rd.fieldnames != header:
                     raise ValueError(f"{path}: columns differ from the first round")
-                for row in rd:
-                    cid = row["case_id"]
-                    if cid in seen:
-                        raise ValueError(f"{reviewer}: case_id {cid} appears in both {seen[cid]} and {label}")
-                    seen[cid] = label
-                    if current.get(cid) != row["packet_sha256"]:
-                        raise ValueError(f"{reviewer}: packet_sha256 for {cid} ({label}) differs from the "
-                                         "current render: the pair changed after it was reviewed")
-                    rows.append(row)
-        missing = sorted(set(current) - set(seen))
+                entries += [(label, row) for row in rd]
+        good = {}
+        for label, row in entries:
+            cid = row["case_id"]
+            if current.get(cid) == row["packet_sha256"]:
+                if cid in good:
+                    raise ValueError(f"{reviewer}: case_id {cid} appears in both {good[cid]} and {label}")
+                good[cid] = label
+        rows, dropped = [], {}
+        for label, row in entries:
+            cid = row["case_id"]
+            if current.get(cid) == row["packet_sha256"]:
+                rows.append(row)
+            elif cid in good and round_labels.index(good[cid]) > round_labels.index(label):
+                dropped.setdefault(cid, []).append(label)
+            else:
+                raise ValueError(f"{reviewer}: packet_sha256 for {cid} ({label}) differs from the "
+                                 "current render: the pair changed after it was reviewed")
+        missing = sorted(set(current) - set(good))
         if missing:
             raise ValueError(f"{reviewer}: rounds {list(round_labels)} do not cover all {len(current)} current "
                              f"pairs; missing {len(missing)}: {missing[:10]}")
         merged[reviewer] = (header, rows)
+        superseded[reviewer] = dropped
+    if superseded["AG"] != superseded["MO"]:
+        raise ValueError(f"the two reviewers' forms supersede different rows: AG {superseded['AG']}, "
+                         f"MO {superseded['MO']}")
     out_dir.mkdir(parents=True, exist_ok=True)
     for reviewer, (header, rows) in merged.items():
         with open(out_dir / f"review_{reviewer}.csv", "w", newline="", encoding="utf-8") as fh:
@@ -403,10 +443,19 @@ def merge_rounds(round_labels, out_dir=None):
             w.writerows(rows)
     (out_dir / MANIFEST).write_text(json.dumps(
         {"pairs_v2_sha256": hashlib.sha256(raw).hexdigest(), "packets": current,
-         "merged_rounds": list(round_labels)}, indent=1) + "\n", encoding="utf-8")
+         "merged_rounds": list(round_labels), "superseded": dict(sorted(superseded["AG"].items()))},
+        indent=1) + "\n", encoding="utf-8")
 
 
-REVIEWER_NAMES = {"AG": "A.G.", "MO": "M.O."}
+def round2_scope(round1_manifest=None):
+    """The case_ids round 2 reviews: the pairs unresolved in round 1 plus the round-1 pairs whose current
+    packet_sha256 differs from the one the physicians saw. Returns (sorted ids, unresolved ids, changed ids)."""
+    if round1_manifest is None:
+        round1_manifest = json.loads((VERIFY_DIR / "round1" / MANIFEST).read_text(encoding="utf-8"))
+    current = {r["case_id"]: r["packet_sha256"] for r in packet_rows()}
+    unresolved = sorted(round1_manifest.get("unresolved") or [])
+    changed = sorted(cid for cid, h in round1_manifest["packets"].items() if current.get(cid) != h)
+    return sorted(set(unresolved) | set(changed)), unresolved, changed
 
 
 def _export_round(label, with_author_edits, force=False):
@@ -442,8 +491,7 @@ def main(argv=None):
         write_forms("round1", allow_unresolved=True)
         _export_round("round1", with_author_edits=True, force=a.force)
     elif a.cmd == "round2":
-        ids = json.loads((VERIFY_DIR / "round1" / MANIFEST).read_text(encoding="utf-8"))["unresolved"]
-        write_round_forms("round2", ids)
+        write_round_forms("round2", round2_scope()[0])
         _export_round("round2", with_author_edits=False, force=a.force)
     elif a.cmd == "import-edits":
         print(f"{len(import_author_edits(a.xlsx, a.author, a.date))} edits written to data/v2/manual_edits.json")
