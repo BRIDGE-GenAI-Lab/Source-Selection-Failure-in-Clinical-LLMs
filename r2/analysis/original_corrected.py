@@ -35,6 +35,7 @@ def original_frame():
             "category": CATEGORY[r["sham_trap_type"]], "profile": profile_for(r["model_name"]),
             "sham_first": sham_position(r) == "A", "selected_first": d.get("selected_tool") == "A",
             "correct": int(r["selected_tool_correct"] is True), "confidence": d.get("confidence"),
+            "selected": d.get("selected_tool"), "rationale": rationale,
             "says_identical": bool(SAYS_IDENTICAL.search(rationale)),
             "visible_status": audit.loc[r["case_id"], "visible_status"],
             "raw_status": audit.loc[r["case_id"], "raw_status"],
@@ -49,6 +50,7 @@ def _per_model(df):
         s = position_summary(g)
         s["model"] = model
         s["profile"] = g.profile.iloc[0]
+        s["paa_lo"], s["paa_hi"] = cluster_bootstrap_paa(g)
         rows.append(s)
     out = pd.DataFrame(rows)
     out["content_p_fdr"] = fdr(out.content_p)
@@ -76,29 +78,43 @@ def _pooled(sub):
     return s
 
 
+def _measures(sub):
+    """Accuracy, primacy, accuracy with the sham first and second, and position-averaged accuracy, each followed
+    by its case-cluster bootstrap CI (`<measure>_lo`, `<measure>_hi`)."""
+    s = position_summary(sub)
+    out = {}
+    for measure, rows, col in (("accuracy", sub, "correct"),
+                               ("primacy", sub, "selected_first"),
+                               ("acc_sham_first", sub[sub.sham_first], "correct"),
+                               ("acc_sham_second", sub[~sub.sham_first], "correct")):
+        out[measure] = s[measure]
+        out[f"{measure}_lo"], out[f"{measure}_hi"] = cluster_bootstrap_mean(
+            rows.assign(**{col: rows[col].astype(float)}), col)
+    out["position_averaged_accuracy"] = s["position_averaged_accuracy"]
+    out["position_averaged_accuracy_lo"], out["position_averaged_accuracy_hi"] = cluster_bootstrap_paa(sub)
+    return out
+
+
 def _by_profile(sub):
-    return pd.DataFrame({p: _pooled(g) for p, g in sub.groupby("profile")}).T
+    """Pooled measures per runner configuration, with the number of models and case-cluster bootstrap CIs."""
+    rows = {}
+    for p, g in sub.groupby("profile"):
+        s = _pooled(g)
+        s["n_models"] = int(g.model.nunique())
+        s.update({k: v for k, v in _measures(g).items() if k.endswith(("_lo", "_hi"))})
+        rows[p] = s
+    return pd.DataFrame(rows).T
 
 
 def _excluding_coerced(sub):
     """Sensitivity: the pooled measures recomputed without the records whose choice the original runner
     coerced to "A" (audit/coerced_choices.csv), with case-cluster bootstrap CIs."""
     kept = sub[~sub.coerced]
-    s = position_summary(kept)
-    out = {"n": s["n"], "n_coerced_excluded": int(sub.coerced.sum())}
-    for measure, rows, col in (("accuracy", kept, "correct"),
-                               ("primacy", kept, "selected_first"),
-                               ("acc_sham_first", kept[kept.sham_first], "correct"),
-                               ("acc_sham_second", kept[~kept.sham_first], "correct")):
-        out[measure] = s[measure]
-        out[f"{measure}_lo"], out[f"{measure}_hi"] = cluster_bootstrap_mean(
-            rows.assign(**{col: rows[col].astype(float)}), col)
-    out["position_averaged_accuracy"] = s["position_averaged_accuracy"]
-    out["position_averaged_accuracy_lo"], out["position_averaged_accuracy_hi"] = cluster_bootstrap_paa(kept)
-    return out
+    return {"n": int(len(kept)), "n_coerced_excluded": int(sub.coerced.sum()), **_measures(kept)}
 
 
-CUE_KEY = "fabricated_citation_cue_confounded"
+CUE_TYPE = "fabricated_citation"
+CUE_KEY = f"{CUE_TYPE}_cue_confounded"
 CUE_NOTE = (
     "Exploratory and cue-confounded. Every original fabricated_citation modified excerpt ended with "
     "\"Evidence: 'NEJM 2025;392:<pages>' (DOI:10.9999/fake.NNNN)\", so the word 'fake' was visible in the "
@@ -119,39 +135,88 @@ def _cue_confounded(df):
            "n": s["n"], "n_cases": int(sub.case_id.nunique()), "n_models": int(sub.model.nunique()),
            "failures": int(sub.failure.sum()), "failure_rate": float(sub.failure.mean())}
     out["failure_rate_lo"], out["failure_rate_hi"] = cluster_bootstrap_mean(sub, "failure")
-    for measure, rows, col in (("accuracy", sub, "correct"),
-                               ("primacy", sub, "selected_first"),
-                               ("acc_sham_first", sub[sub.sham_first], "correct"),
-                               ("acc_sham_second", sub[~sub.sham_first], "correct")):
-        out[measure] = s[measure]
-        out[f"{measure}_lo"], out[f"{measure}_hi"] = cluster_bootstrap_mean(
-            rows.assign(**{col: rows[col].astype(float)}), col)
-    out["position_averaged_accuracy"] = s["position_averaged_accuracy"]
-    out["position_averaged_accuracy_lo"], out["position_averaged_accuracy_hi"] = cluster_bootstrap_paa(sub)
+    out.update(_measures(sub))
     out["ci"] = "case-cluster bootstrap (2,000 draws, percentile 95% CI; r2.analysis.stats)"
     return out
+
+
+def _headline(sub):
+    s = _pooled(sub)
+    s["acc_lo"], s["acc_hi"] = cluster_bootstrap_mean(sub, "correct")
+    s["says_identical"] = float(sub.says_identical.mean())
+    # case-cluster bootstrap CIs for the other pooled rates (position rates use their own rows)
+    s["position_averaged_accuracy_lo"], s["position_averaged_accuracy_hi"] = cluster_bootstrap_paa(sub)
+    for rate, rows, col in (("primacy", sub, "selected_first"),
+                            ("acc_sham_first", sub[sub.sham_first], "correct"),
+                            ("acc_sham_second", sub[~sub.sham_first], "correct"),
+                            ("says_identical", sub, "says_identical")):
+        s[f"{rate}_lo"], s[f"{rate}_hi"] = cluster_bootstrap_mean(rows.assign(**{col: rows[col].astype(float)}), col)
+    return s
+
+
+NOFC_KEY = "discriminable_excluding_fabricated_citation"
+TABLE1_CHARS = 300
+TABLE1_COLUMNS = ("sham_type", "category", "outcome", "case_id", "model", "model_display", "order", "selected",
+                  "confidence", "patient", "modification", "rationale", "cue_confounded")
+
+
+def _visible_edit(case):
+    """The edit as the models could see it (excerpt_text and the visible metadata fields of r2.audit.pair_audit),
+    as an edit record for r2.analysis.table1.modification."""
+    from r2.audit.pair_audit import VISIBLE_META
+    t, s = case["tools"]["T"], case["tools"]["S"]
+    changes = [{"field": "excerpt_text", "before": t["excerpt_text"], "after": s["excerpt_text"]}] \
+        if t["excerpt_text"] != s["excerpt_text"] else []
+    changes += [{"field": f"metadata.{k}", "before": t["metadata"].get(k), "after": s["metadata"].get(k)}
+                for k in VISIBLE_META if t["metadata"].get(k) != s["metadata"].get(k)]
+    return {"changes": changes}
+
+
+def table1_examples(df):
+    """Table 1 rows by a fixed rule: for each sham type with discriminable pairs, the first failure and the first
+    success in (case_id, model) order among the records whose choice the original runner did not coerce. The
+    rationale is its first TABLE1_CHARS characters (an ellipsis marks a cut); fabricated_citation rows are marked
+    cue-confounded. Order: TS, authentic excerpt shown first (as A); ST, modified excerpt shown first."""
+    # local imports: r2.analysis.repeated (imported by table1) imports this module
+    from r2.analysis.figures import display_name
+    from r2.analysis.table1 import modification, patient, quote
+    from r2.io import load_original_cases
+    cases, _ = load_original_cases()
+    pool = df[(df.raw_status == "visible") & ~df.coerced].sort_values(["case_id", "model"])
+    rows = []
+    for t in sorted(pool.sham_type.unique()):
+        for outcome, correct in (("Failure", 0), ("Success", 1)):
+            hit = pool[(pool.sham_type == t) & (pool.correct == correct)]
+            if hit.empty:
+                continue
+            r = hit.iloc[0]
+            case = cases[r.case_id]
+            rows.append(dict(zip(TABLE1_COLUMNS, (
+                t, CATEGORY[t], outcome, r.case_id, r.model, display_name(r.model), "ST" if r.sham_first else "TS",
+                r.selected, r.confidence, patient(case), modification(_visible_edit(case)),
+                quote(r.rationale, TABLE1_CHARS), t == CUE_TYPE))))
+    return rows
+
+
+def _excluding_fabricated_citation(disc):
+    """Sensitivity: the discriminable pairs without the cue-confounded fabricated_citation pairs, with the same
+    measures and CIs as the `discriminable` block; `excluding_coerced` also drops the coerced records."""
+    cue = disc.sham_type == CUE_TYPE
+    kept = disc[~cue]
+    return {"excluded_sham_type": CUE_TYPE, "n_pairs": int(kept.case_id.nunique()),
+            "n_excluded": int(cue.sum()), "n_pairs_excluded": int(disc[cue].case_id.nunique()),
+            **_headline(kept), "excluding_coerced": _excluding_coerced(kept)}
 
 
 def run(write=True):
     df = original_frame()
     subsets = {"all": df, "discriminable": df[df.visible_status != "identical"],
                "identical": df[df.visible_status == "identical"]}
-    head = {}
-    for name, sub in subsets.items():
-        s = _pooled(sub)
-        s["acc_lo"], s["acc_hi"] = cluster_bootstrap_mean(sub, "correct")
-        s["says_identical"] = float(sub.says_identical.mean())
-        # case-cluster bootstrap CIs for the other pooled rates (position rates use their own rows)
-        s["position_averaged_accuracy_lo"], s["position_averaged_accuracy_hi"] = cluster_bootstrap_paa(sub)
-        for rate, rows, col in (("primacy", sub, "selected_first"),
-                                ("acc_sham_first", sub[sub.sham_first], "correct"),
-                                ("acc_sham_second", sub[~sub.sham_first], "correct"),
-                                ("says_identical", sub, "says_identical")):
-            s[f"{rate}_lo"], s[f"{rate}_hi"] = cluster_bootstrap_mean(rows.assign(**{col: rows[col].astype(float)}), col)
-        head[name] = s
+    head = {name: _headline(sub) for name, sub in subsets.items()}
     head["types_without_valid_pairs"] = sorted(set(df.sham_type) - set(subsets["discriminable"].sham_type))
     head["excluding_coerced"] = {name: _excluding_coerced(sub) for name, sub in subsets.items()}
     head[CUE_KEY] = _cue_confounded(df)
+    head[NOFC_KEY] = _excluding_fabricated_citation(subsets["discriminable"])
     if write:
         OUT.mkdir(exist_ok=True)
         formula = "correct ~ sham_first + C(category, Treatment('metadata')) + C(model)"
@@ -172,6 +237,7 @@ def run(write=True):
            .assign(n=df.groupby("raw_status").size())
            .to_csv(OUT / "behavior_by_raw_status.csv"))
         (OUT / "headline.json").write_text(json.dumps(head, indent=2))
+        pd.DataFrame(table1_examples(df)).to_csv(OUT / "table1_examples.csv", index=False)
     return head
 
 

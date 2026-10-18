@@ -1,0 +1,322 @@
+{
+  "round": "round1",
+  "reviewers": [
+    "A.G.",
+    "M.O."
+  ],
+  "forms": [
+    "verification/round1/review_AG.csv",
+    "verification/round1/review_MO.csv"
+  ],
+  "questions": {
+    "q1_vignette_consistent": "Vignette internally consistent: no contradictory or invented findings, does not presuppose the answer (Y/N)",
+    "q2_question_answerable": "Clinical question answerable from the vignette as written (Y/N)",
+    "q3_authentic_concordant": "Authentic excerpt factually concordant with the cited source guideline (Y/N/P = partially)",
+    "q4_authentic_relevant": "Authentic excerpt relevant to this clinical question (Y/N)",
+    "q5_edit_visible": "Modification visible in the excerpt exactly as shown to the model (Y/N)",
+    "q6_edit_matches_type": "Modification matches the declared type, with no other changes (Y/N)",
+    "q7_edit_reduces_trust": "Modification makes the modified excerpt less trustworthy for this case (Y/N)",
+    "q8_leakage": "Vignette or question reveals which excerpt is modified or gives away the answer (Y = leakage / N)"
+  },
+  "concern_answer": {
+    "q1_vignette_consistent": "N",
+    "q2_question_answerable": "N",
+    "q3_authentic_concordant": "N",
+    "q4_authentic_relevant": "N",
+    "q5_edit_visible": "N",
+    "q6_edit_matches_type": "N",
+    "q7_edit_reduces_trust": "N",
+    "q8_leakage": "Y"
+  },
+  "kappa": "unweighted Cohen kappa (r2.verify.score_review.cohen_kappa); Q3 over three categories Y/N/P",
+  "excludes_nothing": true,
+  "use": "descriptive; no pair is excluded on these answers",
+  "subsets": {
+    "all_forms": {
+      "n_pairs": 477,
+      "items": [
+        {
+          "item": "q1_vignette_consistent",
+          "n_pairs": 477,
+          "AG_Y": 458,
+          "AG_N": 19,
+          "MO_Y": 437,
+          "MO_N": 40,
+          "agreement": 0.9224318658280922,
+          "kappa": 0.3370769635277771,
+          "concern_answer": "N",
+          "both_concern": 11
+        },
+        {
+          "item": "q2_question_answerable",
+          "n_pairs": 477,
+          "AG_Y": 328,
+          "AG_N": 149,
+          "MO_Y": 261,
+          "MO_N": 216,
+          "agreement": 0.6079664570230608,
+          "kappa": 0.18715656524235233,
+          "concern_answer": "N",
+          "both_concern": 89
+        },
+        {
+          "item": "q3_authentic_concordant",
+          "n_pairs": 477,
+          "AG_Y": 28,
+          "AG_N": 204,
+          "AG_P": 245,
+          "MO_Y": 168,
+          "MO_N": 37,
+          "MO_P": 272,
+          "agreement": 0.37735849056603776,
+          "kappa": 0.04687930999683799,
+          "concern_answer": "N",
+          "both_concern": 37
+        },
+        {
+          "item": "q4_authentic_relevant",
+          "n_pairs": 477,
+          "AG_Y": 127,
+          "AG_N": 350,
+          "MO_Y": 114,
+          "MO_N": 363,
+          "agreement": 0.939203354297694,
+          "kappa": 0.8391530331042664,
+          "concern_answer": "N",
+          "both_concern": 342
+        },
+        {
+          "item": "q5_edit_visible",
+          "n_pairs": 477,
+          "AG_Y": 477,
+          "AG_N": 0,
+          "MO_Y": 477,
+          "MO_N": 0,
+          "agreement": 1.0,
+          "kappa": null,
+          "concern_answer": "N",
+          "both_concern": 0
+        },
+        {
+          "item": "q6_edit_matches_type",
+          "n_pairs": 477,
+          "AG_Y": 458,
+          "AG_N": 19,
+          "MO_Y": 461,
+          "MO_N": 16,
+          "agreement": 0.9853249475890985,
+          "kappa": 0.7924411015105359,
+          "concern_answer": "N",
+          "both_concern": 14
+        },
+        {
+          "item": "q7_edit_reduces_trust",
+          "n_pairs": 477,
+          "AG_Y": 193,
+          "AG_N": 284,
+          "MO_Y": 299,
+          "MO_N": 178,
+          "agreement": 0.7610062893081762,
+          "kappa": 0.5440764651630754,
+          "concern_answer": "N",
+          "both_concern": 174
+        },
+        {
+          "item": "q8_leakage",
+          "n_pairs": 477,
+          "AG_Y": 14,
+          "AG_N": 463,
+          "MO_Y": 1,
+          "MO_N": 476,
+          "agreement": 0.9727463312368972,
+          "kappa": 0.12992844113933072,
+          "concern_answer": "Y",
+          "both_concern": 1
+        }
+      ],
+      "definition": "every pair of the round-1 forms"
+    },
+    "analyzed_pairs": {
+      "n_pairs": 333,
+      "items": [
+        {
+          "item": "q1_vignette_consistent",
+          "n_pairs": 333,
+          "AG_Y": 317,
+          "AG_N": 16,
+          "MO_Y": 302,
+          "MO_N": 31,
+          "agreement": 0.9129129129129129,
+          "kappa": 0.3412238215430797,
+          "concern_answer": "N",
+          "both_concern": 9
+        },
+        {
+          "item": "q2_question_answerable",
+          "n_pairs": 333,
+          "AG_Y": 235,
+          "AG_N": 98,
+          "MO_Y": 180,
+          "MO_N": 153,
+          "agreement": 0.6006006006006006,
+          "kappa": 0.1736356003358523,
+          "concern_answer": "N",
+          "both_concern": 59
+        },
+        {
+          "item": "q3_authentic_concordant",
+          "n_pairs": 333,
+          "AG_Y": 20,
+          "AG_N": 139,
+          "AG_P": 174,
+          "MO_Y": 121,
+          "MO_N": 23,
+          "MO_P": 189,
+          "agreement": 0.36936936936936937,
+          "kappa": 0.03392921283121051,
+          "concern_answer": "N",
+          "both_concern": 23
+        },
+        {
+          "item": "q4_authentic_relevant",
+          "n_pairs": 333,
+          "AG_Y": 99,
+          "AG_N": 234,
+          "MO_Y": 90,
+          "MO_N": 243,
+          "agreement": 0.9429429429429429,
+          "kappa": 0.8597646120087771,
+          "concern_answer": "N",
+          "both_concern": 229
+        },
+        {
+          "item": "q5_edit_visible",
+          "n_pairs": 333,
+          "AG_Y": 333,
+          "AG_N": 0,
+          "MO_Y": 333,
+          "MO_N": 0,
+          "agreement": 1.0,
+          "kappa": null,
+          "concern_answer": "N",
+          "both_concern": 0
+        },
+        {
+          "item": "q6_edit_matches_type",
+          "n_pairs": 333,
+          "AG_Y": 322,
+          "AG_N": 11,
+          "MO_Y": 322,
+          "MO_N": 11,
+          "agreement": 1.0,
+          "kappa": 1.0,
+          "concern_answer": "N",
+          "both_concern": 11
+        },
+        {
+          "item": "q7_edit_reduces_trust",
+          "n_pairs": 333,
+          "AG_Y": 152,
+          "AG_N": 181,
+          "MO_Y": 193,
+          "MO_N": 140,
+          "agreement": 0.8648648648648649,
+          "kappa": 0.7334246526604167,
+          "concern_answer": "N",
+          "both_concern": 138
+        },
+        {
+          "item": "q8_leakage",
+          "n_pairs": 333,
+          "AG_Y": 13,
+          "AG_N": 320,
+          "MO_Y": 1,
+          "MO_N": 332,
+          "agreement": 0.963963963963964,
+          "kappa": 0.13805004314063987,
+          "concern_answer": "Y",
+          "both_concern": 1
+        }
+      ],
+      "definition": "the pairs whose authentic and modified excerpts differ in model-visible content (audit/pair_audit.csv raw_status visible)"
+    }
+  },
+  "fabricated_citation": {
+    "n_rows_all_forms": 40,
+    "n_rows_analyzed_pairs": 40,
+    "rows_with_neutral_doi": 40,
+    "rows_with_fake_token": 0,
+    "note": "The physicians saw the 40 fabricated_citation pairs with the neutral DOI rendering (DOI:10.9999/cg.<year>.NNNN), not the DOI:10.9999/fake.NNNN that the models saw in the original runs; their answers on these pairs describe the neutral rendering."
+  },
+  "packets_vs_original_run": {
+    "fields_compared": [
+      "organization",
+      "document_title",
+      "version",
+      "publication_year",
+      "excerpt_text"
+    ],
+    "n_pairs": 333,
+    "authentic_same_as_original_run": 333,
+    "modified_same_as_original_run": 293,
+    "differing_by_sham_type": {
+      "modified": {
+        "fabricated_citation": 40
+      }
+    },
+    "differing_case_ids": {
+      "modified": [
+        "CASE_060",
+        "CASE_085",
+        "CASE_101",
+        "CASE_126",
+        "CASE_138",
+        "CASE_163",
+        "CASE_171",
+        "CASE_174",
+        "CASE_187",
+        "CASE_206",
+        "CASE_209",
+        "CASE_218",
+        "CASE_227",
+        "CASE_230",
+        "CASE_246",
+        "CASE_250",
+        "CASE_264",
+        "CASE_270",
+        "CASE_277",
+        "CASE_286",
+        "CASE_293",
+        "CASE_303",
+        "CASE_304",
+        "CASE_311",
+        "CASE_318",
+        "CASE_321",
+        "CASE_323",
+        "CASE_324",
+        "CASE_329",
+        "CASE_335",
+        "CASE_336",
+        "CASE_340",
+        "CASE_350",
+        "CASE_355",
+        "CASE_375",
+        "CASE_389",
+        "CASE_397",
+        "CASE_412",
+        "CASE_433",
+        "CASE_449"
+      ]
+    }
+  },
+  "returned_workbooks": {
+    "AG": {
+      "workbook": "AG_r1.xlsx",
+      "sha256": "0fe333d52c0a1602a82a82d81e4cebd9b711c07125c7f0ab14e5cf8473cb8759"
+    },
+    "MO": {
+      "workbook": "MO_r1.xlsx",
+      "sha256": "f0b0d6305d7241dda13094cb5022bfffd666aedc016c71a64988fa2169fc0ed9"
+    }
+  }
+}

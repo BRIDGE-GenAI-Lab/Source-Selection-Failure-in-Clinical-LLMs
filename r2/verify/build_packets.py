@@ -316,9 +316,25 @@ def _check_review_content(rows, xlsx_path, round_label, reviewer):
                          + "\n  ".join(problems[:20]))
 
 
-def import_review_xlsx(xlsx_path, csv_path, round_label):
+def _check_row_order(rows, xlsx_path, round_label, reviewer):
+    """The Review sheet's case_ids in the order of `reviewer`'s form as sent. The reviewers' forms hold the same
+    packets in different fixed shuffles, so the order identifies whose form a workbook is."""
+    with open(_round_dir(round_label) / f"review_{reviewer}.csv", newline="", encoding="utf-8") as fh:
+        sent = [r["case_id"] for r in csv.DictReader(fh)]
+    col = rows[0].index("case_id") if rows and "case_id" in rows[0] else 0
+    if [r[col] if col < len(r) else "" for r in rows[1:]] != sent:
+        raise ValueError(f"{xlsx_path}: the row order of the '{REVIEW}' sheet is not that of "
+                         f"{REVIEWER_NAMES[reviewer]}'s {round_label} form, so the workbook is not "
+                         f"{REVIEWER_NAMES[reviewer]}'s")
+
+
+def import_review_xlsx(xlsx_path, csv_path, round_label, reviewer=None):
     """Write the returned workbook's Review sheet to csv_path after checking it against the forms of
-    `round_label` as they were sent (that round's manifest and form CSV)."""
+    `round_label` as they were sent (that round's manifest and form CSV).
+
+    The reviewer is read from Instructions!A1. `reviewer` (a code of REVIEWERS) is needed only when that header
+    was cleared in the returned copy: the Review sheet's row order must then equal that reviewer's form as sent.
+    When the header is present, `reviewer` must agree with it."""
     from openpyxl import load_workbook
     wb = load_workbook(xlsx_path, read_only=False, data_only=True)
     if REVIEW not in wb.sheetnames:
@@ -326,16 +342,26 @@ def import_review_xlsx(xlsx_path, csv_path, round_label):
     a1 = str(wb[INSTRUCTIONS]["A1"].value or "") if INSTRUCTIONS in wb.sheetnames else ""
     m = re.fullmatch(r"Reviewer: (\S+)\s+Round: (\S+)", a1.strip())
     names = {v: k for k, v in REVIEWER_NAMES.items()}
-    if not m or m.group(1) not in names or m.group(2) != round_label:
-        raise ValueError(f"{xlsx_path}: {INSTRUCTIONS}!A1 reads {a1!r}, expected a reviewer and Round: {round_label}")
+    if reviewer is not None and reviewer not in REVIEWER_NAMES:
+        raise ValueError(f"unknown reviewer {reviewer!r}; expected one of {sorted(REVIEWER_NAMES)}")
+    headerless = not a1.strip() and reviewer is not None
+    if not headerless:
+        if not m or m.group(1) not in names or m.group(2) != round_label:
+            hint = " (if the header was cleared on return, name the reviewer with reviewer=)" if not a1.strip() else ""
+            raise ValueError(f"{xlsx_path}: {INSTRUCTIONS}!A1 reads {a1!r}, expected a reviewer and Round: "
+                             f"{round_label}{hint}")
+        if reviewer is not None and names[m.group(1)] != reviewer:
+            raise ValueError(f"{xlsx_path}: {INSTRUCTIONS}!A1 names {m.group(1)}, not {REVIEWER_NAMES[reviewer]}")
+        reviewer = names[m.group(1)]
     rows = [[_cell_text(c.value) for c in row] for row in wb[REVIEW].iter_rows()]
     while rows and not any(rows[-1]):
         rows.pop()
-    reviewer = names[m.group(1)]
     if Path(csv_path).name != f"review_{reviewer}.csv":
-        raise ValueError(f"{xlsx_path}: the workbook is {m.group(1)}'s but the target is {Path(csv_path).name}, "
-                         f"expected review_{reviewer}.csv")
+        raise ValueError(f"{xlsx_path}: the workbook is {REVIEWER_NAMES[reviewer]}'s but the target is "
+                         f"{Path(csv_path).name}, expected review_{reviewer}.csv")
     _check_review_content(rows, xlsx_path, round_label, reviewer)
+    if headerless:
+        _check_row_order(rows, xlsx_path, round_label, reviewer)
     with open(csv_path, "w", newline="", encoding="utf-8") as fh:
         csv.writer(fh).writerows(rows)
 

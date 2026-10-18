@@ -299,3 +299,59 @@ def test_import_review_accepts_answers_and_notes(env, tmp_path):
     out = tmp_path / "review_AG.csv"
     bp.import_review_xlsx(x, out, "round1")
     assert "looks fine" in out.read_text(encoding="utf-8")
+
+
+# ---- a returned workbook whose Instructions!A1 header was cleared: the caller names the reviewer ----
+@pytest.fixture
+def env6(tmp_path, monkeypatch, make_pairs):
+    """Six pairs, so the two reviewers' fixed shuffles put the rows in different orders."""
+    data, verify = tmp_path / "data", tmp_path / "verification"
+    data.mkdir()
+    monkeypatch.setattr(bp, "DATA_V2", data)
+    monkeypatch.setattr(bp, "VERIFY_DIR", verify)
+    monkeypatch.setattr(sr, "VERIFY_DIR", verify)
+    (data / "pairs_v2.json").write_text(json.dumps(make_pairs([f"C{i}" for i in range(1, 7)])))
+    bp.write_forms("round1", allow_unresolved=True)
+    order = {r: list(pd.read_csv(verify / "round1" / f"review_{r}.csv")["case_id"]) for r in ("AG", "MO")}
+    assert order["AG"] != order["MO"]
+    return verify
+
+
+def _headerless(verify, tmp_path, reviewer):
+    x = tmp_path / f"{reviewer}_returned.xlsx"
+    bp.export_xlsx(verify / "round1" / f"review_{reviewer}.csv", x, bp.REVIEWER_NAMES[reviewer], "round1")
+    wb = load_workbook(x)
+    wb[bp.INSTRUCTIONS]["A1"].value = None
+    wb.save(x)
+    return x
+
+
+def test_headerless_workbook_imports_when_the_reviewer_is_named(env6, tmp_path):
+    x = _headerless(env6, tmp_path, "MO")
+    out = tmp_path / "review_MO.csv"
+    bp.import_review_xlsx(x, out, "round1", reviewer="MO")
+    assert out.read_bytes() == (env6 / "round1" / "review_MO.csv").read_bytes()
+
+
+def test_headerless_workbook_is_refused_without_a_named_reviewer(env6, tmp_path):
+    x = _headerless(env6, tmp_path, "MO")
+    with pytest.raises(ValueError, match="reviewer="):
+        bp.import_review_xlsx(x, tmp_path / "review_MO.csv", "round1")
+    assert not (tmp_path / "review_MO.csv").exists()
+
+
+def test_headerless_workbook_is_refused_for_the_other_reviewer(env6, tmp_path):
+    """The content columns of both forms are the same packets; the row order identifies the reviewer."""
+    x = _headerless(env6, tmp_path, "MO")
+    with pytest.raises(ValueError, match="row order"):
+        bp.import_review_xlsx(x, tmp_path / "review_AG.csv", "round1", reviewer="AG")
+    assert not (tmp_path / "review_AG.csv").exists()
+
+
+def test_named_reviewer_must_agree_with_the_header(env6, tmp_path):
+    x = tmp_path / "ag.xlsx"
+    bp.export_xlsx(env6 / "round1" / "review_AG.csv", x, "A.G.", "round1")
+    with pytest.raises(ValueError, match="names A.G."):
+        bp.import_review_xlsx(x, tmp_path / "review_MO.csv", "round1", reviewer="MO")
+    bp.import_review_xlsx(x, tmp_path / "review_AG.csv", "round1", reviewer="AG")
+    assert (tmp_path / "review_AG.csv").read_bytes() == (env6 / "round1" / "review_AG.csv").read_bytes()

@@ -313,33 +313,45 @@ def figure2(head, per_model, out_dir):
         return _save(fig, out_dir, "Figure2", legend2(head), head.get("synthetic") is True)
 
 
-def figure3(head, per_type, out_dir):
+def draw_figure3(per_type, marked=(), mark="†"):
+    """The Figure 3 bars (call inside plt.rc_context(STYLE)). Types in `marked` are hatched and their label
+    ends with `mark`."""
     rows = sorted(per_type, key=lambda r: -_f(r["failure_rate"]))
     labels = type_labels(rows)
+    for r in rows:
+        if r["sham_type"] in marked:
+            first, rest = labels[r["sham_type"]].split("\n", 1)
+            labels[r["sham_type"]] = f"{first}{mark}\n{rest}"
+    fig, ax = plt.subplots(figsize=(7.2, 5.0))
+    y = np.arange(len(rows))
+    rate = np.array([100 * _f(r["failure_rate"]) for r in rows])
+    lo = np.array([100 * _f(r["lo"]) for r in rows])
+    hi = np.array([100 * _f(r["hi"]) for r in rows])
+    ax.barh(y, rate, height=0.68, color=[CATCOLOR[r["category"]] for r in rows], edgecolor="white", zorder=2,
+            hatch=[("////" if r["sham_type"] in marked else None) for r in rows] if marked else None)
+    ax.errorbar(rate, y, xerr=np.nan_to_num([rate - lo, hi - rate]), fmt="none", ecolor=INK, elinewidth=1.0,
+                capsize=3, zorder=3)
+    for yy, r in zip(y, rate):
+        ax.text(103, yy, f"{r:.1f}%", va="center", ha="left", fontsize=8.5, color=C["text"])
+    ax.set_yticks(y, [labels[r["sham_type"]] for r in rows])
+    ax.set_ylim(len(rows) - 0.45, -0.75)
+    ax.set_xlim(0, 112)
+    ax.set_xticks(range(0, 101, 20))
+    ax.set_xlabel("Failure rate: modified excerpt selected (%)")
+    ax.tick_params(axis="y", length=0)
+    ax.spines["left"].set_visible(False)
+    _ref50(ax, vertical=True, label="50%")
+    _grid(ax, "x")
+    present = [k for k in CATEGORY_LABEL if any(r["category"] == k for r in rows)]
+    ax.legend(handles=[mpatches.Patch(color=CATCOLOR[k], label=CATEGORY_LABEL[k]) for k in present],
+              title="Modification category", loc="upper center", bbox_to_anchor=(0.45, -0.12),
+              ncol=len(present), frameon=False, title_fontsize=8.5, handlelength=1.2)
+    return fig
+
+
+def figure3(head, per_type, out_dir):
     with plt.rc_context(STYLE):
-        fig, ax = plt.subplots(figsize=(7.2, 5.0))
-        y = np.arange(len(rows))
-        rate = np.array([100 * _f(r["failure_rate"]) for r in rows])
-        lo = np.array([100 * _f(r["lo"]) for r in rows])
-        hi = np.array([100 * _f(r["hi"]) for r in rows])
-        ax.barh(y, rate, height=0.68, color=[CATCOLOR[r["category"]] for r in rows], edgecolor="white", zorder=2)
-        ax.errorbar(rate, y, xerr=np.nan_to_num([rate - lo, hi - rate]), fmt="none", ecolor=INK, elinewidth=1.0,
-                    capsize=3, zorder=3)
-        for yy, r in zip(y, rate):
-            ax.text(103, yy, f"{r:.1f}%", va="center", ha="left", fontsize=8.5, color=C["text"])
-        ax.set_yticks(y, [labels[r["sham_type"]] for r in rows])
-        ax.set_ylim(len(rows) - 0.45, -0.75)
-        ax.set_xlim(0, 112)
-        ax.set_xticks(range(0, 101, 20))
-        ax.set_xlabel("Failure rate: modified excerpt selected (%)")
-        ax.tick_params(axis="y", length=0)
-        ax.spines["left"].set_visible(False)
-        _ref50(ax, vertical=True, label="50%")
-        _grid(ax, "x")
-        present = [k for k in CATEGORY_LABEL if any(r["category"] == k for r in rows)]
-        ax.legend(handles=[mpatches.Patch(color=CATCOLOR[k], label=CATEGORY_LABEL[k]) for k in present],
-                  title="Modification category", loc="upper center", bbox_to_anchor=(0.45, -0.12),
-                  ncol=len(present), frameon=False, title_fontsize=8.5, handlelength=1.2)
+        fig = draw_figure3(per_type)
         return _save(fig, out_dir, "Figure3", legend3(head), head.get("synthetic") is True)
 
 
@@ -355,47 +367,53 @@ def _model_class(spec):
 
 
 def figure4(head, per_model, out_dir, specs):
+    with plt.rc_context(STYLE):
+        fig = draw_figure4(per_model, specs)
+        return _save(fig, out_dir, "Figure4", legend4(head), head.get("synthetic") is True)
+
+
+def draw_figure4(per_model, specs):
+    """The Figure 4 bars (call inside plt.rc_context(STYLE)); per_model rows need paa_lo and paa_hi."""
     by_name = {s["original_name"]: s for s in specs}
     pm = sorted(per_model, key=lambda r: (-_f(r["position_averaged_accuracy"]), display_name(r["model"])))
-    with plt.rc_context(STYLE):
-        fig, ax = plt.subplots(figsize=(7.2, 0.27 * len(pm) + 1.9))
-        y = np.arange(len(pm))
-        paa = np.array([100 * _f(r["position_averaged_accuracy"]) for r in pm])
-        lo = np.array([100 * _f(r["paa_lo"]) for r in pm])
-        hi = np.array([100 * _f(r["paa_hi"]) for r in pm])
-        colors = [C[_model_class(by_name.get(r["model"]))] for r in pm]
-        ax.barh(y, paa, height=0.68, color=colors, edgecolor="white", alpha=0.9, zorder=2)
-        # the CI whisker runs along the lower part of the bar, the order markers along the upper part, so a
-        # marker inside the CI never sits on the whisker
-        ax.errorbar(paa, y + CI_DY, xerr=np.nan_to_num([paa - lo, hi - paa]), fmt="none", ecolor=INK,
-                    elinewidth=1.1, capsize=2.2, zorder=3)
-        a = np.array([100 * _f(r["acc_sham_first"]) for r in pm])
-        b = np.array([100 * _f(r["acc_sham_second"]) for r in pm])
-        ax.scatter(a, y + MARKER_DY, marker="o", s=30, color=INK, edgecolor="white", linewidth=0.7, zorder=4)
-        ax.scatter(b, y + MARKER_DY, marker="D", s=26, color=C["injection"], edgecolor="white", linewidth=0.7,
-                   zorder=4)
-        for yy, v in zip(y, paa):
-            ax.text(104.5, yy, f"{v:.1f}%", va="center", ha="left", fontsize=8.5, color=C["text"])
-        ax.set_yticks(y, [display_name(r["model"]) for r in pm])
-        ax.set_ylim(len(pm) - 0.45, -0.75)
-        ax.set_xlim(0, 117)
-        ax.set_xticks(range(0, 101, 20))
-        ax.set_xlabel("Accuracy (%); bars: position-averaged accuracy")
-        ax.tick_params(axis="y", length=0)
-        ax.spines["left"].set_visible(False)
-        _ref50(ax, vertical=True, label="Chance (50%)")
-        _grid(ax, "x")
-        handles = [mpatches.Patch(color=C["reasoning"], label="Reasoning model"),
-                   mpatches.Patch(color=C["closed"], label="Closed commercial model"),
-                   mpatches.Patch(color=C["primary"], label="Open-weight model"),
-                   Line2D([0], [0], marker="o", color="w", markerfacecolor=INK, markersize=7,
-                          label="Accuracy, modified excerpt first"),
-                   Line2D([0], [0], marker="D", color="w", markerfacecolor=C["injection"], markersize=6.5,
-                          label="Accuracy, modified excerpt second"),
-                   Line2D([0], [0], color=INK, lw=1, marker="|", markersize=7, label="95% CI")]
-        ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.42, -0.6 / (0.27 * len(pm) + 1.9)),
-                  ncol=3, frameon=False, handlelength=1.4, columnspacing=1.2, fontsize=8)
-        return _save(fig, out_dir, "Figure4", legend4(head), head.get("synthetic") is True)
+    fig, ax = plt.subplots(figsize=(7.2, 0.27 * len(pm) + 1.9))
+    y = np.arange(len(pm))
+    paa = np.array([100 * _f(r["position_averaged_accuracy"]) for r in pm])
+    lo = np.array([100 * _f(r["paa_lo"]) for r in pm])
+    hi = np.array([100 * _f(r["paa_hi"]) for r in pm])
+    colors = [C[_model_class(by_name.get(r["model"]))] for r in pm]
+    ax.barh(y, paa, height=0.68, color=colors, edgecolor="white", alpha=0.9, zorder=2)
+    # the CI whisker runs along the lower part of the bar, the order markers along the upper part, so a
+    # marker inside the CI never sits on the whisker
+    ax.errorbar(paa, y + CI_DY, xerr=np.nan_to_num([paa - lo, hi - paa]), fmt="none", ecolor=INK,
+                elinewidth=1.1, capsize=2.2, zorder=3)
+    a = np.array([100 * _f(r["acc_sham_first"]) for r in pm])
+    b = np.array([100 * _f(r["acc_sham_second"]) for r in pm])
+    ax.scatter(a, y + MARKER_DY, marker="o", s=30, color=INK, edgecolor="white", linewidth=0.7, zorder=4)
+    ax.scatter(b, y + MARKER_DY, marker="D", s=26, color=C["injection"], edgecolor="white", linewidth=0.7,
+               zorder=4)
+    for yy, v in zip(y, paa):
+        ax.text(104.5, yy, f"{v:.1f}%", va="center", ha="left", fontsize=8.5, color=C["text"])
+    ax.set_yticks(y, [display_name(r["model"]) for r in pm])
+    ax.set_ylim(len(pm) - 0.45, -0.75)
+    ax.set_xlim(0, 117)
+    ax.set_xticks(range(0, 101, 20))
+    ax.set_xlabel("Accuracy (%); bars: position-averaged accuracy")
+    ax.tick_params(axis="y", length=0)
+    ax.spines["left"].set_visible(False)
+    _ref50(ax, vertical=True, label="Chance (50%)")
+    _grid(ax, "x")
+    handles = [mpatches.Patch(color=C["reasoning"], label="Reasoning model"),
+               mpatches.Patch(color=C["closed"], label="Closed commercial model"),
+               mpatches.Patch(color=C["primary"], label="Open-weight model"),
+               Line2D([0], [0], marker="o", color="w", markerfacecolor=INK, markersize=7,
+                      label="Accuracy, modified excerpt first"),
+               Line2D([0], [0], marker="D", color="w", markerfacecolor=C["injection"], markersize=6.5,
+                      label="Accuracy, modified excerpt second"),
+               Line2D([0], [0], color=INK, lw=1, marker="|", markersize=7, label="95% CI")]
+    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.42, -0.6 / (0.27 * len(pm) + 1.9)),
+              ncol=3, frameon=False, handlelength=1.4, columnspacing=1.2, fontsize=8)
+    return fig
 
 
 def make_figures(analysis_dir=None, out_dir=None, specs=None):
