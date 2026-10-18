@@ -178,3 +178,26 @@ def test_the_suite_stays_green_with_the_post_results_files_committed(rehearsal, 
                            timeout=1500)
     assert suite.returncode == 0, suite.stdout[-5000:]
     assert g("status", "--porcelain").stdout.strip() == ""   # the suite wrote nothing into the clone
+
+
+# ---- the simulated author edits: the stored physician edits once imported, synthetic ones before ----
+def test_author_edits_use_the_stored_edits_when_manual_edits_exist(tmp_path):
+    from r2 import rehearse
+    stored = {"CASE_050": {"field": "excerpt_text", "find": "x y z", "replace": "x not z", "author": "A.G.",
+                           "date": "2026-10-06", "rationale": "r"},
+              "CASE_117": {"field": "metadata.organization", "find": "Org", "replace": "0rg", "author": "A.G.",
+                           "date": "2026-10-06"},
+              "CASE_999": {"field": "excerpt_text", "find": "a", "replace": "b"}}   # not queued: left out
+    path = tmp_path / "manual_edits.json"
+    path.write_text(json.dumps(stored))
+    got = rehearse.author_edits_for(["CASE_050", "CASE_117"], path)
+    assert got == {c: {k: stored[c][k] for k in ("field", "find", "replace")} for c in ("CASE_050", "CASE_117")}
+    with pytest.raises(RuntimeError, match="CASE_001"):
+        rehearse.author_edits_for(["CASE_001"], path)
+
+
+def test_author_edits_are_synthetic_when_no_manual_edits_exist(tmp_path):
+    from r2 import rehearse
+    queue = ["CASE_050", "CASE_117"]
+    absent = tmp_path / "manual_edits.json"
+    assert rehearse.author_edits_for(queue, absent) == rehearse.simulated_edits(queue)

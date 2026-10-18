@@ -185,6 +185,20 @@ VERBS = ("Apply", "Assess", "Check", "Immobilize", "Refer", "Use", "Treat", "Obt
          "Target", "Give", "Start", "Administer", "Consider", "Monitor", "Direct")
 
 
+def author_edits_for(queue, manual_path):
+    """The edits the simulated A.G. writes into the Author_edits sheet. When `manual_path` (the sandbox's
+    data/v2/manual_edits.json) exists, the real physician edits are already imported, and exactly the stored
+    field/find/replace are written, so import-edits takes its idempotent path; otherwise synthetic ones."""
+    manual_path = Path(manual_path)
+    if not manual_path.exists():
+        return simulated_edits(queue)
+    stored = json.loads(manual_path.read_text(encoding="utf-8"))
+    missing = sorted(set(queue) - set(stored))
+    if missing:
+        raise RuntimeError(f"{manual_path} has no edit for queued pairs {missing}")
+    return {cid: {k: stored[cid][k] for k in ("field", "find", "replace")} for cid in queue}
+
+
 def simulated_edits(queue):
     """One valid edit of the declared type per queued pair: subtle_inversion negates one bullet of the excerpt
     (a bullet that occurs once), authority_mimicry writes a look-alike organization name."""
@@ -393,7 +407,7 @@ def _child(root, render, seed):
         step("markers before post-results (pre-results documents)", lambda: pipeline.markers()["counts"])
         before = pipeline.markers()
         queue = json.loads((paths.VERIFY_DIR / "round1" / BP.MANIFEST).read_text())["unresolved"]
-        edits = simulated_edits(queue)
+        edits = author_edits_for(queue, paths.DATA_V2 / "manual_edits.json")
         step("simulated round-1 answers and author edits", lambda: {
             "AG": fill_review_workbook(paths.VERIFY_DIR / "round1" / "review_AG.xlsx", inputs / "AG_r1.xlsx", "AG",
                                        phys, author_edits=edits),
