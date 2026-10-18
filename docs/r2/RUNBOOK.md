@@ -22,6 +22,8 @@ Steps that need the authors' approval are marked **[authors approve]**. The oper
 
 ## 0. The rehearsal (already run; rerun after any code change)
 
+R2 decision 2026-10-18: the rehearsal is retained but not used for R2; the repeated experiment is not run, and the documents carry no repeated-experiment markers.
+
 ```bash
 $PY -m r2.rehearse /path/to/new/empty/dir        # outside the repository and outside /Volumes/Lexar/LLM_Tool_use
 ```

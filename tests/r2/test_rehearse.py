@@ -15,6 +15,11 @@ from r2 import paths, rehearse
 
 REAL_DOCS = Path(paths.REAL_R2_WORKING)
 R1_FILES = Path(paths.LEGACY_ROOT) / "npj_R1_SUBMIT_2026-07-15"
+# The rehearsal rehearses the repeated experiment and then fills its result markers into the documents. That
+# experiment is not run and the documents carry no such markers, so the tests of the document and post-results steps
+# are skipped; the tests of repo code alone (harness failure paths, the real-path guard, author edits) still run.
+OBSOLETE = pytest.mark.skip(reason="R2 decision 2026-10-18: the repeated experiment is not run; the documents carry "
+                                   "no repeated-experiment markers")
 pytestmark = pytest.mark.skipif(not (REAL_DOCS / "edits" / "fill.py").exists() or not R1_FILES.exists(),
                                 reason="npj_R2_WORKING or the R1 files are not available on this machine")
 
@@ -50,6 +55,7 @@ def rehearsal(tmp_path_factory):
     return {"root": root, "rc": rc, "guard": guard, "before": before, "after": after, "result": result}
 
 
+@OBSOLETE
 def test_smoke_rehearsal_fills_every_numeric_marker(rehearsal):
     res = rehearsal["result"]
     assert rehearsal["rc"] == 0, [s for s in res["steps"] if s["status"] not in rehearse.OK_STATUS]
@@ -82,6 +88,7 @@ def _docx_parts(path):
     return body, headers
 
 
+@OBSOLETE
 def test_simulated_documents_carry_sim_values_and_the_watermark(rehearsal):
     work = rehearsal["root"] / "npj_R2_WORKING"
     for name in ("02_Manuscript.docx", "03_Manuscript_HIGHLIGHTED.docx", "04_Supplement.docx",
@@ -105,6 +112,7 @@ def test_rehearse_refuses_a_real_location(where):
     assert not target.exists()
 
 
+@OBSOLETE
 def test_post_results_checks_pass_in_the_rehearsal(rehearsal):
     post = {s["step"]: s for s in rehearsal["result"]["steps"]}["pipeline post-results"]["result"]
     assert all(v["failures"] == 0 and v["rc"] == 0 for v in post["qa"]["result"].values())
@@ -114,6 +122,7 @@ def test_post_results_checks_pass_in_the_rehearsal(rehearsal):
     assert f"- Public URL: {rehearse.SIM_TAG_URL}" in record
 
 
+@OBSOLETE
 def test_rehearsal_packages_the_run_logs(rehearsal):
     """Final fix I3: the run-log manifest covers the sandbox r2_runs/ and its tarball sits in the sandbox."""
     from r2 import pipeline
@@ -126,6 +135,7 @@ def test_rehearsal_packages_the_run_logs(rehearsal):
     assert not any(f["path"].endswith(".lock") for f in man["files"])
 
 
+@OBSOLETE
 def test_rehearsal_reports_a_raised_max_tokens_as_a_range(rehearsal):
     """Final review I4: one model's higher max_tokens (a pilot change the RUNBOOK allows) does not stop the numbers
     step; the per-class limit becomes a range and the exception is named."""
@@ -138,6 +148,7 @@ GIT_ID = ["-c", "user.name=T", "-c", "user.email=t@example.invalid", "-c", "comm
           "tag.gpgsign=false", "-c", "core.hooksPath=/dev/null"]
 
 
+@OBSOLETE
 def test_the_suite_stays_green_with_the_post_results_files_committed(rehearsal, tmp_path):
     """Final review I2: a scratch clone of this checkout's HEAD (no remote) with the rehearsal's post-results files at
     their real locations (data/v2, verification, analysis_repeated, the filled plan and the freeze record),
