@@ -3,6 +3,7 @@ year, A3 inversion rule), and round 2 re-reviews the pairs whose packet changed 
 import copy
 import csv
 import hashlib
+import io
 import json
 import re
 import subprocess
@@ -58,12 +59,23 @@ def test_exactly_the_45_pinned_round1_packets_move():
     assert len(m["unresolved"]) == 23
 
 
-def test_the_as_sent_round1_forms_are_untouched():
-    out = subprocess.run(["git", "diff", "--stat", BASE_COMMIT, "--", "verification/round1"], cwd=REPO,
-                         capture_output=True, text=True)
+def _base_file(path):
+    out = subprocess.run(["git", "show", f"{BASE_COMMIT}:{path}"], cwd=REPO, capture_output=True)
     if out.returncode != 0:
-        pytest.skip("no git history")
-    assert out.stdout.strip() == ""
+        pytest.skip(f"commit {BASE_COMMIT} not available (no git history)")
+    return out.stdout
+
+
+def test_the_as_sent_round1_forms_are_untouched():
+    """The packet content of the forms the physicians received is what was committed at the base commit. (The
+    answer columns of the CSVs and workbooks are left out: they fill in once the reviewers' answers are imported.)"""
+    for name in ("packets.html", "packets_manifest.json", "README_REVIEWERS.md"):
+        assert (VERIFY_DIR / "round1" / name).read_bytes() == _base_file(f"verification/round1/{name}"), name
+    packet_cols = list(bp.packet_rows(_pairs()["cases"][:1])[0])
+    for name in ("review_AG.csv", "review_MO.csv"):
+        now = list(csv.DictReader(open(VERIFY_DIR / "round1" / name, newline="", encoding="utf-8")))
+        base = list(csv.DictReader(io.StringIO(_base_file(f"verification/round1/{name}").decode("utf-8"), newline="")))
+        assert [{k: r[k] for k in packet_cols} for r in now] == [{k: r[k] for k in packet_cols} for r in base]
 
 
 # ---------------------------------------------------------------- A1
