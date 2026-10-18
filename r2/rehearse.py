@@ -199,6 +199,21 @@ def author_edits_for(queue, manual_path):
     return {cid: {k: stored[cid][k] for k in ("field", "find", "replace")} for cid in queue}
 
 
+def relabel_stored_edits(manual_path, author=None):
+    """Sandbox only: the copied physician edits are rehearsal data now, so they carry the simulated author, as
+    the documents' sandbox mode expects (edits/fill.py EXPECTED_EDIT_AUTHOR). Returns how many were relabelled."""
+    if paths.SANDBOX is None:
+        raise RuntimeError("relabel_stored_edits only runs inside a sandbox")
+    manual_path = Path(manual_path)
+    if not manual_path.exists():
+        return 0
+    stored = json.loads(manual_path.read_text(encoding="utf-8"))
+    for e in stored.values():
+        e["author"] = author or SIM_AUTHOR
+    manual_path.write_text(json.dumps(stored, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    return len(stored)
+
+
 def simulated_edits(queue):
     """One valid edit of the declared type per queued pair: subtle_inversion negates one bullet of the excerpt
     (a bullet that occurs once), authority_mimicry writes a look-alike organization name."""
@@ -407,13 +422,14 @@ def _child(root, render, seed):
         step("markers before post-results (pre-results documents)", lambda: pipeline.markers()["counts"])
         before = pipeline.markers()
         queue = json.loads((paths.VERIFY_DIR / "round1" / BP.MANIFEST).read_text())["unresolved"]
+        relabelled = relabel_stored_edits(paths.DATA_V2 / "manual_edits.json")
         edits = author_edits_for(queue, paths.DATA_V2 / "manual_edits.json")
         step("simulated round-1 answers and author edits", lambda: {
             "AG": fill_review_workbook(paths.VERIFY_DIR / "round1" / "review_AG.xlsx", inputs / "AG_r1.xlsx", "AG",
                                        phys, author_edits=edits),
             "MO": fill_review_workbook(paths.VERIFY_DIR / "round1" / "review_MO.xlsx", inputs / "MO_r1.xlsx", "MO",
                                        phys),
-            "author_edits": len(edits)})
+            "author_edits": len(edits), "stored_edits_relabelled_simulated": relabelled})
         step("pipeline import-edits", lambda: pipeline.import_edits(inputs / "AG_r1.xlsx", SIM_AUTHOR, "2026-10-20"))
         step("pipeline import-edits (rerun: idempotent)",
              lambda: pipeline.import_edits(inputs / "AG_r1.xlsx", SIM_AUTHOR, "2026-10-20"))

@@ -201,3 +201,19 @@ def test_author_edits_are_synthetic_when_no_manual_edits_exist(tmp_path):
     queue = ["CASE_050", "CASE_117"]
     absent = tmp_path / "manual_edits.json"
     assert rehearse.author_edits_for(queue, absent) == rehearse.simulated_edits(queue)
+
+
+def test_stored_edits_are_relabelled_only_inside_a_sandbox(tmp_path, monkeypatch):
+    from r2 import rehearse
+    path = tmp_path / "manual_edits.json"
+    path.write_text(json.dumps({"CASE_050": {"field": "excerpt_text", "find": "a", "replace": "b",
+                                             "author": "A.G.", "date": "2026-10-06"}}))
+    monkeypatch.setattr(paths, "SANDBOX", None)
+    with pytest.raises(RuntimeError, match="sandbox"):
+        rehearse.relabel_stored_edits(path)
+    assert json.loads(path.read_text())["CASE_050"]["author"] == "A.G."
+    monkeypatch.setattr(paths, "SANDBOX", tmp_path)
+    assert rehearse.relabel_stored_edits(path) == 1
+    got = json.loads(path.read_text())["CASE_050"]
+    assert got["author"] == rehearse.SIM_AUTHOR and got["find"] == "a" and got["date"] == "2026-10-06"
+    assert rehearse.relabel_stored_edits(tmp_path / "absent.json") == 0
