@@ -290,7 +290,7 @@ By profile: openai_fc 160, together_inline6 560, gemini_inline7 40, deepseek_cha
 deepseek_reasoner_inline7 40. The file holds the counts per model and the span of every case.
 
 **The corrected set.** `r2.stimuli.build_v2` rewrites the appended text to
-`"\n" + bullet + "Evidence: NEJM <year>;<vol>:<p1>-<p2> (DOI:10.9999/cg.<year>.<NNNN>)"`: no blank line, no
+`"\n" + bullet + "Evidence: NEJM <year>;<vol>:<p1>–<p2> (DOI:10.9999/cg.<year>.<NNNN>)"`: no blank line, no
 quotes, and p2 = p1 + k with k = 6 + sha256("<case_id>:pages") mod 9, so a span of 6 to 14 pages. The bullet
 "• " is added when every line of the authentic excerpt starts with it (all 40 pairs). The build records each
 change under `edit_record.cue_fixes` and refuses a modified excerpt with a blank line the authentic one lacks,

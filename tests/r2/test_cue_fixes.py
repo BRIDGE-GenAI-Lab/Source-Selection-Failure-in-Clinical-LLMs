@@ -69,7 +69,7 @@ def _base_file(path):
 def test_the_as_sent_round1_forms_are_untouched():
     """The packet content of the forms the physicians received is what was committed at the base commit. (The
     answer columns of the CSVs and workbooks are left out: they fill in once the reviewers' answers are imported.)"""
-    for name in ("packets.html", "packets_manifest.json", "README_REVIEWERS.md"):
+    for name in ("packets.html", "packets_manifest.json", "README_REVIEWERS.md", "review_AG.xlsx", "review_MO.xlsx"):
         assert (VERIFY_DIR / "round1" / name).read_bytes() == _base_file(f"verification/round1/{name}"), name
     packet_cols = list(bp.packet_rows(_pairs()["cases"][:1])[0])
     for name in ("review_AG.csv", "review_MO.csv"):
@@ -244,7 +244,7 @@ def test_build_is_non_strict_477_resolved_23_unresolved():
     assert len(d["cases"]) in (477, 500) and d["n_pairs"] == len(d["cases"])
     m = json.loads((VERIFY_DIR / "round1" / bp.MANIFEST).read_text(encoding="utf-8"))
     assert sorted(set(d["unresolved"]) | set(c["case_id"] for c in d["cases"])) == sorted(
-        set(m["packets"]) | set(m["unresolved"])) 
+        set(m["packets"]) | set(m["unresolved"]))
 
 
 # ---------------------------------------------------------------- B1
@@ -297,7 +297,7 @@ def test_import_validates_against_the_round_as_sent(env, make_pairs, tmp_path):
     data, verify = _after_a_change(env, make_pairs)
     x = tmp_path / "ag1.xlsx"
     bp.export_xlsx(verify / "round1" / "review_AG.csv", x, "A.G.", "round1")
-    out = tmp_path / "back.csv"
+    out = tmp_path / "review_AG.csv"
     bp.import_review_xlsx(x, out, "round1")            # C1 differs from the current render, not from round 1
     assert out.read_bytes() == (verify / "round1" / "review_AG.csv").read_bytes()
     with pytest.raises(ValueError, match="Round: round2"):    # the wrong round label is refused
@@ -320,8 +320,8 @@ def test_import_refuses_a_content_edit(env, make_pairs, tmp_path, column):
     bp.export_xlsx(verify / "round1" / "review_AG.csv", x, "A.G.", "round1")
     _edit(x, column, "tampered")
     with pytest.raises(ValueError, match="edited packet content"):
-        bp.import_review_xlsx(x, tmp_path / "back.csv", "round1")
-    assert not (tmp_path / "back.csv").exists()
+        bp.import_review_xlsx(x, tmp_path / "review_AG.csv", "round1")
+    assert not (tmp_path / "review_AG.csv").exists()
 
 
 def test_import_refuses_a_hash_that_matches_the_manifest_but_not_the_content(env, make_pairs, tmp_path):
@@ -330,17 +330,16 @@ def test_import_refuses_a_hash_that_matches_the_manifest_but_not_the_content(env
     bp.export_xlsx(verify / "round1" / "review_AG.csv", x, "A.G.", "round1")
     _edit(x, "authentic_as_shown_to_model", "tampered")  # hash cell left alone: still the manifest value
     with pytest.raises(ValueError, match="does not match its round1 packet_sha256"):
-        bp.import_review_xlsx(x, tmp_path / "back.csv", "round1")
+        bp.import_review_xlsx(x, tmp_path / "review_AG.csv", "round1")
 
 
 def test_import_refuses_a_case_from_another_round(env, make_pairs, tmp_path):
     data, verify = _after_a_change(env, make_pairs)
     x = tmp_path / "ag2.xlsx"
     bp.export_xlsx(verify / "round2" / "review_AG.csv", x, "A.G.", "round2")
-    (verify / "round2" / "review_AG.csv").write_text((verify / "round2" / "review_AG.csv").read_text())
     _edit(x, "case_id", "C2")
     with pytest.raises(ValueError, match="edited packet content"):
-        bp.import_review_xlsx(x, tmp_path / "back.csv", "round2")
+        bp.import_review_xlsx(x, tmp_path / "review_AG.csv", "round2")
 
 
 def test_readme_wording_and_hash_unchanged(env, make_pairs):
@@ -431,7 +430,10 @@ def test_kappa_consensus_and_exclusions_use_only_the_merged_current_rows(env, ma
     assert len(sr._load(a)) == 3 and sr._load(a).loc["C1", "q5_edit_visible"] == "N"
     rows, disagreements = sr.score(a, b)
     assert [(d["case_id"], d["item"]) for d in disagreements] == [("C3", "q4_authentic_relevant")]
-    assert {r["item"]: r.get("n", 3) for r in rows}   # one kappa row per item, computed on the 3 merged rows
+    by_item = {r["item"]: r for r in rows}
+    assert len(rows) == len(sr.QUESTIONS)
+    assert by_item["q4_authentic_relevant"]["agreement"] == pytest.approx(2 / 3)   # 3 merged rows, one split
+    assert by_item["q5_edit_visible"]["agreement"] == 1.0
     cons = verify / "c.csv"
     pd.DataFrame([{"case_id": "C3", "item": "q4_authentic_relevant", "consensus": "Y"}]).to_csv(
         cons, index=False)
@@ -439,3 +441,26 @@ def test_kappa_consensus_and_exclusions_use_only_the_merged_current_rows(env, ma
     final = pd.read_csv(verify / "final_review.csv", dtype=str)
     assert len(final) == 3 and final.set_index("case_id").loc["C1", "q5_edit_visible"] == "N"
     assert set(excluded) == {"C1"}   # excluded because of the round-2 answer; the stale all-Y row would not be
+
+
+def test_import_refuses_a_target_that_is_not_the_reviewers_form(env, make_pairs, tmp_path):
+    data, verify = _after_a_change(env, make_pairs)
+    x = tmp_path / "ag1.xlsx"
+    bp.export_xlsx(verify / "round1" / "review_AG.csv", x, "A.G.", "round1")
+    with pytest.raises(ValueError, match="expected review_AG.csv"):
+        bp.import_review_xlsx(x, tmp_path / "review_MO.csv", "round1")
+    assert not (tmp_path / "review_MO.csv").exists()
+
+
+def test_import_review_cli_takes_the_round(env, make_pairs, tmp_path):
+    data, verify = _after_a_change(env, make_pairs)
+    x = tmp_path / "ag2.xlsx"
+    bp.export_xlsx(verify / "round2" / "review_AG.csv", x, "A.G.", "round2")
+    _edit(x, "q1_vignette_consistent", "Y")
+    out = tmp_path / "review_AG.csv"
+    bp.main(["import-review", str(x), str(out), "round2"])
+    assert "Y" in out.read_text(encoding="utf-8")
+    with pytest.raises(SystemExit):
+        bp.main(["import-review", str(x), str(out)])           # the round is required
+    with pytest.raises(ValueError, match="Round: round1"):
+        bp.main(["import-review", str(x), str(out), "round1"])  # and must be the workbook's

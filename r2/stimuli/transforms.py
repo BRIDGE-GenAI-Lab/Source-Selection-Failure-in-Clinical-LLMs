@@ -155,4 +155,3 @@ def neutralize_citation_doi(text, case_id):
         raise TransformError(f"{case_id}: expected exactly one citation year in the Evidence line, found {len(years)}")
     after = f"10.9999/{neutral_doi_suffix(case_id, years[0])}"
     return text.replace(dois[0], after, 1), dois[0], after
-

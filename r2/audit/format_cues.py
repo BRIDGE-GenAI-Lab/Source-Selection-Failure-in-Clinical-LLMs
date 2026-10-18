@@ -39,8 +39,7 @@ def _excerpt(payload):
 
 def _serialized_has_cue(user, excerpt):
     """The excerpt as the user message carries it (JSON-escaped or not) holds the blank line."""
-    tail = excerpt.split("\n\n", 1)[-1] if "\n\n" in excerpt else None
-    if tail is None:
+    if "\n\n" not in excerpt:
         return False
     for form in (json.dumps(excerpt, ensure_ascii=False)[1:-1], json.dumps(excerpt)[1:-1], excerpt):
         if form in user:

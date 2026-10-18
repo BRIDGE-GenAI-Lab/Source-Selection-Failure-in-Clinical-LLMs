@@ -334,10 +334,10 @@ def import_edits(xlsx, author="A.G.", date=None):
     if _round2_ready(sha):
         result["round2"] = "forms already written for this pairs_v2.json"
     else:
-        scope, _, changed = BP.round2_scope()
+        scope, unresolved_r1, changed = BP.round2_scope()
         BP.write_round_forms("round2", scope)
         BP._export_round("round2", with_author_edits=False, force=False)
-        result["round2"] = (f"forms for {len(scope)} pairs in {paths.VERIFY_DIR / 'round2'}: {len(queue)} unresolved "
+        result["round2"] = (f"forms for {len(scope)} pairs in {paths.VERIFY_DIR / 'round2'}: {len(unresolved_r1)} unresolved "
                             f"in round 1 + {len(changed)} round-1 pairs whose packet changed since")
     return result
 

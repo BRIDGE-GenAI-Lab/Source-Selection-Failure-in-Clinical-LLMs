@@ -90,7 +90,7 @@ def test_xlsx_roundtrip_exact(env, tmp_path):
     src = verify / "round1" / "review_AG.csv"
     x = tmp_path / "ag.xlsx"
     bp.export_xlsx(src, x, "A.G.", "round1")
-    out = tmp_path / "back.csv"
+    out = tmp_path / "review_AG.csv"
     bp.import_review_xlsx(x, out, "round1")
     assert out.read_bytes() == src.read_bytes()
 
@@ -286,7 +286,7 @@ def _edit_cell(x, column, row_idx, value):
 def test_import_review_refuses_edited_content(env, tmp_path, column):
     x = _round1_xlsx(env, tmp_path)
     _edit_cell(x, column, 2, "tampered")
-    out = tmp_path / "back.csv"
+    out = tmp_path / "review_AG.csv"
     with pytest.raises(ValueError, match="content|case_id"):
         bp.import_review_xlsx(x, out, "round1")
     assert not out.exists()
@@ -296,6 +296,6 @@ def test_import_review_accepts_answers_and_notes(env, tmp_path):
     x = _round1_xlsx(env, tmp_path)
     _edit_cell(x, "q1_vignette_consistent", 2, "Y")
     _edit_cell(x, "notes", 2, "looks fine")
-    out = tmp_path / "back.csv"
+    out = tmp_path / "review_AG.csv"
     bp.import_review_xlsx(x, out, "round1")
     assert "looks fine" in out.read_text(encoding="utf-8")

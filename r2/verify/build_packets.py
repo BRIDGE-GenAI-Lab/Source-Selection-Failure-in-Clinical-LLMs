@@ -331,7 +331,11 @@ def import_review_xlsx(xlsx_path, csv_path, round_label):
     rows = [[_cell_text(c.value) for c in row] for row in wb[REVIEW].iter_rows()]
     while rows and not any(rows[-1]):
         rows.pop()
-    _check_review_content(rows, xlsx_path, round_label, names[m.group(1)])
+    reviewer = names[m.group(1)]
+    if Path(csv_path).name != f"review_{reviewer}.csv":
+        raise ValueError(f"{xlsx_path}: the workbook is {m.group(1)}'s but the target is {Path(csv_path).name}, "
+                         f"expected review_{reviewer}.csv")
+    _check_review_content(rows, xlsx_path, round_label, reviewer)
     with open(csv_path, "w", newline="", encoding="utf-8") as fh:
         csv.writer(fh).writerows(rows)
 
@@ -484,6 +488,7 @@ def main(argv=None):
     p = sub.add_parser("import-review")
     p.add_argument("xlsx")
     p.add_argument("csv")
+    p.add_argument("round", choices=("round1", "round2"))
     p = sub.add_parser("merge")
     p.add_argument("rounds", nargs="+")
     a = ap.parse_args(argv)
@@ -496,7 +501,7 @@ def main(argv=None):
     elif a.cmd == "import-edits":
         print(f"{len(import_author_edits(a.xlsx, a.author, a.date))} edits written to data/v2/manual_edits.json")
     elif a.cmd == "import-review":
-        import_review_xlsx(a.xlsx, a.csv)
+        import_review_xlsx(a.xlsx, a.csv, a.round)
     elif a.cmd == "merge":
         merge_rounds(a.rounds)
 
