@@ -1,4 +1,4 @@
-"""Format cues in the original fabricated_citation inputs (cue fixes A1, A7).
+"""Format cues in the original fabricated_citation and outdated_version inputs (cue fixes A1, A2, A7).
 
 The original generator appended  "\\n\\nEvidence: 'NEJM 2025;392:<p1>–<p2>' (DOI:...)"  to the modified excerpt.
 The blank line occurs in no authentic excerpt, and the page span (p2 - p1) is implausible. This counts, over the
@@ -9,6 +9,12 @@ reconstructed original inputs (audit/original_model_inputs.jsonl.gz), the fabric
     excerpt of the same row, which does not;
   * the cited page span falls in each range, and the spans themselves.
 
+Over all 10,500 inputs it also counts
+
+  * the inputs whose model-visible text (system prompt, user message, tool definitions, both payloads) holds
+    either notes phrase the generator wrote to tools.S.metadata.notes, a field no runner configuration showed;
+  * the outdated_version inputs whose modified published_date is not older than the authentic one.
+
     python -m r2.audit.format_cues
 """
 import gzip
@@ -17,7 +23,7 @@ import re
 import statistics
 from collections import Counter
 
-from r2.paths import AUDIT_DIR
+from r2.paths import AUDIT_DIR, ORIGINAL_CASES
 
 SOURCE = "audit/original_model_inputs.jsonl.gz"
 OUT = AUDIT_DIR / "format_cues.json"
@@ -25,6 +31,10 @@ SHAM = "fabricated_citation"
 PLAUSIBLE_SPAN = (6, 14)  # the span range of the corrected set (r2.stimuli.transforms.PAGE_SPAN)
 CITATION = re.compile(r"Evidence: '?NEJM ((?:19|20)\d{2});(\d+):(\d+)[–-](\d+)'?")
 BLANK = re.compile(r"\n\n|\\n\\n")  # the newline pair itself, or as a JSON escape in the serialized message
+NOTES_PHRASES = {"Supported by recent mega-trial data": "fabricated_citation",
+                 "Historical guideline version for reference only": "outdated_version"}
+OUTDATED = "outdated_version"
+YEAR = re.compile(r"(?:19|20)\d{2}")
 
 
 def _rows():
@@ -35,6 +45,25 @@ def _rows():
 
 def _excerpt(payload):
     return str(payload.get("excerpt_text") or "")
+
+
+def _model_visible_text(row):
+    """System prompt, user message, tool definitions and both payloads (keys and values), as one string."""
+    parts = [row.get("system") or "", row.get("user") or "",
+             json.dumps(row.get("tools") or [], ensure_ascii=False)]
+    parts += [json.dumps(row["payloads"][lab], ensure_ascii=False) for lab in ("A", "B")]
+    return "\n".join(parts)
+
+
+def _year(payload):
+    m = YEAR.search(str(payload.get("published_date") or ""))
+    return int(m.group(0)) if m else None
+
+
+def _notes_phrase_cases():
+    """Cases of the as-run case file whose tools.S.metadata.notes holds each phrase."""
+    cases = json.loads(ORIGINAL_CASES.read_text(encoding="utf-8"))["cases_with_real_tools"]["cases"]
+    return {p: sum(p in str(c["tools"]["S"]["metadata"].get("notes") or "") for c in cases) for p in NOTES_PHRASES}
 
 
 def _serialized_has_cue(user, excerpt):
@@ -54,8 +83,20 @@ def compute():
     span_rows, span_by_profile = Counter(), {}
     spans_by_case, in_range_rows = {}, Counter()
     models, by_profile_models = set(), {}
+    phrase_rows = Counter()
+    late = {"rows": 0, "years": {}, "by_model": Counter()}
     for r in _rows():
         n_rows += 1
+        visible = _model_visible_text(r)
+        for phrase in NOTES_PHRASES:
+            phrase_rows[phrase] += phrase in visible
+        if r["sham_type"] == OUTDATED:
+            arm = {r["mapping"][lab]: r["payloads"][lab] for lab in ("A", "B")}
+            t_year, s_year = _year(arm["T"]), _year(arm["S"])
+            if s_year is None or t_year is None or s_year >= t_year:
+                late["rows"] += 1
+                late["years"][r["case_id"]] = {"authentic": t_year, "modified": s_year}
+                late["by_model"][r["model"]] += 1
         if r["sham_type"] != SHAM:
             continue
         fc_rows += 1
@@ -82,6 +123,7 @@ def compute():
         spans_by_case[r["case_id"]] = span
         in_range_rows["within" if PLAUSIBLE_SPAN[0] <= span <= PLAUSIBLE_SPAN[1] else "outside"] += 1
     spans = sorted(spans_by_case.values())
+    as_run = _notes_phrase_cases()
     out = {
         "source": SOURCE,
         "generated_by": "python -m r2.audit.format_cues",
@@ -127,8 +169,25 @@ def compute():
                     "above 1000": sum(v for k, v in c.items() if k > 1000)}
                 for p, c in sorted(span_by_profile.items())},
         },
+        "notes_phrases": {
+            "definition": "inputs whose model-visible text (system prompt, user message, tool definitions and both "
+                          "payloads, keys and values) contains the phrase; as_run_cases counts the cases of "
+                          "data/original whose tools.S.metadata.notes holds it",
+            "phrases": {p: {"sham_type": t, "model_visible_rows": phrase_rows[p],
+                            "as_run_cases": as_run[p]} for p, t in NOTES_PHRASES.items()},
+        },
+        "outdated_year_not_older": {
+            "definition": "outdated_version inputs whose modified (S) published_date year is >= the authentic (T) "
+                          "year, as the runner gave both to the model",
+            "n_inputs": late["rows"],
+            "n_cases": len(late["years"]),
+            "n_models": len(late["by_model"]),
+            "case_ids": sorted(late["years"]),
+            "years_by_case": dict(sorted(late["years"].items())),
+        },
     }
     b, ps = out["blank_line_cue"], out["page_span"]
+    notes, oy = out["notes_phrases"]["phrases"], out["outdated_year_not_older"]
     out["finding"] = (
         f"The blank line sits in the modified payload of {b['modified_payload_rows']} of {fc_rows} "
         f"fabricated_citation inputs ({b['n_cases']} cases x {b['n_models']} models; "
@@ -136,7 +195,11 @@ def compute():
         f"authentic payloads. The cited page span runs from {ps['min']} to {ps['max']} pages (median "
         f"{ps['median']}; {ps['cases_with_span_above_14']} of {ps['n_cases']} cases above 14 pages), where "
         f"the corrected set uses {PLAUSIBLE_SPAN[0]} to {PLAUSIBLE_SPAN[1]}. Both are format cues on top of the "
-        "'fake' DOI (self_label_tokens.json); the original fabricated_citation results are cue-confounded.")
+        "'fake' DOI (self_label_tokens.json); the original fabricated_citation results are cue-confounded. "
+        + " ".join(f"'{p}' is in the notes of {v['as_run_cases']} as-run cases and in {v['model_visible_rows']} "
+                   "model inputs." for p, v in notes.items())
+        + f" The outdated_version year is not older than the authentic one in {oy['n_inputs']} inputs "
+        f"({', '.join(oy['case_ids'])}; {oy['n_cases']} cases x {oy['n_models']} models).")
     return out
 
 

@@ -270,7 +270,7 @@ itself, and the physicians review them (Q6).
 | `<location>.<token>` | `rows` (inputs containing the token there), `n_cases`, `n_models`, `by_profile`, `by_sham_type`, `by_model`; `case_ids` for the payload locations, `contexts` (the text around each match) for `prompt_text` |
 | `finding` | One-paragraph summary |
 
-## format_cues.json: the blank line and the page span in the original fabricated-citation edits
+## format_cues.json: the blank line, the page span, the notes phrases and the outdated_version years in the original inputs
 
 Besides the "fake" DOI, the original `fabricated_citation` transform left two format cues in the modified
 excerpt: the Evidence line follows a blank line (`\n\n`), which occurs in no authentic excerpt, and the cited
@@ -288,6 +288,24 @@ the serialized user message counts as the cue.
 
 By profile: openai_fc 160, together_inline6 560, gemini_inline7 40, deepseek_chat_inline7 40,
 deepseek_reasoner_inline7 40. The file holds the counts per model and the span of every case.
+
+**Notes phrases and outdated_version years.** Over all 10,500 inputs the script also counts two things.
+`notes_phrases`: the generator wrote "Supported by recent mega-trial data" (fabricated_citation, 40 as-run
+cases) and "Historical guideline version for reference only" (outdated_version, 50 as-run cases) only to
+`tools.S.metadata.notes`, a field no runner configuration showed. Neither phrase occurs in the model-visible
+text (system prompt, user message, tool definitions, both payloads) of any of the 10,500 inputs.
+`outdated_year_not_older`: the outdated_version inputs whose modified `published_date` is not older than the
+authentic one. These are 42 inputs (CASE_387: authentic 2010, modified 2012; CASE_488: 2014 and 2014;
+2 cases x 21 models), so the original outdated_version results for these two cases are exploratory.
+
+| Field | Description |
+|---|---|
+| `n_rows`, `n_fabricated_citation_rows`, `n_models`, `models_per_profile` | 10,500 inputs; 840 fabricated_citation inputs; 21 models; models per runner profile |
+| `blank_line_cue` | `modified_payload_rows`, `modified_serialized_message_rows`, `authentic_payload_rows`, `n_cases`, `n_models`, `by_profile`, `by_model`, `case_ids` |
+| `page_span` | `min`, `median`, `max` over the 40 cases; rows within and outside 6 to 14 pages; `span_by_case`, `rows_by_span`, `rows_by_profile_and_span_range` |
+| `notes_phrases.phrases.<phrase>` | `sham_type`, `model_visible_rows` (inputs containing it), `as_run_cases` (cases whose `tools.S.metadata.notes` holds it) |
+| `outdated_year_not_older` | `n_inputs`, `n_cases`, `n_models`, `case_ids`, `years_by_case` (authentic and modified year) |
+| `finding` | One-paragraph summary |
 
 **The corrected set.** `r2.stimuli.build_v2` rewrites the appended text to
 `"\n" + bullet + "Evidence: NEJM <year>;<vol>:<p1>–<p2> (DOI:10.9999/cg.<year>.<NNNN>)"`: no blank line, no

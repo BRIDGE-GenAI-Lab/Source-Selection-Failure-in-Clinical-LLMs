@@ -1,4 +1,5 @@
-"""A7: the blank line and the page span in the original fabricated_citation inputs."""
+"""A7: the blank line and the page span in the original fabricated_citation inputs; the notes phrases and the
+outdated_version years in all original inputs."""
 import json
 
 import pytest
@@ -33,7 +34,33 @@ def test_page_spans_are_implausible(committed):
     assert sum(sum(v.values()) for v in p["rows_by_profile_and_span_range"].values()) == 840
 
 
+def test_notes_phrases_reached_no_model(committed):
+    phrases = committed["notes_phrases"]["phrases"]
+    assert set(phrases) == set(F.NOTES_PHRASES)
+    assert {p: v["model_visible_rows"] for p, v in phrases.items()} == {p: 0 for p in F.NOTES_PHRASES}
+    # the phrases are in the as-run case file, so the zero is a measurement, not a missing source
+    assert phrases["Supported by recent mega-trial data"]["as_run_cases"] == 40
+    assert phrases["Historical guideline version for reference only"]["as_run_cases"] == 50
+
+
+def test_two_outdated_version_years_were_not_older(committed):
+    o = committed["outdated_year_not_older"]
+    assert o["case_ids"] == ["CASE_387", "CASE_488"] and o["n_cases"] == 2 and o["n_models"] == 21
+    assert o["n_inputs"] == 2 * 21
+    assert o["years_by_case"] == {"CASE_387": {"authentic": 2010, "modified": 2012},
+                                  "CASE_488": {"authentic": 2014, "modified": 2014}}
+
+
+def test_model_visible_text_covers_payloads_and_prompt():
+    row = {"system": "sys", "user": "usr", "tools": [{"name": "t"}],
+           "payloads": {"A": {"excerpt_text": "Supported by recent mega-trial data"}, "B": {}}}
+    text = F._model_visible_text(row)
+    assert all(part in text for part in ("sys", "usr", '"name": "t"', "Supported by recent mega-trial data"))
+    assert F._year({"published_date": "2019 Update"}) == 2019 and F._year({}) is None
+
+
 def test_audit_json_is_current(committed):
+    assert {"blank_line_cue", "page_span", "notes_phrases", "outdated_year_not_older"} <= committed.keys()
     assert F.compute() == committed
 
 
@@ -48,3 +75,4 @@ def test_serialized_cue_detector():
 def test_readme_has_the_section():
     text = (AUDIT_DIR / "README.md").read_text(encoding="utf-8")
     assert "## format_cues.json" in text and "840 of 840" in text and "1,643" in text
+    assert "mega-trial" in text and "CASE_387" in text and "42 inputs" in text
