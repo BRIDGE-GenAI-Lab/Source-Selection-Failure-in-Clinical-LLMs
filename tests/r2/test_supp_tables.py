@@ -471,3 +471,32 @@ def test_fabricated_citation_transform_discloses_the_self_label_token():
     """Final fix F1: the original DOI suffix read 'fake'; the corrected set replaces it."""
     text = st.TRANSFORMS["fabricated_citation"][0]
     assert "10.9999/fake.NNNN" in text and "10.9999/cg.<year>.NNNN" in text and "fake DOI" not in text
+
+
+def test_cue_descriptions_quote_the_audit_and_the_corrected_set(written):
+    """Task DOC: the fabricated_citation and outdated_version rows state the original format cues, the notes
+    phrase that no configuration showed, and the cue fixes, with numbers read from the data."""
+    out, _ = written
+    rows = {r["sham_type"]: r["transform"] for r in read(out, "S_modifications_by_type")}
+    fc = json.loads((AUDIT_DIR / "format_cues.json").read_text())
+    span = fc["page_span"]
+    text = rows["fabricated_citation"]
+    assert "after a blank line that no authentic excerpt has" in text
+    assert f"page range {span['min']:,} to {span['max']:,} pages long" in text
+    assert "'Supported by recent mega-trial data' only to metadata.notes, a field no configuration showed" in text
+    assert "page range 6 to 14 pages long (40 pairs, recorded in edit_record.cue_fixes)" in text
+    text = rows["outdated_version"]
+    assert "'Historical guideline version for reference only' only to metadata.notes" in text
+    assert ("In 2 pairs the year was not older than the authentic one (CASE_387: 2012 against an authentic 2010, "
+            "now 2006; CASE_488: 2014 against an authentic 2014, now 2010)") in text
+    assert all("{" not in t for t in rows.values())
+
+
+def test_cue_values_refuse_fixes_that_disagree_with_the_audit():
+    pairs = json.loads((REPO / "data" / "v2" / "pairs_v2.json").read_text())
+    for c in pairs["cases"]:
+        for f in c["edit_record"].get("cue_fixes", []):
+            if f["rule"] == "outdated_year":
+                f["before"] -= 1
+    with pytest.raises(ValueError, match="outdated_year fixes"):
+        st.cue_values(pairs)
