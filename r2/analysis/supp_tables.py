@@ -620,7 +620,7 @@ def write_csv(path, rows):
         w.writerows(rows)
 
 
-README_TEXT = """Notes on the supplement tables (R2, pre-results pass)
+README_TEXT = """Notes on the supplement tables (R2, exclusion-only reanalysis)
 
 S_run_inventory.csv
 - valid_decisions_scored: records whose model_decision and selected_tool_correct are both non-null
@@ -641,19 +641,14 @@ S_coerced_choices.csv
   used exactly the runner's max_tokens: column hit_token_limit of audit/coerced_choices.csv, derived there
   from usage.completion_tokens in results/<run>/raw/<case>_response.json.
 
-Repeated-experiment tables (written once analysis_repeated/ and the verification outputs exist)
-- S_models_repeated: r2/run/models_v2.json, analysis_repeated/completeness.csv (served identifier, ok,
-  non-responses, errors) and analysis_repeated/model_availability.csv (probe status).
-- S_physician_verification: verification/kappa.csv, excluded_pairs.json, flags.json, final_review.csv.
-  pairs_excluded / pairs_flagged count the pairs that list each item; the "any item" row counts pairs.
-- S_sensitivity: analysis_repeated/headline.json (primary) and sensitivity.json (S1-S5); CIs are
-  case-cluster bootstrap 95% CIs (2,000 resamples of vignettes, seed 20261005).
-- S_per_type_repeated: per_type.csv and per_category.csv; failure = modified excerpt selected; bootstrap CIs.
-- S_gee_repeated: gee.csv, the order and category terms (model fixed effects and intercept not shown).
-- S_per_model_repeated: per_model.csv. Single-order accuracies and primacy: Wilson 95% CIs;
-  position-averaged accuracy: case-cluster bootstrap 95% CI; McNemar exact test with BH-FDR across models.
-- S_calibration_repeated: calibration_overall.csv and calibration_per_model.csv (rows with a confidence in
-  [0, 1]; n_conf is their number).
+S_data_files.csv (Supplementary Table S14; absent until the release)
+- Written by edits/make_data_files_table.py from docs/DATA_FILES.md at the release tag: path, role (the first
+  sentence of the entry), experiment and SHA-256. The script refuses when a file that S14 lists has no row, is
+  not yet present, or has a SHA-256 that differs from the file at the tag. Until the file exists, S14 is a
+  pending marker in the supplement.
+
+The other tables (S_audit_by_type, S_hash_verification, S_modifications_by_type, S_original_reanalysis) are
+written by python -m r2.analysis.supp_tables in the repository from the audit and analysis_original outputs.
 """
 
 

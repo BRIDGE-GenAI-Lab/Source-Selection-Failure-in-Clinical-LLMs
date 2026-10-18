@@ -517,3 +517,16 @@ def test_run_inventory_says_preliminary_run_not_pilot(written):
     assert "pilot" not in notes.lower()
     assert any(n.startswith("Local preliminary run with") for n in st.RUN_NOTES.values())
     assert any(n.startswith("Preliminary run of") for n in st.RUN_NOTES.values())
+
+
+def test_readme_text_describes_the_exclusion_only_reanalysis(written):
+    """README_TEXT (written to tables/README.txt on every run) carries none of the vocabulary of the repeated
+    experiment, which was prepared, not run (R2 decision 2026-10-18)."""
+    out, _ = written
+    text = st.README_TEXT
+    assert (out / "README.txt").read_text() == text
+    stale = ("repeated experiment", "repeated-experiment", "21,000", "corrected stimulus set", "corrected set",
+             "round 2", "freeze", "frozen", "pilot", "harness", "physician-authored", "re-rendered", "pre-results")
+    assert not [t for t in stale if t in text.lower()]
+    assert text.startswith("Notes on the supplement tables (R2, exclusion-only reanalysis)")
+    assert "S_data_files.csv (Supplementary Table S14" in text
