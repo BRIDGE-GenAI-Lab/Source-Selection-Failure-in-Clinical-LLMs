@@ -88,7 +88,7 @@ def test_no_existing_headline_value_changes():
     import json
     h = run(write=False)
     old = {k: v for k, v in h.items() if k not in ("excluding_coerced", "fabricated_citation_cue_confounded",
-                                                   "discriminable_excluding_fabricated_citation")}
+                                                   "discriminable_excluding_fabricated_citation", "confidence")}
     assert hashlib.sha256(json.dumps(old, indent=2).encode()).hexdigest() == _HEADLINE_BEFORE_3B_SHA256
 
 
@@ -123,9 +123,11 @@ def test_f1_keeps_every_existing_headline_key_byte_for_byte():
     import hashlib
     import json
     h = run(write=False)
-    # the 2026-10-18 sensitivity without fabricated_citation follows the cue block (tests/r2/test_original_additions.py)
-    assert list(h)[-2:] == [CUE_KEY, "discriminable_excluding_fabricated_citation"]
-    old = {k: v for k, v in h.items() if k not in (CUE_KEY, "discriminable_excluding_fabricated_citation")}
+    # the 2026-10-18 sensitivity without fabricated_citation and the confidence block follow the cue block
+    # (tests/r2/test_original_additions.py)
+    later = ["discriminable_excluding_fabricated_citation", "confidence"]
+    assert list(h)[-3:] == [CUE_KEY, *later]
+    old = {k: v for k, v in h.items() if k not in (CUE_KEY, *later)}
     assert hashlib.sha256(json.dumps(old, indent=2).encode()).hexdigest() == _HEADLINE_BEFORE_F1_SHA256
 
 

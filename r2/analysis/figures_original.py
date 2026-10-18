@@ -25,12 +25,13 @@ from r2.analysis.original_corrected import CUE_KEY, CUE_TYPE, OUT  # noqa: E402
 from r2.paths import AUDIT_DIR  # noqa: E402
 
 DPI = 300
-# runner profile -> reader-facing name, as in the supplement (npj_R2_WORKING/edits/build_supplement.py CONFIG)
+# runner profile -> reader-facing name, numbered as in the supplement (npj_R2_WORKING/edits/build_supplement.py
+# CONFIG); a single-model configuration is named by its model's display name (the R1 name)
 CONFIG = {
     "openai_fc": ("Configuration 1", "OpenAI, function calling"),
     "gemini_inline7": ("Configuration 2", "Gemini, excerpts inline"),
-    "deepseek_chat_inline7": ("Configuration 3", "DeepSeek-Chat, excerpts inline"),
-    "deepseek_reasoner_inline7": ("Configuration 4", "DeepSeek-Reasoner, excerpts inline"),
+    "deepseek_chat_inline7": ("Configuration 3", f"{F.display_name('deepseek-chat')}, excerpts inline"),
+    "deepseek_reasoner_inline7": ("Configuration 4", f"{F.display_name('deepseek-reasoner')}, excerpts inline"),
     "together_inline6": ("Configuration 5", "Together AI, excerpts inline"),
 }
 GROUP_X = np.array([0.0, 1.35, 2.35, 3.35, 4.35, 5.35])  # pooled, then the five configurations
@@ -92,7 +93,7 @@ def legend2(head, per_model, by_profile):
             f"selections of the excerpt in the first position (A), pooled across the {s['n_models']} models and for "
             "each runner configuration (bars; whiskers, 95% CI); points, individual models. b, Accuracy with the "
             "modified excerpt shown first (A) and second (B), pooled and for each configuration (bars; whiskers, "
-            "95% CI); Figure 4 gives them for each model. Configurations: " + configs + ". The dashed "
+            "95% CI). Configurations: " + configs + ". The dashed "
             "lines mark 50%, the value expected without a position preference (a) and without discrimination (b). "
             "Each model saw each pair once, in one order; within a model, the two accuracies in b therefore come "
             "from different pairs. " + _tail(s))
@@ -136,7 +137,8 @@ def legend4(head, per_model):
     return ("**Figure 4 | Position-averaged accuracy by model in the original evaluations of the non-identical "
             "pairs.** Bars: position-averaged accuracy, the mean of the accuracy with the modified excerpt shown "
             "first and with it shown second; whiskers: 95% CI. Circles: accuracy with the modified excerpt first; "
-            "diamonds: accuracy with the modified excerpt second. Bar color: reasoning model, closed commercial "
+            "diamonds: accuracy with the modified excerpt second. Each model saw each pair once, in one order; within a "
+            "model, the two come from different pairs. Bar color: reasoning model, closed commercial "
             "model or open-weight model. Models are ordered by position-averaged accuracy; the dashed line marks "
             f"50% (chance). Each model: {s['n_pairs']} evaluations, one per pair. " + _tail(s))
 

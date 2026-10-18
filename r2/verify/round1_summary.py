@@ -7,7 +7,8 @@ sent; the round-1 .xlsx files and packets_manifest.json are left untouched. Per 
 physician's answer counts, the proportion of identical answers, the unweighted Cohen kappa (three categories
 for Q3) and the number of pairs both physicians rated N (Q8: both rated Y). A null kappa (blank in the CSV) means
 kappa is undefined: both physicians gave a single identical answer category to every pair. It describes the
-review and excludes nothing. Writes verification/round1_summary.json and verification/round1_summary.csv.
+review and excludes nothing. Writes verification/round1_summary.json and .csv, the analyzed pairs' answers
+(verification/round1_analyzed_pairs.csv) and verification/round1/README_STATUS.md.
 CLI: python -m r2.verify.round1_summary [returned_dir]
 """
 import csv
@@ -150,6 +151,42 @@ def summarize(a, b):
             "packets_vs_original_run": _packets_vs_original(a, ids)}
 
 
+def analyzed_answers(a, b):
+    """The analyzed pairs with both physicians' Q1-Q8 answers (no notes), one row per pair, by case_id."""
+    ids = analyzed_case_ids()
+    out = pd.DataFrame({"case_id": ids, "sham_type": a.loc[ids, "sham_type"].to_numpy()})
+    for who, form in (("AG", a), ("MO", b)):
+        for q, _ in QUESTIONS:
+            out[f"{who}_{q}"] = form.loc[ids, q].to_numpy()
+    return out
+
+
+def status_text(summary):
+    """verification/round1/README_STATUS.md: what the round-1 forms show and how the R2 reanalysis uses them."""
+    sent = "The text in the *_as_shown_to_model columns is exactly what the evaluated models receive."
+    readme = (VERIFY_DIR / ROUND / "README_REVIEWERS.md").read_text(encoding="utf-8")
+    if sent not in readme:
+        raise ValueError("README_REVIEWERS.md no longer holds the sentence README_STATUS.md quotes")
+    n_all, n_ana = summary["subsets"]["all_forms"]["n_pairs"], summary["subsets"]["analyzed_pairs"]["n_pairs"]
+    fc, pv = summary["fabricated_citation"], summary["packets_vs_original_run"]
+    return (
+        "# Round-1 forms: status\n\n"
+        f"The {n_all} round-1 forms (`review_AG`, `review_MO`, `packets.html`) show each pair as it was prepared for a "
+        "repeated experiment that was not run: every content field of both excerpts (including `safety_guardrails`, "
+        "`applicability` and `exclusions_or_cautions`, which no original runner serialized) and the full vignette. "
+        "That is more than any of the five original runner configurations presented to the models. The sentence in "
+        f"`README_REVIEWERS.md`, \"{sent}\", referred to that unrun experiment, not to the original evaluations.\n\n"
+        f"The R2 reanalysis uses the physicians' answers for the {n_ana} analyzed pairs (the pairs whose authentic and "
+        "modified excerpts differ in content visible to the models in the original runs), descriptively: "
+        "`verification/round1_summary.json`, `verification/round1_summary.csv` and "
+        "`verification/round1_analyzed_pairs.csv`. No pair is excluded on these answers. For these pairs, the excerpt "
+        "text and the visible metadata shown in the forms equal the original as-run excerpts "
+        f"({pv['authentic_same_as_original_run']} of {pv['n_pairs']} authentic, "
+        f"{pv['modified_same_as_original_run']} of {pv['n_pairs']} modified); the "
+        f"{fc['n_rows_analyzed_pairs']} fabricated_citation modified excerpts show the neutral DOI suffix "
+        "10.9999/cg.<year>.NNNN instead of the 10.9999/fake.NNNN that the models saw.\n")
+
+
 def _csv_rows(summary):
     keys = ["subset", "n_pairs", "item", "AG_Y", "AG_N", "AG_P", "MO_Y", "MO_N", "MO_P", "agreement", "kappa",
             "kappa_note", "concern_answer", "both_concern"]
@@ -172,6 +209,9 @@ def run(returned=None, do_import=True):
         w = csv.DictWriter(fh, fieldnames=keys)
         w.writeheader()
         w.writerows(rows)
+    a, b = load_forms()
+    analyzed_answers(a, b).to_csv(VERIFY_DIR / "round1_analyzed_pairs.csv", index=False)
+    (VERIFY_DIR / ROUND / "README_STATUS.md").write_text(status_text(summary), encoding="utf-8")
     return summary
 
 

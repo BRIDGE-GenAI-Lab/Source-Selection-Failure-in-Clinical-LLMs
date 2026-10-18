@@ -64,7 +64,8 @@ def _who(path):
 def _form_role(path):
     rows = _csv(path)
     answered = sum(all((r.get(q) or "").strip() for q in QKEYS) for r in rows)
-    rnd = "round 1, every pair resolved when the forms were built" if "/round1/" in path else \
+    rnd = ("round 1, every pair resolved when the forms were built, each shown as prepared for the repeated experiment "
+           "(prepared, not run; `verification/round1/README_STATUS.md`)") if "/round1/" in path else \
         "round 2, the pairs rebuilt after round 1"
     state = ("no answers recorded yet" if answered == 0 else
              f"answers recorded for {answered} of {len(rows)} pairs, imported from the returned workbook")
@@ -188,7 +189,9 @@ RULES = [
     (r"audit/pair_audit_summary\.json$", "`python -m r2.audit.pair_audit`", "audit; README correction notice",
      "Overall counts: `visible_status` identical 167 / metadata_only 64 / excerpt_differs 269; `raw_status` visible 333 / hidden_only 110 / no_edit 57; 69 distinct authentic excerpts"),
     (r"analysis_original/headline\.json$", "`python -m r2.analysis.original_corrected`", "analysis of the original runs (exploratory)",
-     "Pooled measures for all, discriminable and identical pairs (accuracy, primacy, accuracy by sham position, position-averaged accuracy) with case-cluster bootstrap CIs, and `excluding_coerced`: the same measures without the 781 records whose choice the original runner coerced to \"A\" (`audit/coerced_choices.csv`); and `fabricated_citation_cue_confounded`: the original fabricated_citation accuracy, failure rate, primacy and position rates with case-cluster bootstrap CIs, labelled cue-confounded because every modified excerpt carried the DOI 10.9999/fake.NNNN (`audit/self_label_tokens.json`); and the non-identical-pair measures without the 40 cue-confounded fabricated_citation pairs, also without the coerced records. Inferential results are exploratory, not pre-specified"),
+     "Pooled measures for all, discriminable and identical pairs (accuracy, primacy, accuracy by sham position, position-averaged accuracy) with case-cluster bootstrap CIs, and `excluding_coerced`: the same measures without the 781 records whose choice the original runner coerced to \"A\" (`audit/coerced_choices.csv`); and `fabricated_citation_cue_confounded`: the original fabricated_citation accuracy, failure rate, primacy and position rates with case-cluster bootstrap CIs, labelled cue-confounded because every modified excerpt carried the DOI 10.9999/fake.NNNN (`audit/self_label_tokens.json`); the non-identical-pair measures without the 40 cue-confounded fabricated_citation pairs, also without the coerced records; and `confidence`: stated confidence with the R1 definitions (overconfidence, ECE, MCE, Brier, AUROC, high-confidence errors, per-model Mann-Whitney with BH FDR) for all and non-identical pairs, with and without the coerced records, case-cluster bootstrap CIs. Inferential results are exploratory, not pre-specified"),
+    (r"analysis_original/confidence_(all|discriminable)\.csv$", "`python -m r2.analysis.original_corrected` (`r2.analysis.confidence_original`)", "analysis of the original runs (confidence, R1 definitions)",
+     lambda path: f"Per model ({_nrows(path)} models), {'all pairs' if path.endswith('_all.csv') else 'the non-identical pairs'}: rows with a stated confidence, accuracy, mean confidence (also in correct and incorrect selections), overconfidence, ECE and MCE (ten equal-width bins), Brier score, AUROC, share of failures at confidence >= 0.90, two-sided Mann-Whitney U with BH FDR, and higher confidence when correct (FDR q < 0.05 and AUROC > 0.5)"),
     (r"analysis_original/table1_examples\.csv$", "`python -m r2.analysis.original_corrected` (`table1_examples`)", "Table 1 (exclusion-only reanalysis)",
      lambda path: f"Example original responses, {_nrows(path)} rows: for each sham type with non-identical pairs, a failure and a success, each the first record in (case_id, model) order, among the records whose choice the runner did not coerce, whose model is not yet in the table (else the first in that order); the rationale cut at 300 characters; fabricated_citation rows marked cue-confounded. Rule: `r2/analysis/original_corrected.py` docstring"),
     (r"analysis_original/figures/legend_Figure\d\.md$", "`python -m r2.analysis.figures_original`", "Figures 2-4 (exclusion-only reanalysis)",
@@ -202,10 +205,14 @@ RULES = [
      "Corrected reanalysis of the original 10,500 records, split by pair status (all pairs vs discriminable pairs). Inferential results are exploratory, not pre-specified"),
     (r"verification/leakage_flags\.json$", "`r2.verify` (located leakage allow-list)", "repeated experiment (prepared, not run); physician verification",
      "Cases whose vignette text contains condition-tag substrings (e.g. `gi_bleed`) that appear as plain words in the tool; shown to reviewers under Q8"),
-    (r"verification/round1/README_REVIEWERS\.md$", "`python -m r2.verify.build_packets`", "physician verification", "Reviewer instructions and the eight questions (Q1-Q8)"),
-    (r"verification/round1/packets\.html$", "`python -m r2.verify.build_packets`", "physician verification", "Rendered review packets: the text exactly as shown to the models"),
+    (r"verification/round1/README_REVIEWERS\.md$", "`python -m r2.verify.build_packets`", "physician verification", "Reviewer instructions and the eight questions (Q1-Q8). Its sentence that the packets are exactly what the evaluated models receive refers to the repeated experiment, which was prepared, not run (`README_STATUS.md`)"),
+    (r"verification/round1/packets\.html$", "`python -m r2.verify.build_packets`", "physician verification", "Rendered round-1 review packets: each pair as prepared for the repeated experiment (prepared, not run), with every content field and the full vignette (`README_STATUS.md`)"),
     (r"verification/round1/packets_manifest\.json$", "`python -m r2.verify.build_packets`", "physician verification",
      "Binds the forms to `data/v2/pairs_v2.json` by SHA-256 and lists one packet hash per case; scoring refuses forms from a different stimulus set"),
+    (r"verification/round1_analyzed_pairs\.csv$", "`python -m r2.verify.round1_summary`", "physician review (descriptive; exclusion-only reanalysis)",
+     lambda path: f"The {_nrows(path)} analyzed pairs (raw_status visible): case_id, sham type and both physicians' round-1 answers to Q1-Q8 (no notes), from the imported round-1 forms. Describes; excludes nothing"),
+    (r"verification/round1/README_STATUS\.md$", "`python -m r2.verify.round1_summary`", "physician review (descriptive; exclusion-only reanalysis)",
+     "Status of the round-1 forms: they show each pair as prepared for the repeated experiment (prepared, not run), every content field and the full vignette, more than any original configuration presented; the R2 reanalysis uses the answers for the analyzed pairs descriptively"),
     (r"verification/round1_summary\.(json|csv)$", "`python -m r2.verify.round1_summary`", "physician review (descriptive; exclusion-only reanalysis)",
      "Round-1 physician review described per item for all reviewed pairs and for the 333 analyzed pairs: each physician's answer counts, the proportion of identical answers, unweighted Cohen kappa and the pairs both physicians rated N (Q8: Y). Excludes nothing"),
     (r"verification/round1/review_.*\.csv$", "`python -m r2.verify.build_packets`; answers imported by `python -m r2.verify.round1_summary` or `python -m r2.pipeline consensus`", "physician verification",
@@ -214,7 +221,7 @@ RULES = [
      lambda path: _workbook_role(path)),
     # round 2: the pairs rebuilt after round 1 (python -m r2.pipeline import-edits writes the forms)
     (r"verification/round2/README_REVIEWERS\.md$", "`python -m r2.pipeline import-edits`", "physician verification", "Reviewer instructions and the eight questions (Q1-Q8), round 2"),
-    (r"verification/round2/packets\.html$", "`python -m r2.pipeline import-edits`", "physician verification", "Rendered round-2 review packets of the pairs rebuilt after round 1: the text exactly as shown to the models"),
+    (r"verification/round2/packets\.html$", "`python -m r2.pipeline import-edits`", "physician verification", "Rendered round-2 review packets of the pairs rebuilt after round 1, as prepared for the repeated experiment (prepared, not run)"),
     (r"verification/round2/packets_manifest\.json$", "`python -m r2.pipeline import-edits`", "physician verification",
      "Binds the round-2 forms to `data/v2/pairs_v2.json` by SHA-256 and lists one packet hash per rebuilt case"),
     (r"verification/round2/review_.*\.csv$", "`python -m r2.pipeline import-edits`; answers imported by `python -m r2.pipeline consensus`", "physician verification",

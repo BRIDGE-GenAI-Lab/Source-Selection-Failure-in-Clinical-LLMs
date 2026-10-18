@@ -15,6 +15,7 @@ import re
 
 import pandas as pd
 
+from r2.analysis import confidence_original
 from r2.analysis.stats import CATEGORY, cluster_bootstrap_mean, cluster_bootstrap_paa, fdr, gee_logit, position_summary
 from r2.original_runs import load_original, sham_position
 from r2.paths import AUDIT_DIR, REPO
@@ -234,6 +235,9 @@ def run(write=True):
     head["excluding_coerced"] = {name: _excluding_coerced(sub) for name, sub in subsets.items()}
     head[CUE_KEY] = _cue_confounded(df)
     head[NOFC_KEY] = _excluding_fabricated_citation(subsets["discriminable"])
+    with_conf = confidence_original.attach_confidence(df)
+    conf = {"all": with_conf, "discriminable": with_conf[with_conf.visible_status != "identical"]}
+    head["confidence"] = confidence_original.confidence_block(conf)
     if write:
         OUT.mkdir(exist_ok=True)
         formula = "correct ~ sham_first + C(category, Treatment('metadata')) + C(model)"
@@ -255,6 +259,8 @@ def run(write=True):
            .to_csv(OUT / "behavior_by_raw_status.csv"))
         (OUT / "headline.json").write_text(json.dumps(head, indent=2))
         pd.DataFrame(table1_examples(df)).to_csv(OUT / "table1_examples.csv", index=False)
+        for name in ("all", "discriminable"):
+            confidence_original.per_model(conf[name]).to_csv(OUT / f"confidence_{name}.csv", index=False)
     return head
 
 
