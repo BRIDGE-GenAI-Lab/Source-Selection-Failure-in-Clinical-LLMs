@@ -10,8 +10,9 @@ import pandas as pd
 from r2.io import load_original_cases
 from r2.paths import AUDIT_DIR, DATA_V2, ORIGINAL_CASES_SHA256
 from r2.stimuli.render import visible_content
-from r2.stimuli.transforms import (FAKE_DOI, TransformError, apply_manual_edit, neutralize_citation_doi,
-                                   propose_inversion, self_label_tokens, typosquat)
+from r2.stimuli.transforms import (FAKE_DOI, PAGE_SPAN, TransformError, apply_manual_edit, neutralize_citation_doi,
+                                   parse_citation, propose_inversion, reformat_citation, self_label_tokens,
+                                   typosquat)
 
 
 class UnresolvedEdits(RuntimeError):
@@ -44,9 +45,38 @@ def neutralize_fabricated_citation(cid, s):
     return s, {"rule": "neutral_doi_suffix", "field": "excerpt_text", "before": before, "after": after}
 
 
+def fix_citation_format(cid, t, s):
+    """Cue fix A1: the appended Evidence line loses its blank line and quotes, gets a plausible page span and,
+    if every authentic line is a bullet, a bullet. Runs after F1."""
+    s = copy.deepcopy(s)
+    s["excerpt_text"], before, after, _ = reformat_citation(cid, t["excerpt_text"], s["excerpt_text"])
+    return s, {"rule": "citation_format", "field": "excerpt_text", "before": before, "after": after}
+
+
+def fix_outdated_year(t, s):
+    """Cue fix A2: a sham that is not older than the authentic version gets the authentic year minus 4."""
+    ty, sy = t["metadata"]["publication_year"], s["metadata"]["publication_year"]
+    if sy < ty:
+        return s, None
+    s = copy.deepcopy(s)
+    s["metadata"]["publication_year"] = ty - 4
+    return s, {"rule": "outdated_year", "field": "metadata.publication_year", "before": sy, "after": ty - 4}
+
+
 def before_self_label_fix(case):
     """The case as the build wrote it before F1: the neutral DOI put back and `self_label_fix` dropped.
-    Used to prove that F1 changed nothing else."""
+    Used to prove that F1 changed nothing else. The cue fixes (A1, A2) come later than F1 and are undone first,
+    so the proof still covers the DOI only."""
+    case = copy.deepcopy(case)
+    for fix in reversed(case["edit_record"].get("cue_fixes", [])):
+        if fix["rule"] == "citation_format":
+            case["tools"]["S"]["excerpt_text"] = case["tools"]["S"]["excerpt_text"].replace(fix["after"], fix["before"])
+            for ch in case["edit_record"]["changes"]:
+                if ch["field"] == "excerpt_text":
+                    ch["after"] = ch["after"].replace(fix["after"], fix["before"])
+        else:
+            raise ValueError(f"{case['case_id']}: cannot undo cue fix {fix['rule']!r} on a fabricated_citation pair")
+    case["edit_record"].pop("cue_fixes", None)
     fix = case["edit_record"]["self_label_fix"]
     text = json.dumps(case, ensure_ascii=False)
     if text.count(fix["after"]) != 3:  # S excerpt, the edit_record change, self_label_fix itself
@@ -54,6 +84,22 @@ def before_self_label_fix(case):
     out = json.loads(text.replace(fix["after"], fix["before"]))
     del out["edit_record"]["self_label_fix"]
     return out
+
+
+def check_cue_postconditions(cases):
+    """A5: no new blank line, plausible citation page spans, outdated versions older than the authentic one."""
+    for case in cases:
+        cid, t, s = case["case_id"], case["tools"]["T"], case["tools"]["S"]
+        if "\n\n" in s["excerpt_text"] and "\n\n" not in t["excerpt_text"]:
+            raise AssertionError(f"{cid}: the modified excerpt has a blank line the authentic one lacks")
+        sham_type = case["eval"]["sham_trap_type"]
+        if sham_type == "fabricated_citation":
+            cite = parse_citation(s["excerpt_text"])
+            if cite is None or not PAGE_SPAN[0] <= cite[3] - cite[2] <= PAGE_SPAN[1]:
+                raise AssertionError(f"{cid}: citation page span outside {PAGE_SPAN}: {cite}")
+        if sham_type == "outdated_version" and not s["metadata"]["publication_year"] < t["metadata"]["publication_year"]:
+            raise AssertionError(f"{cid}: modified publication_year {s['metadata']['publication_year']} is not "
+                                 f"older than the authentic {t['metadata']['publication_year']}")
 
 
 def build_v2(manual_edits=None, strict=True):
@@ -92,9 +138,16 @@ def build_v2(manual_edits=None, strict=True):
         elif status == "no_edit":
             unresolved.append(cid)
             continue
-        fix = None
+        fix, cue_fixes = None, []
         if sham_type == "fabricated_citation" and FAKE_DOI.search(s["excerpt_text"]):
             s, fix = neutralize_fabricated_citation(cid, s)
+        if sham_type == "fabricated_citation":
+            s, cue = fix_citation_format(cid, t, s)
+            cue_fixes.append(cue)
+        elif sham_type == "outdated_version":
+            s, cue = fix_outdated_year(t, s)
+            if cue:
+                cue_fixes.append(cue)
         case["tools"]["S"] = s
         if visible_content(t) == visible_content(s):
             raise AssertionError(f"{cid}: rendered authentic and modified excerpts are identical")
@@ -104,7 +157,10 @@ def build_v2(manual_edits=None, strict=True):
         case["edit_record"] = edit_record(t, s, source)
         if fix:
             case["edit_record"]["self_label_fix"] = fix
+        if cue_fixes:
+            case["edit_record"]["cue_fixes"] = cue_fixes
         out.append(case)
+    check_cue_postconditions(out)
     if unresolved and strict:
         raise UnresolvedEdits(unresolved)
     return out, unresolved
