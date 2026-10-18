@@ -399,3 +399,40 @@ def test_figure_legend_caveats(made):
     fig4 = (out / "legend_Figure4.md").read_text(encoding="utf-8")
     assert "Figure 4 gives them" not in fig2
     assert "within a model, the two accuracies (circle and diamond) come from different pairs" in fig4
+
+
+# ---------------------------------------------------------------- final review: confidence without runner-set records
+QWEN_NEXT = "Qwen/Qwen3-Next-80B-A3B-Thinking"
+
+
+def test_pooled_confidence_without_runner_set_records(head):
+    """The 413 records of the analysis set whose choice the runner set to A carry the runner's confidence (0.5 for
+    the 368 parse failures) or a confidence for an answer the runner replaced (the 45 invalid choices)."""
+    c = head["confidence"]
+    d, x = c["discriminable"], c["excluding_coerced"]["discriminable"]
+    assert head["excluding_coerced"]["discriminable"]["n_coerced_excluded"] == 413 and x["n"] == d["n"] - 413
+    for k, before, after in (("mean_confidence", 0.776, 0.796), ("overconfidence", 0.130, 0.140),
+                             ("ece", 0.181, 0.186), ("auroc", 0.609, 0.601)):
+        assert (round(d[k], 3), round(x[k], 3)) == (before, after), k
+    assert (round(100 * d["high_conf_error_share"], 1), round(100 * x["high_conf_error_share"], 1)) == (42.1, 46.1)
+    for k in co.MEASURES:
+        assert x[f"{k}_lo"] <= x[k] <= x[f"{k}_hi"], k
+    assert x["n_models_higher_confidence_when_correct"] == 14
+
+
+def test_per_model_confidence_without_runner_set_records(conf_frame):
+    path = REPO / "analysis_original" / "confidence_discriminable_excluding_coerced.csv"
+    committed = pd.read_csv(path)
+    base = pd.read_csv(REPO / "analysis_original" / "confidence_discriminable.csv")
+    assert list(committed.columns) == list(base.columns) + ["n_runner_set_removed"]
+    sub = conf_frame[conf_frame.visible_status != "identical"]
+    fresh = pd.read_csv(io.StringIO(co.per_model_excluding_runner_set(sub).to_csv(index=False)))
+    assert committed.equals(fresh)
+    assert int(committed.n_runner_set_removed.sum()) == 413
+    assert int(committed.higher_confidence_when_correct.sum()) == 14 == \
+        json.loads((REPO / "analysis_original" / "headline.json").read_text())["confidence"]["excluding_coerced"][
+            "discriminable"]["n_models_higher_confidence_when_correct"]
+    q, b = committed.set_index("model").loc[QWEN_NEXT], base.set_index("model").loc[QWEN_NEXT]
+    assert (int(q.n), round(q.auroc, 3), int(q.n_runner_set_removed)) == (168, 0.442, 165)
+    assert round(b.auroc, 3) == 0.818 and round(100 * b.high_conf_error_share, 1) == 4.2
+    assert q.high_conf_error_share == 1.0 and not q.higher_confidence_when_correct

@@ -261,6 +261,8 @@ def run(write=True):
         pd.DataFrame(table1_examples(df)).to_csv(OUT / "table1_examples.csv", index=False)
         for name in ("all", "discriminable"):
             confidence_original.per_model(conf[name]).to_csv(OUT / f"confidence_{name}.csv", index=False)
+        confidence_original.per_model_excluding_runner_set(conf["discriminable"]).to_csv(
+            OUT / "confidence_discriminable_excluding_coerced.csv", index=False)
     return head
 
 

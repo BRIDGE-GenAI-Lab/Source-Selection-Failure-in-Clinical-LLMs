@@ -132,6 +132,15 @@ def per_model(sub):
     return out[list(PER_MODEL_COLS)].sort_values("auroc", ascending=False, kind="stable").reset_index(drop=True)
 
 
+def per_model_excluding_runner_set(sub):
+    """per_model without the records whose choice the original runner set to A: their confidence is the runner's
+    0.5 (parse failures) or the model's confidence for an answer the runner replaced (invalid choices).
+    n_runner_set_removed counts the records removed from each model."""
+    out = per_model(sub[~sub.coerced])
+    removed = sub.groupby("model").coerced.sum()
+    return out.assign(n_runner_set_removed=out.model.map(removed).astype(int))
+
+
 def summary(sub):
     """Pooled measures and the per-model FDR counts of one set."""
     pm = per_model(sub)
