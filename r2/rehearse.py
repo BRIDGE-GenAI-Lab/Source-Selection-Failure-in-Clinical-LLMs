@@ -202,6 +202,7 @@ def author_edits_for(queue, manual_path):
 def relabel_stored_edits(manual_path, author=None):
     """Sandbox only: the copied physician edits are rehearsal data now, so they carry the simulated author, as
     the documents' sandbox mode expects (edits/fill.py EXPECTED_EDIT_AUTHOR). Returns how many were relabelled."""
+    from r2 import paths
     if paths.SANDBOX is None:
         raise RuntimeError("relabel_stored_edits only runs inside a sandbox")
     manual_path = Path(manual_path)
