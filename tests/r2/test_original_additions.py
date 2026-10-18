@@ -97,8 +97,18 @@ def test_q8_counts_pairs_both_rated_y():
     assert "AG_P" not in s
 
 
-def test_summary_files_describe_both_subsets():
-    js = json.loads((VERIFY_DIR / "round1_summary.json").read_text(encoding="utf-8"))
+@pytest.fixture
+def committed_summary():
+    """The committed round-1 summary. A rehearsal clone (tests/r2/test_rehearse.py) replaces verification/ with
+    simulated files that have none; the summary describes the real returned forms only."""
+    path = VERIFY_DIR / "round1_summary.json"
+    if not path.exists():
+        pytest.skip(f"{path} absent (verification/ replaced by a rehearsal)")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_summary_files_describe_both_subsets(committed_summary):
+    js = committed_summary
     assert js["subsets"]["all_forms"]["n_pairs"] == 477
     assert js["subsets"]["analyzed_pairs"]["n_pairs"] == 333
     assert js["excludes_nothing"] is True
@@ -110,9 +120,9 @@ def test_summary_files_describe_both_subsets():
     assert {r["subset"] for r in rows} == {"all_forms", "analyzed_pairs"}
 
 
-def test_summary_is_recomputed_from_the_imported_forms():
+def test_summary_is_recomputed_from_the_imported_forms(committed_summary):
     """The committed summary equals a fresh summary of the committed round-1 forms (no re-import)."""
-    js = json.loads((VERIFY_DIR / "round1_summary.json").read_text(encoding="utf-8"))
+    js = committed_summary
     fresh = rs.summarize(*rs.load_forms())
     assert json.loads(json.dumps(fresh)) == {k: js[k] for k in fresh}
 
