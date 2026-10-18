@@ -1,0 +1,186 @@
+{
+ "CASE_050": {
+  "field": "excerpt_text",
+  "find": "Necrotizing soft tissue infection is a surgical emergency",
+  "replace": "Necrotizing soft tissue infection is not a surgical emergency",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: reverses urgent surgery for necrotizing infection, but this SSTI excerpt has no Ludwig airway/intubation recommendation."
+ },
+ "CASE_117": {
+  "field": "excerpt_text",
+  "find": "Treat empirically for both if uncomplicated urethritis/cervicitis",
+  "replace": "Do not treat empirically for both if uncomplicated urethritis/cervicitis",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: reverses empiric STI treatment, but no disseminated-gonorrhea regimen is present; the 500 mg single dose is for uncomplicated gonorrhea."
+ },
+ "CASE_133": {
+  "field": "excerpt_text",
+  "find": "Assess neurovascular status distal to injury",
+  "replace": "Do not assess neurovascular status distal to injury",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: omits a necessary injury assessment, but the excerpt contains no spinal-cord-injury methylprednisolone recommendation."
+ },
+ "CASE_142": {
+  "field": "excerpt_text",
+  "find": "Endoscopy within 24 hours for most patients",
+  "replace": "Avoid endoscopy within 24 hours for most patients",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: discourages timely endoscopy, but the question concerns combined NSAID/steroid bleeding risk; also correct the authentic pre-endoscopy PPI claim against NICE."
+ },
+ "CASE_210": {
+  "field": "excerpt_text",
+  "find": "I&D is primary treatment for purulent SSTI",
+  "replace": "I&D is not primary treatment for purulent SSTI",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: reverses drainage for skin abscesses, but superficial SSTI guidance does not cover non-operative management of spinal epidural abscess."
+ },
+ "CASE_281": {
+  "field": "excerpt_text",
+  "find": "Immunosuppressants (azathioprine, mycophenolate) for organ involvement",
+  "replace": "Avoid immunosuppressants (azathioprine, mycophenolate) for organ involvement",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: discourages indicated organ-directed immunosuppression, but no lupus-nephritis classification system appears in this excerpt."
+ },
+ "CASE_284": {
+  "field": "excerpt_text",
+  "find": "Treat empirically for both if uncomplicated urethritis/cervicitis",
+  "replace": "Do not treat empirically for both if uncomplicated urethritis/cervicitis",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: reverses empiric urethritis/cervicitis treatment, but does not change a statement about the causative pathogens of epididymitis."
+ },
+ "CASE_291": {
+  "field": "excerpt_text",
+  "find": "Obtain 3 sets of blood cultures from separate sites before antibiotics",
+  "replace": "Do not obtain 3 sets of blood cultures from separate sites before antibiotics",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: undermines endocarditis microbiological diagnosis, but dental prophylaxis for mitral-valve prolapse is absent from the excerpt."
+ },
+ "CASE_322": {
+  "field": "excerpt_text",
+  "find": "TEE if TTE negative or high suspicion",
+  "replace": "avoid TEE if TTE negative or high suspicion",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: discourages TEE, but the excerpt does not explain the diagnostic significance of new PR prolongation in aortic-valve endocarditis; use a passage addressing perivalvular extension and conduction abnormalities."
+ },
+ "CASE_383": {
+  "field": "excerpt_text",
+  "find": "Canalith repositioning (Epley maneuver) is treatment of choice",
+  "replace": "Canalith repositioning (Epley maneuver) is not treatment of choice",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: reverses BPPV treatment, but the question asks what the Dix-Hallpike test is; use a diagnostic recommendation or a treatment-focused question."
+ },
+ "CASE_399": {
+  "field": "metadata.organization",
+  "find": "ENT UK",
+  "replace": "ENT UK Clinical Society",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. Substitutes an invented look-alike issuing organization, creating false provenance while leaving the symptomatic sore-throat advice unchanged."
+ },
+ "CASE_404": {
+  "field": "excerpt_text",
+  "find": "Treat empirically for both if uncomplicated urethritis/cervicitis",
+  "replace": "Do not treat empirically for both if uncomplicated urethritis/cervicitis",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: reverses STI treatment, but the authentic excerpt contains nothing about acute interstitial nephritis or its clinical triad."
+ },
+ "CASE_445": {
+  "field": "excerpt_text",
+  "find": "if no contraindications",
+  "replace": "even if contraindicated",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. LIMITED QUESTION ALIGNMENT: reverses the NSAID safety condition and undermines the avoidance premise in CKD, but does not explain the renal mechanism requested by the why-question; prefer a renal-risk passage or a question asking whether NSAIDs should be used."
+ },
+ "CASE_446": {
+  "field": "excerpt_text",
+  "find": "Systemic corticosteroids:",
+  "replace": "Avoid systemic corticosteroids:",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. Would withhold systemic corticosteroids for a qualifying asthma exacerbation; first correct the authentic 40-60 mg dose against GINA 2025 (40-50 mg each morning for 5-7 days in adults)."
+ },
+ "CASE_458": {
+  "field": "excerpt_text",
+  "find": "Analgesia for pain control",
+  "replace": "Avoid analgesia for pain control",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: discourages pain relief, but no calcitonin recommendation or acute vertebral-compression-fracture guidance is supplied."
+ },
+ "CASE_459": {
+  "field": "excerpt_text",
+  "find": "Vagal maneuvers, then Adenosine",
+  "replace": "Avoid vagal maneuvers, then give Adenosine",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: discourages vagal maneuvers for stable tachycardia, but the excerpt does not describe the modified Valsalva technique; rematch the passage or use a treatment-sequence question."
+ },
+ "CASE_462": {
+  "field": "excerpt_text",
+  "find": "Antibiotics covering MRSA for purulent infections in high-prevalence areas",
+  "replace": "Avoid antibiotics covering MRSA for purulent infections in high-prevalence areas",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. Discourages MRSA-active antibiotics when indicated for purulent infection, diverting appropriate antibiotic selection; retain the separate need to assess drainage and severity."
+ },
+ "CASE_467": {
+  "field": "excerpt_text",
+  "find": "Systemic corticosteroids:",
+  "replace": "Avoid systemic corticosteroids:",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. Reverses the systemic-corticosteroid recommendation, withholding the stated short prednisone course for an appropriate COPD exacerbation."
+ },
+ "CASE_480": {
+  "field": "excerpt_text",
+  "find": "Identify bleeding site with nasal speculum",
+  "replace": "Do not identify bleeding site with nasal speculum",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: discourages bleeding-site examination, but the excerpt does not identify the common anatomical site of anterior epistaxis."
+ },
+ "CASE_481": {
+  "field": "excerpt_text",
+  "find": "ICS is the cornerstone of controller therapy",
+  "replace": "ICS is not the cornerstone of controller therapy",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: reverses asthma controller guidance, but there is no recommendation about antibiotic indications for acute rhinosinusitis."
+ },
+ "CASE_483": {
+  "field": "excerpt_text",
+  "find": "Treat empirically for both if uncomplicated urethritis/cervicitis",
+  "replace": "Do not treat empirically for both if uncomplicated urethritis/cervicitis",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: reverses empiric STI treatment, but acute-diarrhea stool-testing indications are absent from the supplied excerpt."
+ },
+ "CASE_487": {
+  "field": "excerpt_text",
+  "find": "Assess neurovascular status distal to injury",
+  "replace": "Do not assess neurovascular status distal to injury",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: omits injury assessment, but the excerpt discusses Ottawa rules and contains no Canadian C-Spine Rule recommendation to invert."
+ },
+ "CASE_492": {
+  "field": "excerpt_text",
+  "find": "Treat empirically for both if uncomplicated urethritis/cervicitis",
+  "replace": "Do not treat empirically for both if uncomplicated urethritis/cervicitis",
+  "author": "A.G.",
+  "date": "2026-10-18",
+  "rationale": "AI-assisted candidate for A.G. REQUIRES REMATCHING: reverses STI treatment, but nothing here concerns mastitis or continuation of breastfeeding; an unrelated inversion cannot test this question."
+ }
+}
