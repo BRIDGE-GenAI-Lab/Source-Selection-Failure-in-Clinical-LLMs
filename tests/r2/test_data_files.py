@@ -236,3 +236,33 @@ def test_s15_from_a_current_doc(tmp_path, monkeypatch):
     assert pipeline.data_files_table() == 1
     (row,) = list(csv.DictReader(open(paths.TABLES_DIR / "S_data_files.csv")))
     assert row["path"] == "data/x.json" and row["role"] == "A file." and row["sha256"] == "a" * 64
+
+
+# ---- the release allowlist: Supplementary Table S14 renders these roles, and its stale-term guard forbids the
+# vocabulary of the repeated experiment, which was prepared, not run (R2 decision 2026-10-18) ----
+RELEASE_TOP = ("500cases.json", "500cases_merged.json", "500cases_final.json", "case_assignments.json",
+               "500cases_with_real_tools.json", "tool_audit_log.json")
+RELEASE_FILES = ("data/original/500cases_with_real_tools.as_run.json", "data/results_10500.csv",
+                 "verification/round1_analyzed_pairs.csv", "verification/round1_summary.csv",
+                 "verification/round1_summary.json", "docs/r2/vignette_generation_prompt.md")
+STALE_TERMS = ("repeated experiment", "21,000", "corrected stimulus set", "corrected set", "round 2", "freeze",
+               "frozen", "pilot", "harness", "physician-authored", "re-rendered")
+
+
+def _in_release(path):
+    return (path in RELEASE_FILES or path in {f"data/{n}" for n in RELEASE_TOP}
+            or path.startswith(("data/original_runs/", "analysis_original/"))
+            or (path.startswith("audit/") and not path.endswith(".md")))  # the audit data files
+
+
+def test_release_allowlist_roles_carry_no_stale_terms():
+    paths = [p for p in _tracked() if _in_release(p)]
+    assert {f"data/{n}" for n in RELEASE_TOP} | set(RELEASE_FILES) <= set(paths)
+    assert any(p.startswith("data/original_runs/") for p in paths) and "audit/format_cues.json" in paths
+    hits = {}
+    for p in paths:
+        text = " ".join(D.rule(p)).lower()
+        found = [t for t in STALE_TERMS if t in text]
+        if found:
+            hits[p] = found
+    assert not hits, hits
