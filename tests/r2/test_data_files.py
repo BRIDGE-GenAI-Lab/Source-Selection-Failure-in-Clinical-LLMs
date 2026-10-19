@@ -261,8 +261,11 @@ def test_release_allowlist_roles_carry_no_stale_terms():
     assert any(p.startswith("data/original_runs/") for p in paths) and "audit/format_cues.json" in paths
     hits = {}
     for p in paths:
-        text = " ".join(D.rule(p)).lower()
+        by, used, role = D.rule(p)
+        text = " ".join((by, used, role)).lower()
         found = [t for t in STALE_TERMS if t in text]
+        if role.lstrip().lower().startswith("corrected"):  # read as the unrun corrected stimulus set
+            found.append("leading 'Corrected'")
         if found:
             hits[p] = found
     assert not hits, hits

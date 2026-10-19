@@ -204,7 +204,7 @@ RULES = [
      "documentation of the original stimulus generation; supplement",
      "Zero-shot prompt used in Google AI Studio with Gemini 3 Pro to generate the vignettes. `tests/r2/test_vignette_prompt.py` pins the body to the source lines"),
     (r"analysis_original/", "`python -m r2.analysis.original_corrected`", "analysis of the original runs (exploratory)",
-     "Corrected reanalysis of the original 10,500 records, split by pair status (all pairs vs discriminable pairs). Inferential results are exploratory, not pre-specified"),
+     "Reanalysis of the original 10,500 records, split by pair status (all pairs vs discriminable pairs). Inferential results are exploratory, not pre-specified"),
     (r"verification/leakage_flags\.json$", "`r2.verify` (located leakage allow-list)", "repeated experiment (prepared, not run); physician verification",
      "Cases whose vignette text contains condition-tag substrings (e.g. `gi_bleed`) that appear as plain words in the tool; shown to reviewers under Q8"),
     (r"verification/round1/README_REVIEWERS\.md$", "`python -m r2.verify.build_packets`", "physician verification", "Reviewer instructions and the eight questions (Q1-Q8). Its sentence that the packets are exactly what the evaluated models receive refers to the repeated experiment, which was prepared, not run (`README_STATUS.md`)"),
