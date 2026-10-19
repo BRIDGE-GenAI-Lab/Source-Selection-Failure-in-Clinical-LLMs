@@ -132,14 +132,32 @@ def legend3(head, per_model):
             "with vignette, clinical task and guideline. " + _tail(s))
 
 
-def legend4(head, per_model):
+def closed_reasoning(per_model, specs):
+    """Display names of the closed commercial models that Figure 4 draws as reasoning models (r2.analysis.figures
+    _model_class puts reasoning first)."""
+    by_name = {s["original_name"]: s for s in specs}
+    return sorted(F.display_name(r["model"]) for r in per_model
+                  if F._model_class(by_name.get(r["model"])) == "reasoning"
+                  and F._model_class({**by_name[r["model"]], "reasoning": False}) == "closed")  # reasoning: spec exists
+
+
+def _color_key(per_model, specs):
+    names = closed_reasoning(per_model, specs)
+    if not names:
+        return "reasoning model, closed commercial model or open-weight model"
+    inc = (f"{names[0]}, a closed commercial reasoning model" if len(names) == 1
+           else f"{', '.join(names[:-1])} and {names[-1]}, closed commercial reasoning models")
+    return f"reasoning model (including {inc}), other closed commercial model or open-weight model"
+
+
+def legend4(head, per_model, specs):
     s = _sample(head, per_model)
     return ("**Figure 4 | Position-averaged accuracy by model in the original evaluations of the non-identical "
             "pairs.** Bars: position-averaged accuracy, the mean of the accuracy with the modified excerpt shown "
             "first and with it shown second; whiskers: 95% CI. Circles: accuracy with the modified excerpt first; "
             "diamonds: accuracy with the modified excerpt second. Each model saw each pair once, in one order; within a "
-            "model, the two accuracies (circle and diamond) come from different pairs. Bar color: reasoning model, closed commercial "
-            "model or open-weight model. Models are ordered by position-averaged accuracy; the dashed line marks "
+            "model, the two accuracies (circle and diamond) come from different pairs. Bar color: "
+            + _color_key(per_model, specs) + ". Models are ordered by position-averaged accuracy; the dashed line marks "
             f"50% (chance). Each model: {s['n_pairs']} evaluations, one per pair. " + _tail(s))
 
 
@@ -225,8 +243,10 @@ def figure3(head, per_model, per_type, out_dir):
 
 def figure4(head, per_model, out_dir, specs):
     with plt.rc_context(F.STYLE):
-        fig = F.draw_figure4(per_model, specs)
-        return _save(fig, out_dir, "Figure4", legend4(head, per_model))
+        closed_label = "Other closed commercial model" if closed_reasoning(per_model, specs) else \
+            "Closed commercial model"
+        fig = F.draw_figure4(per_model, specs, closed_label=closed_label)
+        return _save(fig, out_dir, "Figure4", legend4(head, per_model, specs))
 
 
 def run(analysis_dir=None, out_dir=None, specs=None):

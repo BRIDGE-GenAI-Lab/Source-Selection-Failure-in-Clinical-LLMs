@@ -372,8 +372,9 @@ def figure4(head, per_model, out_dir, specs):
         return _save(fig, out_dir, "Figure4", legend4(head), head.get("synthetic") is True)
 
 
-def draw_figure4(per_model, specs):
-    """The Figure 4 bars (call inside plt.rc_context(STYLE)); per_model rows need paa_lo and paa_hi."""
+def draw_figure4(per_model, specs, closed_label="Closed commercial model"):
+    """The Figure 4 bars (call inside plt.rc_context(STYLE)); per_model rows need paa_lo and paa_hi. A closed
+    commercial reasoning model is drawn as a reasoning model; `closed_label` names the closed-commercial key."""
     by_name = {s["original_name"]: s for s in specs}
     pm = sorted(per_model, key=lambda r: (-_f(r["position_averaged_accuracy"]), display_name(r["model"])))
     fig, ax = plt.subplots(figsize=(7.2, 0.27 * len(pm) + 1.9))
@@ -404,7 +405,7 @@ def draw_figure4(per_model, specs):
     _ref50(ax, vertical=True, label="Chance (50%)")
     _grid(ax, "x")
     handles = [mpatches.Patch(color=C["reasoning"], label="Reasoning model"),
-               mpatches.Patch(color=C["closed"], label="Closed commercial model"),
+               mpatches.Patch(color=C["closed"], label=closed_label),
                mpatches.Patch(color=C["primary"], label="Open-weight model"),
                Line2D([0], [0], marker="o", color="w", markerfacecolor=INK, markersize=7,
                       label="Accuracy, modified excerpt first"),

@@ -436,3 +436,23 @@ def test_per_model_confidence_without_runner_set_records(conf_frame):
     assert (int(q.n), round(q.auroc, 3), int(q.n_runner_set_removed)) == (168, 0.442, 165)
     assert round(b.auroc, 3) == 0.818 and round(100 * b.high_conf_error_share, 1) == 4.2
     assert q.high_conf_error_share == 1.0 and not q.higher_confidence_when_correct
+
+
+def test_figure4_color_key_names_the_closed_reasoning_model(made):
+    """Final review: GPT-5-Nano is drawn as a reasoning model, so the closed-commercial key says "other"; with it
+    the 5 closed commercial models of the manuscript are 4 red bars plus one reasoning bar."""
+    from r2.analysis import figures as F
+    from r2.run.harness import load_specs
+    out, _ = made
+    _, per_model, _, _ = fo.load()
+    specs = load_specs()
+    assert fo.closed_reasoning(per_model, specs) == ["GPT-5-Nano"]
+    by_name = {s["original_name"]: s for s in specs}
+    classes = [F._model_class(by_name[r["model"]]) for r in per_model]
+    assert classes.count("closed") + len(fo.closed_reasoning(per_model, specs)) == 5
+    fig4 = (out / "legend_Figure4.md").read_text(encoding="utf-8")
+    assert ("Bar color: reasoning model (including GPT-5-Nano, a closed commercial reasoning model), other closed "
+            "commercial model or open-weight model.") in fig4
+    assert "Bar color: reasoning model, closed commercial model or open-weight model." not in fig4
+    import inspect
+    assert inspect.signature(F.draw_figure4).parameters["closed_label"].default == "Closed commercial model"
