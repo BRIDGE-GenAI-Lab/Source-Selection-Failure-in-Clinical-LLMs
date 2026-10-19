@@ -41,9 +41,20 @@ def _filled(tmp_path, answers=None, edit=None, drop=None, reverse=False):
 def test_workbook_rows_and_round_trip(tmp_path):
     x, n = _filled(tmp_path, reverse=True, answers={2: "p", 3: "n", 4: "Y", 5: " p "})
     assert n == 19
+    # Extract expected case_id→answer mapping from the saved workbook
+    wb = load_workbook(x, data_only=True)
+    ws = wb[qa.SHEET]
+    consensus_col = qa.COLUMNS.index(f"consensus_{ev.Q3}") + 1
+    expected = {}
+    for row in range(2, ws.max_row + 1):
+        cid = str(ws.cell(row=row, column=1).value).strip()
+        ans = str(ws.cell(row=row, column=consensus_col).value).strip().upper()
+        expected[cid] = ans
+    # Import and verify answers match per case_id
     out = qa.import_workbook(x, "2026-10-20", csv_path=tmp_path / "c.csv")
     assert len(out) == 19
-    assert set(out[f"consensus_{ev.Q3}"].unique()) == {"N", "P", "Y"}  # mixed, normalized
+    actual = out.set_index("case_id")[f"consensus_{ev.Q3}"].to_dict()
+    assert actual == expected  # all 19 case_id→answer mappings correct
     assert list(out.case_id) == sorted(out.case_id)                         # matched by case_id, not row order
     assert (pd.read_csv(tmp_path / "c.csv").adjudicated_on == "2026-10-20").all()
 
@@ -74,7 +85,7 @@ def test_import_refuses(tmp_path, kind):
         kw = {"drop": 5}
         match = r"no row for"
     elif kind == "duplicate_cid":
-        kw = {"edit": (3, "case_id", None)}  # to be filled below
+        kw = {}
         match = r"appears twice"
     elif kind == "extra_cid":
         kw = {}
