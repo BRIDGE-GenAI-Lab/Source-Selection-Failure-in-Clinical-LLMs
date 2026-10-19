@@ -44,3 +44,24 @@ def test_single_position_tier_is_not_estimable():
     sub = df[(df.visible_status != "identical") & df.sham_first].head(42)
     s = ce.summarize(sub)
     assert s["estimable"] is False and "position_averaged_accuracy" not in s
+
+
+def test_excluding_coerced_guarded_when_one_position_left():
+    import json
+
+    from r2.analysis import original_corrected as oc
+    df = oc.original_frame()
+    d = df[df.visible_status != "identical"]
+    first = d[d.sham_first & ~d.coerced].head(20)
+    second = d[~d.sham_first & d.coerced].head(5)
+    assert len(second) > 0
+    s = ce.summarize(pd.concat([first, second]))
+    assert s["estimable"] is True
+    assert s["excluding_coerced"]["estimable"] is False
+    assert "NaN" not in json.dumps(s)
+
+
+def test_summarize_empty_frame():
+    from r2.analysis import original_corrected as oc
+    s = ce.summarize(oc.original_frame().iloc[0:0])
+    assert s["n_pairs"] == 0 and s["estimable"] is False

@@ -23,7 +23,6 @@ TIERS = (
     ("evaluable_concordant_full", "clinically evaluable, with the authentic excerpt fully concordant with its source "
                                   "(Q3 Y; consensus where the physicians disagreed)"),
 )
-MEASURE_COLS = ("accuracy", "acc_sham_first", "acc_sham_second", "position_averaged_accuracy", "primacy")
 
 
 def load_consensus(path=CONSENSUS_CSV):
@@ -65,8 +64,14 @@ def summarize(sub):
     if out["estimable"]:
         out.update({k: float(v) for k, v in oc._measures(sub).items()})
         out["primacy"] = float(sub.selected_first.mean())
-        out["excluding_coerced"] = {k: (float(v) if not isinstance(v, int) else v)
-                                    for k, v in oc._excluding_coerced(sub).items()}
+        kept = sub[~sub.coerced]
+        if kept.sham_first.all() or not kept.sham_first.any():
+            out["excluding_coerced"] = {"n": int(len(kept)), "n_coerced_excluded": int(sub.coerced.sum()),
+                                        "estimable": False}
+        else:
+            out["excluding_coerced"] = {k: (float(v) if not isinstance(v, int) else v)
+                                        for k, v in oc._excluding_coerced(sub).items()}
+            out["excluding_coerced"]["estimable"] = True
     return out
 
 
