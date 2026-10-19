@@ -1,0 +1,46 @@
+import pandas as pd
+import pytest
+
+from r2.analysis import clinically_evaluable as ce
+from r2.verify import evaluable as ev
+
+
+def _consensus(take="MO"):
+    d = ev.discordant_q3(ev.load_pairs())
+    return pd.DataFrame({f"consensus_{ev.Q3}": d[f"{take}_{ev.Q3}"]}, index=d.index)
+
+
+def test_tiers_with_fixture_consensus():
+    p = ev.load_pairs()
+    ids = ce.tier_case_ids(p, _consensus("MO"))
+    sizes = {k: len(v) for k, v in ids.items()}
+    assert sizes == {"q4_relevant": 85, "q2_answerable": 141, "q7_trust_reducing": 150, "evaluable": 25,
+                     "evaluable_concordant": 24, "evaluable_concordant_full": 16}
+
+
+def test_run_reproduces_known_subset_estimates():
+    out = ce.run(write=False, consensus=_consensus("MO"))
+    t = out["tiers"]["evaluable"]
+    assert (t["n_pairs"], t["n"], t["estimable"]) == (25, 525, True)
+    assert abs(t["position_averaged_accuracy"] - 0.664) < 0.0006
+    assert abs(t["acc_sham_first"] - 0.491) < 0.0006 and abs(t["acc_sham_second"] - 0.837) < 0.0006
+    q = out["q3_consensus"]
+    assert (q["n_evaluable"], q["n_agreed"], q["n_discordant"]) == (25, 6, 19)
+    assert out["evaluable_other_items"] == {"q1_both_Y": 25, "q6_both_Y": 25, "q8_any_Y": 0}
+
+
+def test_consensus_must_cover_exactly_the_discordant_pairs():
+    c = _consensus()
+    with pytest.raises(ValueError):
+        ce.q3_final(ev.load_pairs(), c.iloc[1:])
+    extra = pd.concat([c, pd.DataFrame({f"consensus_{ev.Q3}": ["Y"]}, index=["CASE_001"])])
+    with pytest.raises(ValueError):
+        ce.q3_final(ev.load_pairs(), extra)
+
+
+def test_single_position_tier_is_not_estimable():
+    from r2.analysis import original_corrected as oc
+    df = oc.original_frame()
+    sub = df[(df.visible_status != "identical") & df.sham_first].head(42)
+    s = ce.summarize(sub)
+    assert s["estimable"] is False and "position_averaged_accuracy" not in s
