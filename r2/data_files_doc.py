@@ -221,6 +221,8 @@ RULES = [
      lambda path: _form_role(path)),
     (r"verification/round1/review_.*\.xlsx$", "`python -m r2.verify.build_packets`", "physician verification",
      lambda path: _workbook_role(path)),
+    (r"verification/round1/q3_consensus_form\.xlsx$", "`python -m r2.verify.q3_adjudication write`", "physician review (post hoc adjudication)",
+     "physician review (Q3 consensus form for the clinically evaluable pairs, as sent; post hoc)"),
     # round 2: the pairs rebuilt after round 1 (python -m r2.pipeline import-edits writes the forms)
     (r"verification/round2/README_REVIEWERS\.md$", "`python -m r2.pipeline import-edits`", "physician verification", "Reviewer instructions and the eight questions (Q1-Q8), round 2"),
     (r"verification/round2/packets\.html$", "`python -m r2.pipeline import-edits`", "physician verification", "Rendered round-2 review packets of the pairs rebuilt after round 1, as prepared for the repeated experiment (prepared, not run)"),

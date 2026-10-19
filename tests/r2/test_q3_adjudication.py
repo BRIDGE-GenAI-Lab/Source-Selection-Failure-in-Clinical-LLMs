@@ -39,20 +39,58 @@ def _filled(tmp_path, answers=None, edit=None, drop=None, reverse=False):
 
 
 def test_workbook_rows_and_round_trip(tmp_path):
-    x, n = _filled(tmp_path, reverse=True)
+    x, n = _filled(tmp_path, reverse=True, answers={2: "p", 3: "n", 4: "Y", 5: " p "})
     assert n == 19
     out = qa.import_workbook(x, "2026-10-20", csv_path=tmp_path / "c.csv")
-    assert len(out) == 19 and set(out[f"consensus_{ev.Q3}"]) == {"Y"}      # "y " normalized
+    assert len(out) == 19
+    assert set(out[f"consensus_{ev.Q3}"].unique()) == {"N", "P", "Y"}  # mixed, normalized
     assert list(out.case_id) == sorted(out.case_id)                         # matched by case_id, not row order
     assert (pd.read_csv(tmp_path / "c.csv").adjudicated_on == "2026-10-20").all()
 
 
-@pytest.mark.parametrize("kind", ["blank", "unknown", "changed_original", "missing_row"])
+def _add_extra_cid(tmp_path, x):
+    """Add a row with unknown case_id CASE_999 to the workbook."""
+    wb = load_workbook(x)
+    ws = wb[qa.SHEET]
+    row = ws.max_row + 1
+    for j, name in enumerate(qa.COLUMNS, start=1):
+        val = "CASE_999" if name == "case_id" else "Y" if name == f"consensus_{ev.Q3}" else None
+        ws.cell(row=row, column=j).value = val
+    wb.save(x)
+
+
+@pytest.mark.parametrize("kind", ["blank", "unknown", "changed_original", "missing_row", "duplicate_cid", "extra_cid"])
 def test_import_refuses(tmp_path, kind):
-    kw = {"blank": {"answers": {2: None}}, "unknown": {"answers": {3: "maybe"}},
-          "changed_original": {"edit": (4, f"AG_{ev.Q3}", "Y")}, "missing_row": {"drop": 5}}[kind]
+    if kind == "blank":
+        kw = {"answers": {2: None}}
+        match = r"row 2.*the consensus must be"
+    elif kind == "unknown":
+        kw = {"answers": {3: "maybe"}}
+        match = r"row 3.*the consensus must be"
+    elif kind == "changed_original":
+        kw = {"edit": (4, f"AG_{ev.Q3}", "Y")}
+        match = r"row 4.*changed from"
+    elif kind == "missing_row":
+        kw = {"drop": 5}
+        match = r"no row for"
+    elif kind == "duplicate_cid":
+        kw = {"edit": (3, "case_id", None)}  # to be filled below
+        match = r"appears twice"
+    elif kind == "extra_cid":
+        kw = {}
+        match = r"is not one of the.*discordant pairs"
+
     x, _ = _filled(tmp_path, **kw)
-    with pytest.raises(ValueError):
+    if kind == "duplicate_cid":
+        wb = load_workbook(x)
+        ws = wb[qa.SHEET]
+        row2_cid = ws.cell(row=2, column=1).value
+        ws.cell(row=3, column=1).value = row2_cid
+        wb.save(x)
+    elif kind == "extra_cid":
+        _add_extra_cid(tmp_path, x)
+
+    with pytest.raises(ValueError, match=match):
         qa.import_workbook(x, "2026-10-20", csv_path=tmp_path / "c.csv")
     assert not (tmp_path / "c.csv").exists()
 
