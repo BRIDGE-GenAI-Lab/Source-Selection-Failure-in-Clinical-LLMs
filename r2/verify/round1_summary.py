@@ -23,6 +23,7 @@ from r2.io import load_original_cases
 from r2.paths import AUDIT_DIR, VERIFY_DIR
 from r2.stimuli.render import render_tool
 from r2.verify import build_packets as bp
+from r2.verify.evaluable import CONSENSUS_CSV
 from r2.verify.score_review import QUESTIONS, _load, allowed_answers, cohen_kappa
 
 ROUND = "round1"
@@ -184,7 +185,23 @@ def status_text(summary):
         f"({pv['authentic_same_as_original_run']} of {pv['n_pairs']} authentic, "
         f"{pv['modified_same_as_original_run']} of {pv['n_pairs']} modified); the "
         f"{fc['n_rows_analyzed_pairs']} fabricated_citation modified excerpts show the neutral DOI suffix "
-        "10.9999/cg.<year>.NNNN instead of the 10.9999/fake.NNNN that the models saw.\n")
+        "10.9999/cg.<year>.NNNN instead of the 10.9999/fake.NNNN that the models saw.\n" + _consensus_text())
+
+
+def _consensus_text():
+    """The Q3 consensus paragraph of README_STATUS.md, read from the imported consensus; empty before the import."""
+    if not CONSENSUS_CSV.exists():
+        return ""
+    c = pd.read_csv(CONSENSUS_CSV, dtype=str)
+    n = c["consensus_q3_authentic_concordant"].value_counts()
+    dates = ", ".join(sorted(c["adjudicated_on"].unique()))
+    return (f"\nPost hoc, A.G. and M.O. jointly adjudicated Q3 on {dates} for the {len(c)} clinically evaluable pairs "
+            "(both answered Y on Q2, Q4 and Q7) on which their Q3 answers differed: "
+            "`verification/round1/q3_consensus_form.xlsx` as sent and `verification/round1/q3_consensus_returned.xlsx` "
+            "as returned, imported into `verification/round1_q3_consensus.csv` "
+            f"(Y {n.get('Y', 0)}, P {n.get('P', 0)}, N {n.get('N', 0)}). Their original answers stay as recorded. The "
+            "consensus is used only for the clinically evaluable sensitivity analysis "
+            "(`analysis_original/clinically_evaluable.json`).\n")
 
 
 def _csv_rows(summary):

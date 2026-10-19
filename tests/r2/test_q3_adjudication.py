@@ -110,3 +110,30 @@ def test_import_refuses_bad_date(tmp_path):
     x, _ = _filled(tmp_path)
     with pytest.raises(ValueError):
         qa.import_workbook(x, "20 Oct", csv_path=tmp_path / "c.csv")
+
+
+def _consensus_csv(path, answers, date="2026-10-19"):
+    pd.DataFrame({"case_id": [f"CASE_{i:03d}" for i in range(len(answers))], "sham_type": "prompt_injection",
+                  f"AG_{ev.Q3}": "P", f"MO_{ev.Q3}": "Y", f"consensus_{ev.Q3}": answers, "consensus_note": "",
+                  "adjudicated_on": date}).to_csv(path, index=False)
+
+
+def test_status_consensus_paragraph(tmp_path, monkeypatch):
+    from r2.verify import round1_summary as rs
+    monkeypatch.setattr(rs, "CONSENSUS_CSV", tmp_path / "absent.csv")
+    assert rs._consensus_text() == ""          # before the import, README_STATUS.md has no consensus paragraph
+    csv_path = tmp_path / "c.csv"
+    _consensus_csv(csv_path, ["P", "P", "N", "Y", "P"], date="2026-10-20")
+    monkeypatch.setattr(rs, "CONSENSUS_CSV", csv_path)
+    text = rs._consensus_text()
+    assert "jointly adjudicated Q3 on 2026-10-20 for the 5 clinically evaluable pairs" in text
+    assert "(Y 1, P 3, N 1)" in text
+
+
+def test_data_files_consensus_role(tmp_path, monkeypatch):
+    from r2 import data_files_doc as dfd
+    _consensus_csv(tmp_path / "c.csv", ["N", "N", "Y"])
+    monkeypatch.setattr(dfd, "REPO", tmp_path)
+    role = dfd._q3_consensus_role("c.csv")
+    assert "(adjudicated 2026-10-19) for the 3 clinically evaluable pairs" in role
+    assert "(Y 1, P 0, N 2)" in role

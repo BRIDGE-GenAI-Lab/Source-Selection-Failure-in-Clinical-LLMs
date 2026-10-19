@@ -56,6 +56,17 @@ def _pairs_role(path):
             "self-labelling token")
 
 
+def _q3_consensus_role(path):
+    rows = _csv(path)
+    n = {v: sum(r["consensus_q3_authentic_concordant"] == v for r in rows) for v in ("Y", "P", "N")}
+    dates = ", ".join(sorted({r["adjudicated_on"] for r in rows}))
+    return (f"Joint Q3 consensus of A.G. and M.O. (adjudicated {dates}) for the {len(rows)} clinically evaluable pairs "
+            "on which their Q3 answers differed: case_id, sham type, both original answers, the consensus "
+            f"(Y {n['Y']}, P {n['P']}, N {n['N']}) and its note, imported from "
+            "`verification/round1/q3_consensus_returned.xlsx`. Post hoc; used only for the clinically evaluable "
+            "sensitivity analysis")
+
+
 def _who(path):
     code = re.search(r"review_([A-Z]+)\.", path).group(1)
     return f"{REVIEWER_NAMES.get(code, code)} ({code})"
@@ -196,6 +207,13 @@ RULES = [
      lambda path: f"Per model ({_nrows(path)} models), the non-identical pairs without the records whose choice the original runner set to A (their confidence was written by the runner, 0.5, or belongs to an answer the runner replaced): the columns of `confidence_discriminable.csv`, with the per-model Mann-Whitney U, BH FDR and higher confidence when correct recomputed, plus n_runner_set_removed"),
     (r"analysis_original/per_model_discriminable_excluding_coerced\.csv$", "`python -m r2.analysis.original_corrected`", "analysis of the original runs (per model without runner-set choices)",
      lambda path: f"Per model ({_nrows(path)} models), the non-identical pairs: evaluations, those whose choice the original runner set to A (n_runner_set), valid evaluations and their share, and position-averaged accuracy and accuracy by modified-excerpt position as recorded and without the runner-set records (`_valid`), with case-cluster bootstrap CIs and the valid n per position. The records left are the replies the runner could parse, a selected subset, not a random sample"),
+    (r"analysis_original/clinically_evaluable\.(json|csv)$", "`python -m r2.analysis.clinically_evaluable`",
+     "analysis of the original runs (clinically evaluable pairs; post hoc sensitivity analysis)",
+     "Pooled measures (accuracy, primacy, accuracy by modified-excerpt position, position-averaged accuracy, with "
+     "case-cluster bootstrap CIs, also without the runner-set records) for six subsets of the 333 analyzed pairs "
+     "defined by both physicians' answers: Q4, Q2 and Q7 each; all three (clinically evaluable); and the clinically "
+     "evaluable pairs with Q3 Y or P, and with Q3 Y (consensus where they disagreed). A subset whose records cover "
+     "only one modified-excerpt position is marked not estimable. Post hoc"),
     (r"analysis_original/table1_examples\.csv$", "`python -m r2.analysis.original_corrected` (`table1_examples`)", "Table 1 (exclusion-only reanalysis)",
      lambda path: f"Example original responses, {_nrows(path)} rows: for each sham type with non-identical pairs, a failure and a success, each the first record in (case_id, model) order, among the records whose choice the runner did not coerce, whose model is not yet in the table (else the first in that order); the rationale cut at 300 characters; fabricated_citation rows marked cue-confounded. Rule: `r2/analysis/original_corrected.py` docstring"),
     (r"analysis_original/figures/legend_Figure\d\.md$", "`python -m r2.analysis.figures_original`", "Figures 2-4 (exclusion-only reanalysis)",
@@ -215,6 +233,8 @@ RULES = [
      "Binds the forms to `data/v2/pairs_v2.json` by SHA-256 and lists one packet hash per case; scoring refuses forms from a different stimulus set"),
     (r"verification/round1_analyzed_pairs\.csv$", "`python -m r2.verify.round1_summary`", "physician review (descriptive; exclusion-only reanalysis)",
      lambda path: f"The {_nrows(path)} analyzed pairs (raw_status visible): case_id, sham type and both physicians' round-1 answers to Q1-Q8 (no notes), from the imported round-1 forms. Describes; excludes nothing"),
+    (r"verification/round1_q3_consensus\.csv$", "`python -m r2.verify.q3_adjudication import`",
+     "physician review (Q3 consensus for the clinically evaluable pairs; post hoc)", lambda path: _q3_consensus_role(path)),
     (r"verification/round1/README_STATUS\.md$", "`python -m r2.verify.round1_summary`", "physician review (descriptive; exclusion-only reanalysis)",
      "Status of the round-1 forms: they show each pair as prepared for the repeated experiment (prepared, not run), every content field and the full vignette, more than any original configuration presented; the R2 reanalysis uses the answers for the analyzed pairs descriptively"),
     (r"verification/round1_summary\.(json|csv)$", "`python -m r2.verify.round1_summary`", "physician review (descriptive; exclusion-only reanalysis)",
@@ -225,6 +245,10 @@ RULES = [
      lambda path: _workbook_role(path)),
     (r"verification/round1/q3_consensus_form\.xlsx$", "`python -m r2.verify.q3_adjudication write`", "physician review (post hoc adjudication)",
      "physician review (Q3 consensus form for the clinically evaluable pairs, as sent; post hoc)"),
+    (r"verification/round1/q3_consensus_returned\.xlsx$", "returned by A.G. and M.O.; read by "
+     "`python -m r2.verify.q3_adjudication import`", "physician review (post hoc adjudication)",
+     "physician review (Q3 consensus form for the clinically evaluable pairs, as returned by A.G. and M.O., byte for "
+     "byte; column H holds their joint answer; post hoc)"),
     # round 2: the pairs rebuilt after round 1 (python -m r2.pipeline import-edits writes the forms)
     (r"verification/round2/README_REVIEWERS\.md$", "`python -m r2.pipeline import-edits`", "physician verification", "Reviewer instructions and the eight questions (Q1-Q8), round 2"),
     (r"verification/round2/packets\.html$", "`python -m r2.pipeline import-edits`", "physician verification", "Rendered round-2 review packets of the pairs rebuilt after round 1, as prepared for the repeated experiment (prepared, not run)"),
