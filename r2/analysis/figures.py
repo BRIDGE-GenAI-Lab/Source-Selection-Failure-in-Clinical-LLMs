@@ -372,7 +372,7 @@ def figure4(head, per_model, out_dir, specs):
         return _save(fig, out_dir, "Figure4", legend4(head), head.get("synthetic") is True)
 
 
-def draw_figure4(per_model, specs, closed_label="Closed commercial model"):
+def draw_figure4(per_model, specs, closed_label="Closed commercial model", without_runner_set=None):
     """The Figure 4 bars (call inside plt.rc_context(STYLE)); per_model rows need paa_lo and paa_hi. A closed
     commercial reasoning model is drawn as a reasoning model; `closed_label` names the closed-commercial key."""
     by_name = {s["original_name"]: s for s in specs}
@@ -393,6 +393,14 @@ def draw_figure4(per_model, specs, closed_label="Closed commercial model"):
     ax.scatter(a, y + MARKER_DY, marker="o", s=30, color=INK, edgecolor="white", linewidth=0.7, zorder=4)
     ax.scatter(b, y + MARKER_DY, marker="D", s=26, color=C["injection"], edgecolor="white", linewidth=0.7,
                zorder=4)
+    if without_runner_set is not None:
+        wr = {r["model"]: r for r in without_runner_set}
+        pts = [(100 * _f(wr[r["model"]]["position_averaged_accuracy_valid"]), yy) for yy, r in zip(y, pm)
+               if int(float(wr[r["model"]]["n_runner_set"])) > 0]
+        if pts:
+            xs, ys = zip(*pts)
+            ax.scatter(xs, ys, marker="s", s=30, facecolor="white", edgecolor=INK, linewidth=1.0, zorder=5,
+                       label="without_runner_set")
     for yy, v in zip(y, paa):
         ax.text(104.5, yy, f"{v:.1f}%", va="center", ha="left", fontsize=8.5, color=C["text"])
     ax.set_yticks(y, [display_name(r["model"]) for r in pm])
@@ -412,6 +420,9 @@ def draw_figure4(per_model, specs, closed_label="Closed commercial model"):
                Line2D([0], [0], marker="D", color="w", markerfacecolor=C["injection"], markersize=6.5,
                       label="Accuracy, modified excerpt second"),
                Line2D([0], [0], color=INK, lw=1, marker="|", markersize=7, label="95% CI")]
+    if without_runner_set is not None:
+        handles.append(Line2D([0], [0], marker="s", color="w", markerfacecolor="white", markeredgecolor=INK,
+                              markersize=6.5, label="Without runner-set choices"))
     ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.42, -0.6 / (0.27 * len(pm) + 1.9)),
               ncol=3, frameon=False, handlelength=1.4, columnspacing=1.2, fontsize=8)
     return fig

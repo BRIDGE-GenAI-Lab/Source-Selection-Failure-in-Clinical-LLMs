@@ -160,3 +160,17 @@ def test_committed_headline_has_the_cue_block():
     from r2.paths import REPO
     committed = json.loads((REPO / "analysis_original" / "headline.json").read_text())
     assert committed == json.loads(json.dumps(run(write=False)))
+
+
+def test_per_model_excluding_coerced():
+    import r2.analysis.original_corrected as oc
+    df = oc.original_frame()
+    pm = oc._per_model_excluding_coerced(df[df.visible_status != "identical"]).set_index("model")
+    assert len(pm) == 21 and (pm.n == 333).all()
+    assert int((pm.n_runner_set > 0).sum()) == 12 and int(pm.n_runner_set.sum()) == 413
+    q = pm.loc["Qwen/Qwen3-Next-80B-A3B-Thinking"]
+    assert (q.n_runner_set, q.n_valid) == (165, 168)
+    assert abs(q.position_averaged_accuracy - 0.716) < 0.001 and abs(q.position_averaged_accuracy_valid - 0.977) < 0.001
+    none = pm[pm.n_runner_set == 0]
+    assert (none.position_averaged_accuracy_valid == none.position_averaged_accuracy).all()
+    assert (pm.n_valid_sham_first > 0).all() and (pm.n_valid_sham_second > 0).all()

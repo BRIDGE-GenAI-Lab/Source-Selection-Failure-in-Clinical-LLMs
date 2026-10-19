@@ -127,3 +127,15 @@ def test_figure2_per_model_points_sit_beside_their_bar_not_on_it():
 def test_figure4_order_markers_and_ci_whisker_are_on_separate_rows():
     assert abs(figures.MARKER_DY - figures.CI_DY) >= 0.25
     assert abs(figures.MARKER_DY) < 0.34 and abs(figures.CI_DY) < 0.34  # both stay inside the bar's band
+
+
+def test_figure4_open_squares_only_for_models_with_runner_set_records():
+    import matplotlib
+    matplotlib.use("Agg")
+    from r2.analysis import figures as F
+    from r2.analysis import figures_original as FO
+    head, per_model, per_type, by_profile, wr = FO.load()   # load() returns 5 elements after Step 5
+    from r2.run.harness import load_specs
+    fig = F.draw_figure4(per_model, load_specs(), without_runner_set=wr)
+    squares = [c for c in fig.axes[0].collections if getattr(c, "get_label", lambda: "")() == "without_runner_set"]
+    assert len(squares) == 1 and len(squares[0].get_offsets()) == 12

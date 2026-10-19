@@ -444,7 +444,7 @@ def test_figure4_color_key_names_the_closed_reasoning_model(made):
     from r2.analysis import figures as F
     from r2.run.harness import load_specs
     out, _ = made
-    _, per_model, _, _ = fo.load()
+    _, per_model, _, _, _ = fo.load()
     specs = load_specs()
     assert fo.closed_reasoning(per_model, specs) == ["GPT-5-Nano"]
     by_name = {s["original_name"]: s for s in specs}

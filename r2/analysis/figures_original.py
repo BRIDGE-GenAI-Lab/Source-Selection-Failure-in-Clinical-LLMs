@@ -49,7 +49,7 @@ def load(analysis_dir=None):
     if set(by_profile) != set(CONFIG):
         raise ValueError(f"configurations {sorted(by_profile)} differ from {sorted(CONFIG)}")
     return (head, _read_csv(d / "per_model_discriminable.csv"), _read_csv(d / "per_type_discriminable.csv"),
-            by_profile)
+            by_profile, _read_csv(d / "per_model_discriminable_excluding_coerced.csv"))
 
 
 def _sample(head, per_model):
@@ -150,12 +150,24 @@ def _color_key(per_model, specs):
     return f"reasoning model (including {inc}), other closed commercial model or open-weight model"
 
 
-def legend4(head, per_model, specs):
+def _squares_sentence(without_runner_set):
+    if without_runner_set is None:
+        return ""
+    rows = [r for r in without_runner_set if int(float(r["n_runner_set"])) > 0]
+    top = max(rows, key=lambda r: int(float(r["n_runner_set"])))
+    return (f"Open squares: position-averaged accuracy without the evaluations whose choice the original runner set "
+            f"to A, for the {len(rows)} models with any (Supplementary Table S9, Part D); for "
+            f"{F.display_name(top['model'])}, these were {int(float(top['n_runner_set']))} of its "
+            f"{int(float(top['n']))} evaluations. ")
+
+
+def legend4(head, per_model, specs, without_runner_set=None):
     s = _sample(head, per_model)
     return ("**Figure 4 | Position-averaged accuracy by model in the original evaluations of the non-identical "
             "pairs.** Bars: position-averaged accuracy, the mean of the accuracy with the modified excerpt shown "
             "first and with it shown second; whiskers: 95% CI. Circles: accuracy with the modified excerpt first; "
-            "diamonds: accuracy with the modified excerpt second. Each model saw each pair once, in one order; within a "
+            "diamonds: accuracy with the modified excerpt second. "
+            + _squares_sentence(without_runner_set) + "Each model saw each pair once, in one order; within a "
             "model, the two accuracies (circle and diamond) come from different pairs. Bar color: "
             + _color_key(per_model, specs) + ". Models are ordered by position-averaged accuracy; the dashed line marks "
             f"50% (chance). Each model: {s['n_pairs']} evaluations, one per pair. " + _tail(s))
@@ -241,22 +253,22 @@ def figure3(head, per_model, per_type, out_dir):
         return _save(fig, out_dir, "Figure3", legend3(head, per_model))
 
 
-def figure4(head, per_model, out_dir, specs):
+def figure4(head, per_model, out_dir, specs, without_runner_set=None):
     with plt.rc_context(F.STYLE):
         closed_label = "Other closed commercial model" if closed_reasoning(per_model, specs) else \
             "Closed commercial model"
-        fig = F.draw_figure4(per_model, specs, closed_label=closed_label)
-        return _save(fig, out_dir, "Figure4", legend4(head, per_model, specs))
+        fig = F.draw_figure4(per_model, specs, closed_label=closed_label, without_runner_set=without_runner_set)
+        return _save(fig, out_dir, "Figure4", legend4(head, per_model, specs, without_runner_set))
 
 
 def run(analysis_dir=None, out_dir=None, specs=None):
     from r2.run.harness import load_specs
-    head, per_model, per_type, by_profile = load(analysis_dir)
+    head, per_model, per_type, by_profile, without_runner_set = load(analysis_dir)
     out_dir = Path(OUT if analysis_dir is None else analysis_dir) / "figures" if out_dir is None else Path(out_dir)
     specs = load_specs() if specs is None else specs
     return {"Figure2": figure2(head, per_model, by_profile, out_dir),
             "Figure3": figure3(head, per_model, per_type, out_dir),
-            "Figure4": figure4(head, per_model, out_dir, specs)}
+            "Figure4": figure4(head, per_model, out_dir, specs, without_runner_set)}
 
 
 if __name__ == "__main__":

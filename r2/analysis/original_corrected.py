@@ -124,6 +124,28 @@ def _excluding_coerced(sub):
     return {"n": int(len(kept)), "n_coerced_excluded": int(sub.coerced.sum()), **_measures(kept)}
 
 
+def _per_model_excluding_coerced(disc):
+    """Per model: the records whose choice the runner set (count and valid share), and position-averaged accuracy
+    and accuracy by position as recorded and without those records, with case-cluster bootstrap CIs. The records
+    left are the replies the runner could parse, a selected subset of the model's replies, not a random sample."""
+    rows = []
+    for model, g in disc.groupby("model"):
+        k = g[~g.coerced]
+        if k.sham_first.all() or (~k.sham_first).all():
+            raise ValueError(f"{model}: no valid record in one position; position-averaged accuracy not estimable")
+        a, b = position_summary(g), position_summary(k)
+        rec = {"model": model, "profile": g.profile.iloc[0], "n": int(len(g)), "n_runner_set": int(g.coerced.sum()),
+               "n_valid": int(len(k)), "valid_share": len(k) / len(g),
+               "position_averaged_accuracy": a["position_averaged_accuracy"]}
+        rec["paa_lo"], rec["paa_hi"] = cluster_bootstrap_paa(g)
+        rec["position_averaged_accuracy_valid"] = b["position_averaged_accuracy"]
+        rec["paa_valid_lo"], rec["paa_valid_hi"] = cluster_bootstrap_paa(k)
+        rec.update({"acc_sham_first_valid": b["acc_sham_first"], "acc_sham_second_valid": b["acc_sham_second"],
+                    "n_valid_sham_first": int(k.sham_first.sum()), "n_valid_sham_second": int((~k.sham_first).sum())})
+        rows.append(rec)
+    return pd.DataFrame(rows).sort_values(["n_runner_set", "model"], ascending=[False, True])
+
+
 CUE_TYPE = "fabricated_citation"
 CUE_KEY = f"{CUE_TYPE}_cue_confounded"
 CUE_NOTE = (
@@ -263,6 +285,8 @@ def run(write=True):
             confidence_original.per_model(conf[name]).to_csv(OUT / f"confidence_{name}.csv", index=False)
         confidence_original.per_model_excluding_runner_set(conf["discriminable"]).to_csv(
             OUT / "confidence_discriminable_excluding_coerced.csv", index=False)
+        _per_model_excluding_coerced(subsets["discriminable"]).to_csv(
+            OUT / "per_model_discriminable_excluding_coerced.csv", index=False)
     return head
 
 
