@@ -641,11 +641,12 @@ S_coerced_choices.csv
   used exactly the runner's max_tokens: column hit_token_limit of audit/coerced_choices.csv, derived there
   from usage.completion_tokens in results/<run>/raw/<case>_response.json.
 
-S_data_files.csv (Supplementary Table S14; absent until the release)
-- Written by edits/make_data_files_table.py from docs/DATA_FILES.md at the release tag: path, role (the first
-  sentence of the entry), experiment and SHA-256. The script refuses when a file that S14 lists has no row, is
-  not yet present, or has a SHA-256 that differs from the file at the tag. Until the file exists, S14 is a
-  pending marker in the supplement.
+S_data_files.csv (Supplementary Table S14)
+- Written by edits/make_data_files_table.py from docs/DATA_FILES.md: path, role (the first sentence of the
+  entry), experiment and SHA-256, one row per tracked data file. Now written at HEAD (--tag HEAD); at the
+  release, regenerate it at the release tag (no --tag). The script refuses when a file that S14 lists has no
+  row, is not yet present, or has a SHA-256 that differs from the file at that revision. S14 shows only the
+  rows that DATA_FILES_ALLOW in edits/build_supplement.py admits.
 
 The other tables (S_audit_by_type, S_hash_verification, S_modifications_by_type, S_original_reanalysis) are
 written by python -m r2.analysis.supp_tables in the repository from the audit and analysis_original outputs.
