@@ -114,12 +114,8 @@ def test_q8_counts_pairs_both_rated_y():
 
 @pytest.fixture
 def committed_summary():
-    """The committed round-1 summary. A rehearsal clone (tests/r2/test_rehearse.py) replaces verification/ with
-    simulated files that have none; the summary describes the real returned forms only."""
-    path = VERIFY_DIR / "round1_summary.json"
-    if not path.exists():
-        pytest.skip(f"{path} absent (verification/ replaced by a rehearsal)")
-    return json.loads(path.read_text(encoding="utf-8"))
+    """The committed round-1 summary."""
+    return json.loads((VERIFY_DIR / "round1_summary.json").read_text(encoding="utf-8"))
 
 
 def test_summary_files_describe_both_subsets(committed_summary):
@@ -145,6 +141,16 @@ def test_summary_is_recomputed_from_the_imported_forms(committed_summary):
     js = committed_summary
     fresh = rs.summarize(*rs.load_forms())
     assert json.loads(json.dumps(fresh)) == {k: js[k] for k in fresh}
+
+
+def test_seen_original_shows_missing_metadata_as_not_stated():
+    out = rs._seen_original({"metadata": None, "excerpt_text": "x"})
+    assert out == {"organization": "not stated", "document_title": "not stated", "version": "not stated",
+                   "publication_year": "not stated", "excerpt_text": "x"}
+    out = rs._seen_original({"metadata": {"organization": "Org", "publication_year": 2020}, "excerpt_text": "x"})
+    assert out["organization"] == "Org" and out["publication_year"] == 2020
+    assert out["document_title"] == "not stated" and out["version"] == "not stated"
+    assert rs._seen_original({})["excerpt_text"] == ""
 
 
 def test_the_analyzed_pairs_are_the_333_visible_pairs_and_all_were_reviewed():
@@ -361,7 +367,7 @@ def test_committed_confidence_tables_are_current(conf_frame):
         assert committed.equals(fresh), name
 
 
-# ---------------------------------------------------------------- Task 1b: physician answers export and status
+# ---------------------------------------------------------------- Task 1b: physician answers export
 def test_analyzed_pairs_export(committed_summary):
     out = pd.read_csv(VERIFY_DIR / "round1_analyzed_pairs.csv", dtype=str)
     a, b = rs.load_forms()
@@ -372,14 +378,6 @@ def test_analyzed_pairs_export(committed_summary):
         for q, _ in QUESTIONS:
             assert list(out[f"{who}_{q}"]) == list(form.loc[out.case_id, q]), (who, q)
     assert list(out.sham_type) == list(a.loc[out.case_id, "sham_type"])
-
-
-def test_round1_status_readme(committed_summary):
-    text = (VERIFY_DIR / "round1" / "README_STATUS.md").read_text(encoding="utf-8")
-    assert text == rs.status_text(committed_summary)
-    assert "repeated experiment that was not run" in text and "exactly what the evaluated models receive" in text
-    assert "show each of the 477 pairs" in text and "333 analyzed pairs" in text and "descriptively" in text
-    assert "477 round-1 forms" not in text  # two forms (A.G., M.O.), 477 pairs each
 
 
 # ---------------------------------------------------------------- Task 1b: model naming and legends
@@ -442,10 +440,9 @@ def test_figure4_color_key_names_the_closed_reasoning_model(made):
     """Final review: GPT-5-Nano is drawn as a reasoning model, so the closed-commercial key says "other"; with it
     the 5 closed commercial models of the manuscript are 4 red bars plus one reasoning bar."""
     from r2.analysis import figures as F
-    from r2.run.harness import load_specs
     out, _ = made
     _, per_model, _, _, _ = fo.load()
-    specs = load_specs()
+    specs = fo.load_specs()
     assert fo.closed_reasoning(per_model, specs) == ["GPT-5-Nano"]
     by_name = {s["original_name"]: s for s in specs}
     classes = [F._model_class(by_name[r["model"]]) for r in per_model]

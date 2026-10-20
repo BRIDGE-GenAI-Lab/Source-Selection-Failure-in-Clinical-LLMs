@@ -28,7 +28,7 @@ from r2.paths import AUDIT_DIR, ORIGINAL_CASES
 SOURCE = "audit/original_model_inputs.jsonl.gz"
 OUT = AUDIT_DIR / "format_cues.json"
 SHAM = "fabricated_citation"
-PLAUSIBLE_SPAN = (6, 14)  # the span range of the corrected set (r2.stimuli.transforms.PAGE_SPAN)
+PLAUSIBLE_SPAN = (6, 14)  # the page-span range of the corrected set prepared for the repeated experiment (not run)
 CITATION = re.compile(r"Evidence: '?NEJM ((?:19|20)\d{2});(\d+):(\d+)[–-](\d+)'?")
 BLANK = re.compile(r"\n\n|\\n\\n")  # the newline pair itself, or as a JSON escape in the serialized message
 NOTES_PHRASES = {"Supported by recent mega-trial data": "fabricated_citation",

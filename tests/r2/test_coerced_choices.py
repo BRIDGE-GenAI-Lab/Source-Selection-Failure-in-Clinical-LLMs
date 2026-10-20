@@ -10,7 +10,8 @@ from r2.paths import AUDIT_DIR, LEGACY_RESULTS, REPO
 
 INLINE = ("together_inline6", "gemini_inline7", "deepseek_chat_inline7", "deepseek_reasoner_inline7")
 COERCED = (cc.COERCED_PARSE, cc.COERCED_INVALID)
-mounted = pytest.mark.skipif(not LEGACY_RESULTS.exists(), reason="legacy raw responses not mounted")
+mounted = pytest.mark.skipif(LEGACY_RESULTS is None or not LEGACY_RESULTS.exists(),
+                             reason="legacy raw responses not mounted (R2_LEGACY_ROOT)")
 
 
 # ------------------------------------------------------------------ synthetic records

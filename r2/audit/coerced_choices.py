@@ -29,7 +29,7 @@ from collections import Counter, defaultdict
 import pandas as pd
 
 from r2.original_runs import load_original, sham_position
-from r2.paths import AUDIT_DIR, LEGACY_RESULTS, REPO
+from r2.paths import AUDIT_DIR, LEGACY_RESULTS, REPO, legacy
 from r2.profiles import profile_for
 
 COERCED_PARSE = "coerced_parse_failure"
@@ -180,7 +180,7 @@ def classify(profile, stored, raw_text, openai_fc_replay=None):
 
 
 def _raw_doc(run_dir, case_id):
-    path = LEGACY_RESULTS / run_dir / "raw" / f"{case_id}_response.json"
+    path = legacy(LEGACY_RESULTS) / run_dir / "raw" / f"{case_id}_response.json"
     if not path.exists():
         return None
     return json.loads(path.read_text())
@@ -195,7 +195,7 @@ def _openai_fc_replay(record):
     finals = [f for f in record.get("raw_responses") or [] if f.endswith("_final.json")]
     if not finals:
         return None
-    path = LEGACY_RESULTS / record["run_dir"] / "raw" / finals[-1]
+    path = legacy(LEGACY_RESULTS) / record["run_dir"] / "raw" / finals[-1]
     if not path.exists():
         return None
     if not _PARSER:

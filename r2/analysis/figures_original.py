@@ -22,11 +22,11 @@ import numpy as np  # noqa: E402
 
 from r2.analysis import figures as F  # noqa: E402
 from r2.analysis.original_corrected import CUE_KEY, CUE_TYPE, OUT  # noqa: E402
-from r2.paths import AUDIT_DIR  # noqa: E402
+from r2.paths import AUDIT_DIR, MODELS_FILE  # noqa: E402
 
 DPI = 300
-# runner profile -> reader-facing name, numbered as in the supplement (npj_R2_WORKING/edits/build_supplement.py
-# CONFIG); a single-model configuration is named by its model's display name (the R1 name)
+# runner profile -> reader-facing name, numbered as the configurations of the Supplementary Methods; a single-model
+# configuration is named by its model's display name (the R1 name)
 CONFIG = {
     "openai_fc": ("Configuration 1", "OpenAI, function calling"),
     "gemini_inline7": ("Configuration 2", "Gemini, excerpts inline"),
@@ -40,6 +40,15 @@ GROUP_X = np.array([0.0, 1.35, 2.35, 3.35, 4.35, 5.35])  # pooled, then the five
 def _read_csv(path):
     with open(path, newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
+
+
+def load_specs(path=MODELS_FILE):
+    """The model list of r2/run/models_v2.json; Figure 4 reads only its reasoning and provider fields."""
+    specs = json.loads(Path(path).read_text())["models"]
+    names = [s["original_name"] for s in specs]
+    if len(set(names)) != len(names):
+        raise ValueError(f"{path}: duplicate original_name")
+    return specs
 
 
 def load(analysis_dir=None):
@@ -264,7 +273,6 @@ def figure4(head, per_model, out_dir, specs, without_runner_set=None):
 
 
 def run(analysis_dir=None, out_dir=None, specs=None):
-    from r2.run.harness import load_specs
     head, per_model, per_type, by_profile, without_runner_set = load(analysis_dir)
     out_dir = Path(OUT if analysis_dir is None else analysis_dir) / "figures" if out_dir is None else Path(out_dir)
     specs = load_specs() if specs is None else specs

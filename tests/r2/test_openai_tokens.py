@@ -7,7 +7,8 @@ import pytest
 from r2.audit import openai_tokens as ot
 from r2.paths import AUDIT_DIR, LEGACY_RESULTS
 
-mounted = pytest.mark.skipif(not LEGACY_RESULTS.exists(), reason="legacy raw responses not mounted")
+mounted = pytest.mark.skipif(LEGACY_RESULTS is None or not LEGACY_RESULTS.exists(),
+                             reason="legacy raw responses not mounted (R2_LEGACY_ROOT)")
 CHARS = list  # toy tokenizer: one token per character, so expected counts are plain len()
 MODELS = ("gpt-4.1-2025-04-14", "gpt-4.1-nano-2025-04-14", "gpt-4o-mini-2024-07-18", "gpt-5-nano-2025-08-07")
 

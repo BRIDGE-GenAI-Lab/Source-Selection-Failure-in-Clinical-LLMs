@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 
 from r2.io import load_original_cases
 from r2.original_runs import load_original
-from r2.paths import AUDIT_DIR, LEGACY_RESULTS, ORIGINAL_CASES, REPO
+from r2.paths import AUDIT_DIR, LEGACY_RESULTS, ORIGINAL_CASES, REPO, legacy
 from r2.profiles import PROFILES, profile_for
 
 MESSAGE_VARIABLE = {
@@ -147,6 +147,8 @@ def reconstruct_openai_fc(case_model, mapping):
 
 
 def _logged_prefix(run_dir, case_id):
+    if LEGACY_RESULTS is None:
+        return None  # R2_LEGACY_ROOT unset: not checkable (build_all refuses to write without it)
     path = LEGACY_RESULTS / run_dir / "raw" / f"{case_id}_response.json"
     if not path.exists():
         return None  # no raw response file: not checkable
@@ -157,6 +159,10 @@ def _logged_prefix(run_dir, case_id):
 
 
 def build_all(write=True):
+    """The reconstructed input of every original record. Writing needs R2_LEGACY_ROOT: prompt_prefix_verified is
+    checked against the prompts logged in the raw response files, and is None for every row without them."""
+    if write:
+        legacy(LEGACY_RESULTS)
     cases, _ = load_original_cases()
     case_models = None
     rows = []

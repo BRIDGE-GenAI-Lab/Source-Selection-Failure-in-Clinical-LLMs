@@ -32,7 +32,7 @@ import numpy as np
 
 from r2.audit.original_inputs import FixedDraw, load_case_models
 from r2.original_runs import load_original
-from r2.paths import AUDIT_DIR, LEGACY_RESULTS, REPO
+from r2.paths import AUDIT_DIR, LEGACY_RESULTS, REPO, legacy
 from r2.profiles import OPENAI_FC_MODELS
 
 ENCODING = "o200k_base"
@@ -321,7 +321,7 @@ def build(write=True, encode=None):
         g = gz[(rec["model_name"], rec["case_id"])]
         assert g["run_dir"] == rec["run_dir"] and g["mapping"] == rec["mapping"]
         names = rec["raw_responses"]
-        docs = [json.loads((LEGACY_RESULTS / rec["run_dir"] / "raw" / n).read_text()) for n in names]
+        docs = [json.loads((legacy(LEGACY_RESULTS) / rec["run_dir"] / "raw" / n).read_text()) for n in names]
         calls = replay_calls(cases[rec["case_id"]], g["mapping"], docs, names)
         rows.append(record_row(g, cases[rec["case_id"]], docs, names, encode, calls=calls))
         if len(docs) > 2:

@@ -17,6 +17,8 @@ import pandas as pd
 
 from r2.analysis import confidence_original
 from r2.analysis.stats import CATEGORY, cluster_bootstrap_mean, cluster_bootstrap_paa, fdr, gee_logit, position_summary
+from r2.analysis.table1 import modification, patient, quote
+from r2.io import load_original_cases
 from r2.original_runs import load_original, sham_position
 from r2.paths import AUDIT_DIR, REPO
 from r2.profiles import profile_for
@@ -215,10 +217,7 @@ def table1_examples(df):
     first non-coerced record of the non-identical pairs in (case_id, model) order whose model is not yet in the
     table, else the first in that order. The order of `df` does not matter. Order column: TS, authentic excerpt
     shown first (as A); ST, modified excerpt shown first."""
-    # local imports: r2.analysis.repeated (imported by table1) imports this module
-    from r2.analysis.figures import display_name
-    from r2.analysis.table1 import modification, patient, quote
-    from r2.io import load_original_cases
+    from r2.analysis.figures import display_name  # local import: r2.analysis.figures loads matplotlib
     cases, _ = load_original_cases()
     pool = df[(df.raw_status == "visible") & ~df.coerced].sort_values(["case_id", "model"])
     rows, used = [], set()

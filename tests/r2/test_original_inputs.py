@@ -5,6 +5,7 @@ import pytest
 from r2.audit.original_inputs import (build_all, load_case_models, reconstruct_inline,
                                       reconstruct_openai_fc)
 from r2.io import load_original_cases
+from r2.paths import LEGACY_RESULTS
 
 INLINE = ("together_inline6", "gemini_inline7", "deepseek_chat_inline7", "deepseek_reasoner_inline7")
 
@@ -44,6 +45,7 @@ def test_all_logged_hashes_reproduce(rows):
     assert counts["no_logged_hash"] == 4
 
 
+@pytest.mark.skipif(LEGACY_RESULTS is None, reason="the logged prompts are in the raw run directories (R2_LEGACY_ROOT)")
 def test_logged_prompt_prefixes_match(rows):
     checked = [r for r in rows if r["prompt_prefix_verified"] is not None]
     assert len(checked) > 8000

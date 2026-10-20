@@ -18,14 +18,11 @@ dependencies = [
     "rich>=13.0.0",
     "typer>=0.9.0",
     "python-dotenv>=1.0.0",
-    "openpyxl>=3.1",
     "tiktoken>=0.7",  # r2.audit.openai_tokens (o200k_base)
     "numpy>=1.26",
     "scipy>=1.11",
-    "statsmodels>=0.14",  # the GEE; the exact versions of the analysis are written into FREEZE_RECORD.md
+    "statsmodels>=0.14",  # the GEE
     "matplotlib>=3.8",
-    "python-docx>=1.1",
-    "lxml>=5.0",
 ]
 
 [project.optional-dependencies]
