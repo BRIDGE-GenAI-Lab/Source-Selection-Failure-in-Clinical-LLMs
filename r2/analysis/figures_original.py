@@ -155,10 +155,12 @@ def _squares_sentence(without_runner_set):
         return ""
     rows = [r for r in without_runner_set if int(float(r["n_runner_set"])) > 0]
     top = max(rows, key=lambda r: int(float(r["n_runner_set"])))
-    return (f"Open squares: position-averaged accuracy without the evaluations whose choice the original runner set "
-            f"to A, for the {len(rows)} models with any (Supplementary Table S9, Part D); for "
-            f"{F.display_name(top['model'])}, these were {int(float(top['n_runner_set']))} of its "
-            f"{int(float(top['n']))} evaluations. ")
+    return (f"Open squares: position-averaged accuracy among only the evaluations with a valid A or B reply, for the "
+            f"{len(rows)} models whose choice the original runner set to A in some evaluations; the label gives each "
+            f"one's valid replies (Supplementary Table S9, Part D). For {F.display_name(top['model'])}, these were "
+            f"{int(float(top['n_valid']))} of its {int(float(top['n']))} evaluations. The squares are conditional on a "
+            f"valid reply, a selected subset rather than a random sample; they are not the models' overall accuracy "
+            f"and do not rank the models. ")
 
 
 def legend4(head, per_model, specs, without_runner_set=None):

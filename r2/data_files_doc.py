@@ -13,6 +13,15 @@ import subprocess
 
 from r2.paths import REPO
 
+def _evaluable_role(lead):
+    from r2.analysis.clinically_evaluable import TIERS
+    return (f"{lead} for {len(TIERS)} subsets of the 333 analyzed pairs defined by both physicians' answers: Q4, Q2 and "
+            "Q7 each; all three (clinically evaluable); the clinically evaluable pairs with Q3 Y or P, and with Q3 Y "
+            "(consensus where they disagreed); and the clinically evaluable pairs without the fabricated_citation "
+            "pairs (cue-confounded DOI), plus the number of distinct authentic excerpts per subset. A subset whose "
+            "records cover only one modified-excerpt position is marked not estimable. Post hoc")
+
+
 DIRS = ["data", "audit", "verification", "analysis_original", "analysis_repeated"]
 FILES = ["docs/r2/vignette_generation_prompt.md", "docs/r2/FREEZE_RECORD.md"]  # single tracked files outside DIRS
 OUT = REPO / "docs" / "DATA_FILES.md"
@@ -206,14 +215,16 @@ RULES = [
     (r"analysis_original/confidence_discriminable_excluding_coerced\.csv$", "`python -m r2.analysis.original_corrected` (`r2.analysis.confidence_original`)", "analysis of the original runs (confidence, R1 definitions)",
      lambda path: f"Per model ({_nrows(path)} models), the non-identical pairs without the records whose choice the original runner set to A (their confidence was written by the runner, 0.5, or belongs to an answer the runner replaced): the columns of `confidence_discriminable.csv`, with the per-model Mann-Whitney U, BH FDR and higher confidence when correct recomputed, plus n_runner_set_removed"),
     (r"analysis_original/per_model_discriminable_excluding_coerced\.csv$", "`python -m r2.analysis.original_corrected`", "analysis of the original runs (per model without runner-set choices)",
-     lambda path: f"Per model ({_nrows(path)} models), the non-identical pairs: evaluations, those whose choice the original runner set to A (n_runner_set), valid evaluations and their share, and position-averaged accuracy and accuracy by modified-excerpt position as recorded and without the runner-set records (`_valid`), with case-cluster bootstrap CIs and the valid n per position. The records left are the replies the runner could parse, a selected subset, not a random sample"),
-    (r"analysis_original/clinically_evaluable\.(json|csv)$", "`python -m r2.analysis.clinically_evaluable`",
+     lambda path: f"Per model ({_nrows(path)} models), the non-identical pairs: evaluations, those whose choice the original runner set to A (n_runner_set), valid evaluations and their share, and position-averaged accuracy and accuracy by modified-excerpt position as recorded and without the runner-set records (`_valid`), with case-cluster bootstrap CIs and the valid n per position. The records left are the replies with a valid A or B choice, a selected subset, not a random sample"),
+    (r"analysis_original/clinically_evaluable\.json$", "`python -m r2.analysis.clinically_evaluable`",
      "analysis of the original runs (clinically evaluable pairs; post hoc sensitivity analysis)",
-     "Pooled measures (accuracy, primacy, accuracy by modified-excerpt position, position-averaged accuracy, with "
-     "case-cluster bootstrap CIs, also without the runner-set records) for six subsets of the 333 analyzed pairs "
-     "defined by both physicians' answers: Q4, Q2 and Q7 each; all three (clinically evaluable); and the clinically "
-     "evaluable pairs with Q3 Y or P, and with Q3 Y (consensus where they disagreed). A subset whose records cover "
-     "only one modified-excerpt position is marked not estimable. Post hoc"),
+     lambda path: _evaluable_role("Pooled measures (accuracy, primacy, accuracy by modified-excerpt position, "
+                                  "position-averaged accuracy, with case-cluster bootstrap CIs, also without the "
+                                  "runner-set records)")),
+    (r"analysis_original/clinically_evaluable\.csv$", "`python -m r2.analysis.clinically_evaluable`",
+     "analysis of the original runs (clinically evaluable pairs; post hoc sensitivity analysis)",
+     lambda path: _evaluable_role("The tier counts and measures only (no case ids, no runner-set-excluded measures: "
+                                  "the JSON has them)")),
     (r"analysis_original/table1_examples\.csv$", "`python -m r2.analysis.original_corrected` (`table1_examples`)", "Table 1 (exclusion-only reanalysis)",
      lambda path: f"Example original responses, {_nrows(path)} rows: for each sham type with non-identical pairs, a failure and a success, each the first record in (case_id, model) order, among the records whose choice the runner did not coerce, whose model is not yet in the table (else the first in that order); the rationale cut at 300 characters; fabricated_citation rows marked cue-confounded. Rule: `r2/analysis/original_corrected.py` docstring"),
     (r"analysis_original/figures/legend_Figure\d\.md$", "`python -m r2.analysis.figures_original`", "Figures 2-4 (exclusion-only reanalysis)",

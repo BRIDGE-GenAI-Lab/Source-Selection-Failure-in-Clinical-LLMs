@@ -15,7 +15,8 @@ def test_tiers_with_fixture_consensus():
     ids = ce.tier_case_ids(p, _consensus("MO"))
     sizes = {k: len(v) for k, v in ids.items()}
     assert sizes == {"q4_relevant": 85, "q2_answerable": 141, "q7_trust_reducing": 150, "evaluable": 25,
-                     "evaluable_concordant": 24, "evaluable_concordant_full": 16}
+                     "evaluable_concordant": 24, "evaluable_concordant_full": 16,
+                     "evaluable_excluding_fabricated_citation": 21}
 
 
 def test_run_reproduces_known_subset_estimates():
@@ -65,3 +66,32 @@ def test_summarize_empty_frame():
     from r2.analysis import original_corrected as oc
     s = ce.summarize(oc.original_frame().iloc[0:0])
     assert s["n_pairs"] == 0 and s["estimable"] is False
+
+
+def test_new_tier_is_last_and_drops_only_fabricated_citation_pairs():
+    assert ce.TIERS[-1][0] == "evaluable_excluding_fabricated_citation"
+    p = ev.load_pairs()
+    ids = ce.tier_case_ids(p, _consensus("MO"))
+    drop = set(ids["evaluable"]) - set(ids["evaluable_excluding_fabricated_citation"])
+    assert drop and set(p.loc[sorted(drop), "sham_type"]) == {"fabricated_citation"}
+    assert not (set(p.loc[ids["evaluable_excluding_fabricated_citation"], "sham_type"]) & {"fabricated_citation"})
+
+
+def test_new_tier_values_and_distinct_authentic_excerpts():
+    out = ce.run(write=False, consensus=_consensus("MO"))
+    t = out["tiers"]["evaluable_excluding_fabricated_citation"]
+    assert (t["n_pairs"], t["estimable"]) == (21, True)
+    assert out["tiers"]["evaluable"]["n_distinct_authentic_excerpts"] == 19
+    for name, _ in ce.TIERS:
+        assert 1 <= out["tiers"][name]["n_distinct_authentic_excerpts"] <= out["tiers"][name]["n_pairs"]
+
+
+def test_distinct_excerpts_counted_from_the_audit_hash():
+    from r2.analysis import original_corrected as oc
+    sub = oc.original_frame().head(0)
+    assert ce.summarize(sub, hashes=pd.Series(dtype=str))["n_distinct_authentic_excerpts"] == 0
+    df = oc.original_frame()
+    df = df[df.visible_status != "identical"]
+    ids = sorted(df.case_id.unique())[:3]
+    h = pd.Series({ids[0]: "x", ids[1]: "x", ids[2]: "y"})
+    assert ce.summarize(df[df.case_id.isin(ids)], hashes=h)["n_distinct_authentic_excerpts"] == 2

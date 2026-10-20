@@ -6,6 +6,7 @@ excludes no pair from the primary analysis. Q3 is the shared answer where A.G. a
     python -m r2.analysis.clinically_evaluable
 """
 import json
+from pathlib import Path
 
 import pandas as pd
 
@@ -22,7 +23,15 @@ TIERS = (
                              "source (Q3 Y or P; consensus where the physicians disagreed)"),
     ("evaluable_concordant_full", "clinically evaluable, with the authentic excerpt fully concordant with its source "
                                   "(Q3 Y; consensus where the physicians disagreed)"),
+    ("evaluable_excluding_fabricated_citation", "clinically evaluable, without the fabricated_citation pairs, whose "
+                                                "modified excerpts carried a cue-confounded DOI"),
 )
+AUDIT_CSV = Path(__file__).resolve().parents[2] / "audit" / "pair_audit.csv"
+
+
+def load_excerpt_hashes(path=AUDIT_CSV):
+    """case_id -> hash of the authentic excerpt (T) from the pair audit."""
+    return pd.read_csv(path, dtype=str).set_index("case_id")["t_excerpt_hash"]
 
 
 def load_consensus(path=CONSENSUS_CSV):
@@ -51,16 +60,20 @@ def tier_case_ids(pairs, consensus):
     ids = {k: sorted(m[m].index) for k, m in masks.items()}
     ids["evaluable_concordant"] = sorted(q3[q3.isin(("Y", "P"))].index)
     ids["evaluable_concordant_full"] = sorted(q3[q3 == "Y"].index)
+    ids["evaluable_excluding_fabricated_citation"] = [c for c in ids["evaluable"]
+                                                      if pairs.loc[c, "sham_type"] != "fabricated_citation"]
     return ids
 
 
-def summarize(sub):
-    """Counts and, when both positions have a pair, the pooled measures with case-cluster bootstrap CIs."""
+def summarize(sub, hashes=None):
+    """Counts (with the distinct authentic excerpts when `hashes` maps case_id to excerpt hash) and, when both positions have a pair, the pooled measures with case-cluster bootstrap CIs."""
     n_first = int(sub[sub.sham_first].case_id.nunique())
     n_second = int(sub[~sub.sham_first].case_id.nunique())
     out = {"n_pairs": int(sub.case_id.nunique()), "n": int(len(sub)), "n_pairs_sham_first": n_first,
            "n_pairs_sham_second": n_second, "n_coerced": int(sub.coerced.sum()),
            "estimable": bool(n_first and n_second)}
+    if hashes is not None:
+        out["n_distinct_authentic_excerpts"] = int(hashes.reindex(sub.case_id.unique()).nunique())
     if out["estimable"]:
         out.update({k: float(v) for k, v in oc._measures(sub).items()})
         out["primacy"] = float(sub.selected_first.mean())
@@ -75,13 +88,14 @@ def summarize(sub):
     return out
 
 
-def run(write=True, pairs=None, consensus=None):
+def run(write=True, pairs=None, consensus=None, hashes=None):
     pairs = load_pairs() if pairs is None else pairs
     consensus = load_consensus() if consensus is None else consensus
     df = oc.original_frame()
     disc = df[df.visible_status != "identical"]
     if set(disc.case_id) != set(pairs.index):
         raise ValueError("the physician-review pairs differ from the analysis set")
+    hashes = load_excerpt_hashes() if hashes is None else hashes
     ids = tier_case_ids(pairs, consensus)
     ev = pairs[evaluable_mask(pairs)]
     d = discordant_q3(pairs)
@@ -90,7 +104,7 @@ def run(write=True, pairs=None, consensus=None):
     out = {"label": "post hoc; exploratory",
            "note": "Restricts the 333 analyzed pairs by the round-1 physician review; the primary analysis is "
                    "unchanged and the review excludes no pair.",
-           "tiers": {name: {"definition": desc, **summarize(disc[disc.case_id.isin(ids[name])]),
+           "tiers": {name: {"definition": desc, **summarize(disc[disc.case_id.isin(ids[name])], hashes),
                             "case_ids": ids[name]} for name, desc in TIERS},
            "q3_consensus": {"n_evaluable": int(len(ev)), "n_agreed": int(len(agreed)), "n_discordant": int(len(d)),
                             "agreed": {v: int((agreed == v).sum()) for v in Q3_VALUES},

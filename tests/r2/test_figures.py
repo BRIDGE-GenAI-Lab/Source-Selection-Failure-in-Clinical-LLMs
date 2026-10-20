@@ -139,3 +139,38 @@ def test_figure4_open_squares_only_for_models_with_runner_set_records():
     fig = F.draw_figure4(per_model, load_specs(), without_runner_set=wr)
     squares = [c for c in fig.axes[0].collections if getattr(c, "get_label", lambda: "")() == "without_runner_set"]
     assert len(squares) == 1 and len(squares[0].get_offsets()) == 12
+
+
+def test_figure4_labels_give_valid_replies_for_runner_set_models_and_do_not_clip():
+    import matplotlib
+    matplotlib.use("Agg")
+    from r2.analysis import figures as F
+    from r2.analysis import figures_original as FO
+    from r2.run.harness import load_specs
+    head, per_model, per_type, by_profile, wr = FO.load()
+    fig = F.draw_figure4(per_model, load_specs(), without_runner_set=wr)
+    texts = [t.get_text() for t in fig.axes[0].texts]
+    labelled = [t for t in texts if "valid)" in t]
+    assert len(labelled) == 12 and all(t.endswith(" valid)") for t in labelled)
+    n_valid = {int(float(r["n_valid"])) for r in wr if int(float(r["n_runner_set"])) > 0}
+    assert {int(t.split("(")[1].split()[0]) for t in labelled} == n_valid
+    assert sum(t.endswith("%") for t in texts) == len(per_model) - 12
+    fig.canvas.draw()
+    ax_box = fig.axes[0].get_window_extent()
+    for t in fig.axes[0].texts:
+        assert t.get_window_extent().x1 <= fig.bbox.x1
+
+
+def test_squares_sentence_is_computed_and_states_the_conditional_caveat():
+    from r2.analysis import figures_original as FO
+    head, per_model, per_type, by_profile, wr = FO.load()
+    s = FO._squares_sentence(wr)
+    rows = [r for r in wr if int(float(r["n_runner_set"])) > 0]
+    top = max(rows, key=lambda r: int(float(r["n_runner_set"])))
+    assert s.startswith("Open squares: position-averaged accuracy among only the evaluations with a valid A or B reply, "
+                        f"for the {len(rows)} models whose choice the original runner set to A in some evaluations; "
+                        "the label gives each one's valid replies (Supplementary Table S9, Part D). ")
+    assert f"these were {int(float(top['n_valid']))} of its {int(float(top['n']))} evaluations." in s
+    assert s.endswith("The squares are conditional on a valid reply, a selected subset rather than a random sample; "
+                      "they are not the models' overall accuracy and do not rank the models. ")
+    assert FO._squares_sentence(None) == ""

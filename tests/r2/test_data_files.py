@@ -269,3 +269,22 @@ def test_release_allowlist_roles_carry_no_stale_terms():
         if found:
             hits[p] = found
     assert not hits, hits
+
+
+def test_clinically_evaluable_roles_are_split_and_count_the_tiers():
+    from r2.analysis.clinically_evaluable import TIERS
+    rules = [r for r in D.RULES if r[0].startswith("analysis_original/clinically_evaluable")]
+    assert len(rules) == 2
+    js, cs = (r[3]("x") for r in rules)
+    assert "also without the runner-set records" in js and "also without the runner-set records" not in cs
+    assert "tier counts and measures only" in cs
+    for text in (js, cs):
+        assert f"for {len(TIERS)} subsets" in text and "six" not in text
+        assert "fabricated_citation" in text and "distinct authentic excerpts" in text
+
+
+def test_per_model_role_says_valid_a_or_b_choice():
+    rule = next(r for r in D.RULES if "per_model_discriminable_excluding_coerced" in r[0])
+    text = rule[3]("analysis_original/per_model_discriminable_excluding_coerced.csv")
+    assert "The records left are the replies with a valid A or B choice" in text
+    assert "the runner could parse" not in text

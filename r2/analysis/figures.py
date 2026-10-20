@@ -372,6 +372,9 @@ def figure4(head, per_model, out_dir, specs):
         return _save(fig, out_dir, "Figure4", legend4(head), head.get("synthetic") is True)
 
 
+XLIM_FIG4 = 130  # room for the right-hand label "100.0% (333 valid)"
+
+
 def draw_figure4(per_model, specs, closed_label="Closed commercial model", without_runner_set=None):
     """The Figure 4 bars (call inside plt.rc_context(STYLE)); per_model rows need paa_lo and paa_hi. A closed
     commercial reasoning model is drawn as a reasoning model; `closed_label` names the closed-commercial key."""
@@ -401,11 +404,14 @@ def draw_figure4(per_model, specs, closed_label="Closed commercial model", witho
             xs, ys = zip(*pts)
             ax.scatter(xs, ys, marker="s", s=30, facecolor="white", edgecolor=INK, linewidth=1.0, zorder=5,
                        label="without_runner_set")
-    for yy, v in zip(y, paa):
-        ax.text(104.5, yy, f"{v:.1f}%", va="center", ha="left", fontsize=8.5, color=C["text"])
+    n_valid = ({r["model"]: int(float(r["n_valid"])) for r in without_runner_set
+                if int(float(r["n_runner_set"])) > 0} if without_runner_set is not None else {})
+    for yy, v, r in zip(y, paa, pm):
+        label = f"{v:.1f}%" + (f" ({n_valid[r['model']]} valid)" if r["model"] in n_valid else "")
+        ax.text(104.5, yy, label, va="center", ha="left", fontsize=8.5, color=C["text"])
     ax.set_yticks(y, [display_name(r["model"]) for r in pm])
     ax.set_ylim(len(pm) - 0.45, -0.75)
-    ax.set_xlim(0, 117)
+    ax.set_xlim(0, XLIM_FIG4 if without_runner_set is not None else 117)
     ax.set_xticks(range(0, 101, 20))
     ax.set_xlabel("Accuracy (%); bars: position-averaged accuracy")
     ax.tick_params(axis="y", length=0)
